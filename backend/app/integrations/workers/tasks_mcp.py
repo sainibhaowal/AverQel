@@ -12,10 +12,16 @@ from sqlalchemy import select, text
 from app.core.config import get_settings
 from app.integrations.models.mcp_server import MCPServer
 from app.integrations.repositories.mcp_events import MCPEventsRepository
+from app.integrations.services.composio_service import (
+    classify_composio_tool,
+    is_composio_server,
+)
 from app.integrations.services.mcp_runtime import (
     MCPCatalog,
     build_mcp_server_runtime,
     mcp_server_provider_available,
+    mcp_tool_catalog_fingerprint,
+    next_mcp_tool_catalog_revision,
 )
 from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
@@ -131,19 +137,31 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 {
                     **item,
                     "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema")),
+                    **(
+                        {"risk_labels": [classify_composio_tool(str(item.get("name") or ""), item)]}
+                        if is_composio_server(server)
+                        else {}
+                    ),
                 }
                 for item in catalog["tools"]
                 if isinstance(item, dict)
             ]
-            catalog_revision = int(server.catalog_revision or 0) + 1
+            previous_config = server.config if isinstance(server.config, dict) else {}
+            catalog_fingerprint = mcp_tool_catalog_fingerprint(catalog["tools"])
+            catalog_revision = next_mcp_tool_catalog_revision(
+                server.catalog_revision,
+                previous_config.get("mcp_tools_cache"),
+                catalog["tools"],
+            )
             server.config = {
-                **server.config,
+                **previous_config,
                 "mcp_tools_cache": catalog["tools"],
                 "mcp_prompts_cache": catalog["prompts"],
                 "mcp_resources_cache": catalog["resources"],
                 "mcp_resource_templates_cache": catalog["resource_templates"],
                 "mcp_catalog_tool_count": len(catalog["tools"]),
                 "mcp_catalog_last_sync_at": datetime.now(UTC).isoformat(),
+                "mcp_tool_catalog_fingerprint": catalog_fingerprint,
                 "catalog_revision": catalog_revision,
             }
             server.catalog_revision = catalog_revision

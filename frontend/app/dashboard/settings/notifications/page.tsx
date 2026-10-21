@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { BellRing, Loader2, RefreshCw, Save } from "lucide-react";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 
 type Category = { code: string; label: string; channels: ("in_app" | "email")[] };
@@ -122,12 +123,8 @@ export default function NotificationSettingsPage() {
         backLabel="Back"
       />
       {loading ? (
-        <div
-          className="theme-panel flex min-h-56 items-center justify-center rounded-2xl"
-          role="status"
-        >
-          <Loader2 className="text-primary animate-spin" />
-          <span className="sr-only">Loading notification preferences</span>
+        <div className="theme-panel rounded-2xl">
+          <AverQelLoading label="Loading notification preferences…" size="section" />
         </div>
       ) : loadError ? (
         <section className="theme-panel w-full space-y-3 rounded-2xl p-6" role="alert">

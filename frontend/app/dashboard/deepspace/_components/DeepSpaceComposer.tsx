@@ -32,6 +32,7 @@ import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import { formatReasoningEffortLabel, isValidReasoningEffort } from "../_lib/reasoning-options";
 import type { TaskProgress } from "../_lib/task-progress";
 import DeepSpaceTaskPlanDrawer from "./DeepSpaceTaskPlanDrawer";
+import DeepSpaceLiveOutputRate from "./DeepSpaceLiveOutputRate";
 
 type ReasoningEffort = string;
 
@@ -99,7 +100,8 @@ interface DeepSpaceComposerProps {
   requestOutputTokens?: number | null;
   requestInputTokensSource?: string | null;
   requestOutputTokensSource?: string | null;
-  liveTokensPerSecond?: number | null;
+  liveOutputTokens?: number;
+  liveOutputStartedAtMs?: number | null;
   reservedOutputTokens?: number | null;
   maxOutputTokens?: number | null;
   contextStatus?: string | null;
@@ -276,7 +278,8 @@ export default function DeepSpaceComposer({
   requestOutputTokens = null,
   requestInputTokensSource = null,
   requestOutputTokensSource = null,
-  liveTokensPerSecond = null,
+  liveOutputTokens = 0,
+  liveOutputStartedAtMs = null,
   reservedOutputTokens = null,
   maxOutputTokens = null,
   contextStatus = null,
@@ -1333,13 +1336,10 @@ export default function DeepSpaceComposer({
                 {(requestOutputTokens ?? 0).toLocaleString()} model out ·{" "}
                 {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
                 {isStreaming ? (
-                  <>
-                    {" · "}~
-                    {typeof liveTokensPerSecond === "number" && Number.isFinite(liveTokensPerSecond)
-                      ? liveTokensPerSecond.toFixed(1)
-                      : "0.0"}{" "}
-                    tok/s
-                  </>
+                  <DeepSpaceLiveOutputRate
+                    outputTokens={liveOutputTokens}
+                    startedAtMs={liveOutputStartedAtMs}
+                  />
                 ) : null}
               </span>
             </div>

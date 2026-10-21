@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Activity, Link2, Link2Off } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 import {
   type CreateProviderInput,
@@ -901,11 +902,15 @@ export default function ProviderForm({
                   {discoverError || "Enter a valid http(s) runtime URL to preview models."}
                 </p>
               ) : discoveringModels ? (
-                <p>
-                  {activeProviderType === "cline"
-                    ? "Loading Cline's model catalog. This does not test chat access."
-                    : "Inspecting endpoint and validating credentials..."}
-                </p>
+                <AverQelLoading
+                  size="compact"
+                  label={
+                    activeProviderType === "cline"
+                      ? "Loading Cline model catalog"
+                      : "Inspecting endpoint and validating credentials"
+                  }
+                  className="justify-start"
+                />
               ) : localRuntimeUnavailable ? (
                 <p>Open AverQel Desktop to discover models from this local runtime.</p>
               ) : isCodexLogin ? (

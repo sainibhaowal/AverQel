@@ -14,7 +14,7 @@ it("keeps the requested AverQel icon as the shared web brand asset", () => {
 
   expect(icon).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   expect(icon).toContain('viewBox="0 0 1202 675"');
-  expect(logoComponent).toContain('src="/brand/AverQel_Icon.svg"');
+  expect(logoComponent).toContain('"/AverQel%20Logo/AverQel_Icon.svg"');
   expect(layout).toContain('icon: "/brand/AverQel_Icon.svg"');
 });
 
@@ -70,7 +70,10 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(dashboardLayout).toContain(
     'source="/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg"',
   );
-  expect(exactBrand).toContain('src="/brand/AverQel_Exact_Logo.svg"');
+  expect(exactBrand).toContain('src="/AverQel%20Logo/AverQel_Icon.svg"');
+  expect(exactBrand).toContain('import AverQelWordmark from "./AverQelWordmark"');
+  expect(exactBrand).toContain('<AverQelWordmark size="hero"');
+  expect(exactBrand).toContain('className="login-brand-wordmark"');
   expect(exactBrand).toContain("INTELLIGENCE ALL YOU NEED");
   expect(loginPage).not.toContain('<AverQelLogo size="hero" />');
   expect(globalStyles).toContain(".dark .averqel-wordmark__svg");

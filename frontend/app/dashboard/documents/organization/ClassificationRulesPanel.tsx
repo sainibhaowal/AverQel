@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 import toast from "react-hot-toast";
 
@@ -648,9 +649,11 @@ export default function ClassificationRulesPanel() {
                   ) : null}
                 </article>
               ))
+            ) : loading ? (
+              <AverQelLoading label="Loading rules…" size="compact" className="py-8" />
             ) : (
               <p className="text-muted-foreground py-10 text-center text-sm">
-                {loading ? "Loading rules…" : "Nothing configured yet."}
+                Nothing configured yet.
               </p>
             )}
           </div>

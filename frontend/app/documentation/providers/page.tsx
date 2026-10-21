@@ -4,7 +4,7 @@ export default function ProvidersPage() {
   return (
     <DocsShell
       title="Providers"
-      intro="AverQel has two related provider concepts: model providers for AI runtime routing and MCP providers for user-authorized remote tools such as Gmail, Notion, Slack, and GitHub."
+      intro="AverQel has model providers for AI generation and retrieval, plus a separate Composio setup for connecting your own external app accounts to DeepSpace."
     >
       <DocsCards
         items={[
@@ -18,11 +18,11 @@ export default function ProvidersPage() {
           },
           {
             title: "MCP Providers",
-            body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, Notion, Slack, and future approved vendors remain available through the separate MCP surface.",
+            body: "Under Providers → MCP, choose + to browse provider families, then select Composio and add your own project key. Then browse the live app and tool catalog in MCP Marketplace.",
           },
           {
-            title: "Provider-Owned Login",
-            body: "MCP users authenticate on the provider authorization page. AverQel stores encrypted tokens and safe account identity, not provider passwords.",
+            title: "Your account connections",
+            body: "Each AverQel account stores its own encrypted Composio key and connects its own external app accounts.",
           },
           {
             title: "Explicit Ownership",
@@ -33,15 +33,16 @@ export default function ProvidersPage() {
 
       <DocsSection title="Model providers versus MCP providers">
         <p>
-          Model providers answer questions or create embeddings. MCP providers remain a separate
-          protected integration surface for external product actions. A Google model provider and a
-          Google Gmail MCP connection are separate integrations with separate credentials, policies,
-          and ownership.
+          Model providers answer questions or create embeddings. The MCP integration is separate:
+          Composio connects external apps whose tools DeepSpace can call under your saved policy. An
+          AI model provider key and a Composio project key have different settings and purposes.
         </p>
         <p>
-          Do not put MCP OAuth credentials into the normal model-provider configuration. MCP uses
-          dedicated provider profiles and dedicated per-user connection records so existing Google,
-          GitHub, Drive, and other integrations remain compatible.
+          In Providers, open the <strong>MCP</strong> section, choose <strong>+</strong> to browse
+          provider families, then select <strong>Composio</strong> to open its setup panel. Add your
+          Composio project API key there. Do not put it in a model-provider form. AverQel encrypts
+          it and scopes it to your signed-in tenant and account; the running server uses it to make
+          Composio requests.
         </p>
       </DocsSection>
 
@@ -329,114 +330,76 @@ export default function ProvidersPage() {
         </p>
       </DocsSection>
 
-      <DocsSection title="Google and GitHub MCP connections">
+      <DocsSection title="Composio app setup">
         <ol className="list-decimal space-y-2 pl-6">
+          <li>Create or select your own Composio project and copy its project API key.</li>
           <li>
-            AverQel publishes a curated marketplace entry with the official remote endpoint,
-            reviewed tools, requested scopes, and risk policy.
+            In AverQel, open <strong>Providers → MCP</strong>, choose <strong>+</strong> to browse
+            provider families, then select <strong>Composio</strong>. Enter the key in its setup
+            panel and choose <strong>Validate and save</strong>.
           </li>
           <li>
-            An administrator configures AverQel&apos;s Google or GitHub OAuth client ID, client
-            secret, and exact callback URI on the VPS.
-          </li>
-          <li>The user selects Connect and is redirected to Google or GitHub.</li>
-          <li>The provider returns an authorization result to AverQel&apos;s signed callback.</li>
-          <li>
-            AverQel verifies scopes and account identity, encrypts the token material, refreshes the
-            safe catalog, and opens the connection inspector.
+            Open <strong>MCP Marketplace</strong> to browse the live app catalog, inspect tools, and
+            connect an app to your external account.
           </li>
           <li>
-            MCP actions remain available only through the current user&apos;s approved connection
-            after policy and scope checks pass.
+            Open <strong>Installed</strong> to check connection status and use the app&apos;s tools
+            in DeepSpace.
           </li>
         </ol>
         <p>
-          If an OAuth client is not configured, the marketplace entry remains visible but shows
-          Setup pending. This is an operator configuration state, not a request for users to give
-          AverQel their Google or GitHub password.
+          The marketplace shows Composio&apos;s live native toolkit catalog. App and tool counts can
+          change. AverQel&apos;s eight bundled Google, GitHub, Notion, and Slack cards are no longer
+          marketplace choices; existing installed connection records are retained.
         </p>
       </DocsSection>
 
-      <DocsSection title="Notion and Slack MCP connections">
+      <DocsSection title="OAuth and callback requirements">
         <p>
-          Notion uses its official remote Streamable HTTP MCP endpoint with OAuth discovery and
-          dynamic client registration. AverQel uses PKCE and stores the resulting credentials only
-          in the encrypted per-user MCP token record.
+          OAuth apps require the deployment operator to configure AverQel&apos;s public HTTPS
+          origin. Local development may use an HTTP localhost origin. Users do not register a
+          callback verifier in their Composio projects. After Composio returns the connected-account
+          ID, AverQel checks it against the account&apos;s pending request and confirms the
+          connected account belongs to the requested app.
         </p>
         <p>
-          Slack uses its official remote MCP endpoint with confidential OAuth. An administrator must
-          configure an approved Slack app&apos;s <code>AKS_MCP_SLACK_OAUTH_CLIENT_ID</code> and{" "}
-          <code>AKS_MCP_SLACK_OAUTH_CLIENT_SECRET</code> values on the VPS, together with the same
-          HTTPS callback used by the MCP OAuth service. The catalog requests the reviewed Slack read
-          and write user scopes. Read actions are read-only; message sending, channel changes,
-          reactions, and canvas changes require explicit AverQel approval.
-        </p>
-        <p>
-          After the required provider setup is available, both entries use the same flow: Connect,
-          provider consent, signed callback, scope verification, encrypted token storage, live tool
-          discovery, policy checks, and DeepSpace routing.
+          Composio and the app provider handle the authorization flow. AverQel checks the returned
+          connection against the signed-in account before enabling its tools. Some apps or projects
+          may require additional consent or permissions. Composio-marked no-auth apps do not use
+          OAuth.
         </p>
       </DocsSection>
 
-      <DocsSection title="MCP marketplace trust metadata">
-        <ul className="list-disc space-y-2 pl-6">
-          <li>
-            <strong>Official:</strong> reviewed provider operated by the represented vendor.
-          </li>
-          <li>
-            <strong>Community:</strong> reviewed third-party provider; it is never automatically
-            official.
-          </li>
-          <li>
-            <strong>New:</strong> recently added provider within its catalog review period.
-          </li>
-          <li>
-            <strong>Trending:</strong> reviewed popularity signal with explicit review metadata.
-          </li>
-          <li>
-            <strong>Interactive:</strong> reviewed support for interactive workflows.
-          </li>
-        </ul>
+      <DocsSection title="Isolation, privacy, and tool approvals">
         <p>
-          These are catalog attributes, not security permissions. Approval status controls whether a
-          provider can be connected; badges help users understand provenance and product status.
+          AverQel encrypts each user&apos;s Composio project key and scopes it to that user&apos;s
+          tenant and account. The running AverQel server decrypts it when calling Composio, so the
+          key is not end-to-end encrypted from the server. Other AverQel users cannot use that key
+          or claim the account&apos;s app sessions. Composio and the external app provider process
+          the actions and data you send to them.
+        </p>
+        <p>
+          DeepSpace routes tools through the MCP broker and checks the saved connection policy.
+          Reads may run under that policy; writes, deletions, and external messages require an
+          approval card before execution. Always allow cannot bypass this safety requirement.
+        </p>
+        <p>
+          Removing the Composio key disables only that account&apos;s Composio sessions in AverQel.
+          It does not revoke grants held remotely by Composio or the external provider; revoke those
+          in the relevant service when required.
         </p>
       </DocsSection>
 
-      <DocsSection title="Remote MCP transport labels">
+      <DocsSection title="MCP connection limits">
         <p>
-          Remote HTTP means a vendor-hosted HTTPS Streamable HTTP MCP endpoint. Remote SSE means a
-          vendor-hosted HTTPS Server-Sent Events MCP endpoint. AverQel validates remote endpoints
-          and does not let the browser probe them directly.
+          Composio supplies the app catalog and hosted MCP endpoints. App availability, tool
+          schemas, authentication methods, and permissions can change. The catalog does not
+          guarantee that every listed app is enabled for a given Composio project or connected
+          account.
         </p>
         <p>
-          Stdio, SSH, and local process transports are not supported in this release. AverQel does
-          not clone or execute arbitrary vendor MCP repositories on the VPS. This reduces
-          supply-chain and host-execution risk while the product focuses on approved remote
-          services.
-        </p>
-      </DocsSection>
-
-      <DocsSection title="Provider health and catalog preview">
-        <p>
-          Marketplace previews are reviewed metadata. Once connected, AverQel can refresh the live
-          tool catalog and records a safe catalog revision and health status. Health is an
-          operational signal, not an uptime guarantee, and remote providers can change tools or
-          permissions.
-        </p>
-        <p>
-          The runtime rejects stale catalogs, disabled providers, revoked connections, removed
-          tools, and policy violations. The frontend receives only typed safe DTOs; provider tokens,
-          client secrets, raw OAuth metadata, and raw MCP event payloads remain server-side.
-        </p>
-      </DocsSection>
-
-      <DocsSection title="Why AverQel does not clone MCP repositories">
-        <p>
-          The vendor owns its MCP implementation, endpoint availability, OAuth application, and tool
-          behavior. AverQel owns the marketplace review, tenant/user connection, encryption, policy,
-          approval, runtime routing, and safe inspection. Keeping those responsibilities separate
-          makes provider updates safer and prevents unreviewed code from running inside AverQel.
+          Existing AI model, embedding, reranking, and web-search providers remain separate from
+          MCP. Composio configuration does not replace or share their credentials.
         </p>
       </DocsSection>
 

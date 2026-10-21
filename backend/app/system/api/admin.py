@@ -34,6 +34,7 @@ from app.auth.schemas.admin import (
     DataDeletionRequest,
     DataDeletionRequestResponse,
     DataDeletionStatusResponse,
+    PlatformAdminAccessResponse,
     StorageCleanupJobResponse,
     StorageCleanupListResponse,
     StorageCleanupRetryResponse,
@@ -98,35 +99,44 @@ def _require_platform_admin(
     db: Session,
     settings: Settings,
 ) -> None:
+    denial = _platform_admin_access_denial(auth, db=db, settings=settings)
+    if denial is not None:
+        code, message = denial
+        if code in {"ADMIN_ROLE_REQUIRED", "PLATFORM_ADMIN_ALLOWLIST_REQUIRED"}:
+            code = "FORBIDDEN"
+            message = "Only platform admins can perform this operation."
+        raise ApiError(code=code, message=message, status_code=403)
+
+
+def _platform_admin_access_denial(
+    auth: AuthContext,
+    *,
+    db: Session,
+    settings: Settings,
+) -> tuple[str, str] | None:
     if not _has_admin_access(auth):
-        raise ApiError(
-            code="FORBIDDEN",
-            message="Only platform admins can perform this operation.",
-            status_code=403,
-        )
+        return ("ADMIN_ROLE_REQUIRED", "An administrator role is required for this operation.")
     user = UsersRepository(db).get_by_id(auth.tenant_id, auth.user_id)
     if user is None or not is_platform_admin_email(
         user.email,
         settings.bootstrap_super_admin_emails,
     ):
-        raise ApiError(
-            code="FORBIDDEN",
-            message="Only platform admins can perform this operation.",
-            status_code=403,
+        return (
+            "PLATFORM_ADMIN_ALLOWLIST_REQUIRED",
+            "This account is not configured as a platform administrator.",
         )
     if settings.platform_admin_mfa_required:
         if not user.totp_enabled:
-            raise ApiError(
-                code="ADMIN_MFA_SETUP_REQUIRED",
-                message="Set up an authenticator app in account security before using platform administration.",
-                status_code=403,
+            return (
+                "ADMIN_MFA_SETUP_REQUIRED",
+                "Set up an authenticator app in account security before using platform administration.",
             )
         if auth.auth_type != "jwt" or auth.session_id is None or auth.mfa_verified_at is None:
-            raise ApiError(
-                code="ADMIN_MFA_REQUIRED",
-                message="Sign in again and complete the authenticator challenge to use platform administration.",
-                status_code=403,
+            return (
+                "ADMIN_MFA_REQUIRED",
+                "Sign in again and complete the authenticator challenge to use platform administration.",
             )
+    return None
 
 
 def _require_recent_mfa_authentication(auth: AuthContext, settings: Settings) -> None:
@@ -219,6 +229,26 @@ def _require_break_glass_enabled(settings: Settings) -> None:
             message="Break-glass access is disabled for this deployment.",
             status_code=403,
         )
+
+
+access_router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@access_router.get(
+    "/access",
+    response_model=PlatformAdminAccessResponse,
+)
+def get_platform_admin_access(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> PlatformAdminAccessResponse:
+    """Report the current authenticated user's platform-admin access readiness."""
+    denial = _platform_admin_access_denial(auth, db=db, settings=settings)
+    return PlatformAdminAccessResponse(
+        allowed=denial is None,
+        reason=denial[0] if denial is not None else None,
+    )
 
 
 router = APIRouter(

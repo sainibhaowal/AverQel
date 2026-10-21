@@ -107,10 +107,10 @@ const steps = [
     color: "text-amber-300",
     border: "border-amber-400/25",
     bg: "bg-amber-500/[0.08]",
-    body: "Authorize supported remote apps through OAuth. AverQel checks connection health, scope, policy, and any required approval before an external tool is used.",
-    outcome: "Useful integrations without giving up control.",
+    body: "Add your own Composio project key, browse its live app catalog, and connect the external accounts you choose. AverQel checks ownership and tool policy, with approval before side-effecting actions.",
+    outcome: "Useful app connections with clear action controls.",
     signals: [
-      ["Connection", "OAuth", "Health and catalog state are checked"],
+      ["Catalog", "Live", "Apps and tool lists come from Composio"],
       ["Permission", "Policy-bound", "Read, write, delete, and message risk levels"],
       ["Execution", "Human-aware", "Approval can be required before remote effects"],
     ],

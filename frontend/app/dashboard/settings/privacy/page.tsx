@@ -21,6 +21,7 @@ import {
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 interface ActivityItem {
   id: string;
@@ -409,10 +410,11 @@ export default function PrivacySettingsPage() {
           </h3>
           <div className="mt-4 max-h-[32rem] space-y-3 overflow-y-auto pr-2">
             {loadingActivity ? (
-              <div className="text-muted-foreground flex items-center gap-3 text-sm">
-                <Loader2 size={16} className="text-primary animate-spin" />
-                Loading account activity...
-              </div>
+              <AverQelLoading
+                label="Loading account activity…"
+                size="compact"
+                className="justify-start"
+              />
             ) : activity.length ? (
               activity.slice(0, 8).map((item, idx) => (
                 <motion.div

@@ -85,6 +85,7 @@ from app.documents.models.organization import (
     DocumentWebhookSubscription,
 )
 from app.ingestion.models.ingestion_job import IngestionJob
+from app.integrations.models.composio_credential import ComposioCredential  # noqa: F401
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration

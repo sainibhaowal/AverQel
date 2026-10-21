@@ -40,7 +40,7 @@ export default function TitleBar() {
 
   const handleClose = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await window.electron?.window.hide();
+    await window.electron?.window.close();
   };
 
   if (!isElectron) return null;

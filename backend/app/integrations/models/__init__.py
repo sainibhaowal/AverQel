@@ -1,3 +1,4 @@
+from app.integrations.models.composio_credential import ComposioCredential
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
@@ -15,6 +16,7 @@ __all__ = [
     "Connector",
     "ConnectorStatus",
     "ConnectorSecret",
+    "ComposioCredential",
     "MCPConnectionPolicy",
     "MCPServer",
     "MCPRegistryEntry",

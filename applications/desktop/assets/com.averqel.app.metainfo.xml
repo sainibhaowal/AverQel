@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>com.averqel.app</id>
   <name>AverQel</name>
-  <summary>AI workspace for documents and connected tools</summary>
+  <summary>AI workspace for documents, grounded answers, agent workflows, and team messaging</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
   <developer id="com.averqel">
@@ -12,7 +12,7 @@
     <category>Office</category>
   </categories>
   <description>
-    <p>Search your documents, chat with AI models, and work with connected services in one desktop app.</p>
+    <p>AverQel is an AI workspace for document management and search, source-grounded questions, DeepSpace conversations and agent workflows, configurable model providers, approved connected apps, Qel Connect shared spaces and messaging, feedback and support, and tenant-aware security and administration. Provider and app integrations require configuration; Qel Connect is experimental beta.</p>
   </description>
   <launchable type="desktop-id">AverQel.desktop</launchable>
   <icon type="stock">averqel-desktop</icon>

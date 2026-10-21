@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.system.schemas.conversation import ConversationParticipantResponse
 from app.system.schemas.support_encryption import SupportPublicKeyResponse
 
 
@@ -94,12 +95,14 @@ class AppFeedbackMessageResponse(BaseModel):
     encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
+    author_ref: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class AppFeedbackDetailResponse(AppFeedbackResponse):
     messages: list[AppFeedbackMessageResponse]
+    participants: list[ConversationParticipantResponse] = Field(default_factory=list)
 
 
 class AdminAppFeedbackResponse(BaseModel):
@@ -127,10 +130,12 @@ class AdminAppFeedbackMessageResponse(BaseModel):
     encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
+    author_ref: str | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
 class AdminAppFeedbackDetailResponse(AdminAppFeedbackResponse):
     messages: list[AdminAppFeedbackMessageResponse]
+    participants: list[ConversationParticipantResponse] = Field(default_factory=list)
     recipient_public_key: SupportPublicKeyResponse | None = None

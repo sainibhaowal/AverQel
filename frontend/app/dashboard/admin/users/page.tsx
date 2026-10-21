@@ -6,7 +6,6 @@ import toast from "react-hot-toast";
 import {
   AlertTriangle,
   CheckCircle2,
-  Loader2,
   Shield,
   ShieldCheck,
   UserRound,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import { getRoleLabel } from "@/lib/roles";
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
@@ -284,10 +284,11 @@ export default function AdminUsersPage() {
             </div>
 
             {loadingUsers ? (
-              <div className="text-muted-foreground flex items-center gap-3 rounded-2xl px-4 py-8 text-sm">
-                <Loader2 size={16} className="animate-spin" />
-                Loading users...
-              </div>
+              <AverQelLoading
+                label="Loading users…"
+                size="compact"
+                className="justify-start rounded-2xl px-4 py-8"
+              />
             ) : users.length === 0 ? (
               <div className="theme-panel-muted text-muted-foreground rounded-2xl px-4 py-8 text-center text-sm">
                 No users found.
@@ -350,10 +351,11 @@ export default function AdminUsersPage() {
                 Select a user to inspect and control the account.
               </div>
             ) : loadingDetail && !detail ? (
-              <div className="text-muted-foreground flex min-h-[28rem] items-center justify-center gap-3 text-sm">
-                <Loader2 size={16} className="animate-spin" />
-                Loading user detail...
-              </div>
+              <AverQelLoading
+                label="Loading user details…"
+                size="section"
+                className="min-h-[28rem] w-full"
+              />
             ) : (
               <div className="space-y-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
                 <div className="flex flex-wrap items-start justify-between gap-4">

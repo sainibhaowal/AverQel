@@ -70,3 +70,38 @@ describe("support queue load failures", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
+
+describe("admin support selected user", () => {
+  it("shows the user identity once in the selector and uses a neutral history heading", async () => {
+    const userEmail = "rav.singh@example.test";
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        open_count: 1,
+        overdue_count: 0,
+        total: 1,
+        users: [{ user_id: "user-1", display_name: "Rav Singh", avatar: null }],
+        items: [
+          {
+            id: "ticket-1",
+            user_id: "user-1",
+            user_email: userEmail,
+            subject: "Test support ticket",
+            description: "A test description.",
+            category: "question",
+            status: "open",
+            priority: "normal",
+            created_at: "2026-10-20T09:00:00Z",
+            updated_at: "2026-10-20T09:00:00Z",
+          },
+        ],
+      }),
+    });
+
+    render(<AdminSupportPage />);
+
+    expect(await screen.findByRole("heading", { name: "Support history" })).toBeInTheDocument();
+    expect(screen.getAllByText(userEmail)).toHaveLength(1);
+    expect(screen.queryByText(/User ID:/)).toBeNull();
+  });
+});

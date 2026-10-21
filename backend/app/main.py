@@ -135,6 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(deepspace_documents.router, prefix=settings.api_prefix)
     app.include_router(deepspace_sandbox.router, prefix=settings.api_prefix)
     app.include_router(deepspace_schedules.router, prefix=settings.api_prefix)
+    app.include_router(admin.access_router, prefix=settings.api_prefix)
     app.include_router(admin.router, prefix=settings.api_prefix)
     app.include_router(contact.router, prefix=settings.api_prefix)
     app.include_router(dashboard.router, prefix=settings.api_prefix)

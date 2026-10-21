@@ -70,7 +70,8 @@ export default function CallToAction() {
           </motion.div>
 
           <motion.div
-            aria-hidden="true"
+            role="img"
+            aria-label="Example grounded-answer flow: selected sources, selected model, optional approved tools, then an answer with citations."
             initial={reduceMotion ? false : { opacity: 0, scale: 0.88 }}
             whileInView={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
             viewport={{ once: false, amount: 0.2 }}
@@ -111,10 +112,14 @@ export default function CallToAction() {
                 <Bot size={34} strokeWidth={1.65} />
               </motion.div>
             </div>
-            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelTop}`}>MODEL</span>
-            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelRight}`}>TOOLS</span>
-            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelBottom}`}>SOURCES</span>
-            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelLeft}`}>WORK</span>
+            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelTop}`}>SOURCES</span>
+            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelRight}`}>MODEL</span>
+            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelBottom}`}>
+              OPTIONAL TOOLS
+            </span>
+            <span className={`${styles.ctaOrbitLabel} ${styles.ctaOrbitLabelLeft}`}>
+              CITED ANSWER
+            </span>
           </motion.div>
 
           <motion.div

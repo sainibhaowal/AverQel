@@ -51,6 +51,12 @@ When a second administrator is not available, the requester can approve their ow
 after the configured delay (24 hours by default); the worker independently checks the recorded
 approval mode and delay before purging.
 
+The Audit Logs UI displays event timestamps in UTC and abbreviates actor/tenant UUIDs and trace IDs
+in its table for readability; expanding a row shows the full available references. The API returns
+the recorded event outcome separately from its action name. See the
+[platform administration guide](06-platform-administration.md) for all six admin modules, their
+permissions, and the difference between sign-in MFA and support/feedback encryption.
+
 ## Account profile and first-run setup
 
 The authenticated `GET /api/v1/auth/profile` response includes the account's `display_name`, `avatar`, `status`, `totp_enabled`, and `onboarding_completed` values alongside its email, tenant, and roles. The `PUT /api/v1/auth/profile` request can update only `display_name`, `avatar`, and `onboarding_completed`; email and roles are read-only in this route. The endpoint derives the user and tenant from the validated authentication context.

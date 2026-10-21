@@ -37,6 +37,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useRealtimeEvents } from "@/lib/realtime";
 import { saveDocumentContentToDeepSpace } from "@/app/lib/deepspace-document-notes";
 import toast from "react-hot-toast";
@@ -501,7 +502,11 @@ export default function DocumentDetailPage() {
               </div>
               <div className="flex max-h-[82vh] min-h-48 items-center justify-center overflow-auto rounded-xl bg-black/10 p-4 text-center">
                 {previewLoading ? (
-                  <Loader2 className="text-primary animate-spin" size={28} />
+                  <AverQelLoading
+                    label="Loading document preview…"
+                    size="section"
+                    className="w-full"
+                  />
                 ) : previewError ? (
                   <div className="flex flex-col items-center gap-4">
                     <p className="text-danger max-w-md text-sm font-bold">{previewError}</p>
@@ -1121,15 +1126,15 @@ export default function DocumentDetailPage() {
                   ) : (
                     <div className="flex flex-col items-center gap-4 py-24">
                       {fullTextLoading ? (
-                        <Loader2 size={32} className="text-primary/20 animate-spin" />
+                        <AverQelLoading label="Loading document text…" size="compact" />
                       ) : (
-                        <AlertCircle size={32} className="text-foreground/20" />
+                        <>
+                          <AlertCircle size={32} className="text-foreground/20" />
+                          <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
+                            No extracted text available
+                          </p>
+                        </>
                       )}
-                      <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
-                        {fullTextLoading
-                          ? "Loading document text without blocking the page"
-                          : "No extracted text available"}
-                      </p>
                     </div>
                   )
                 ) : (

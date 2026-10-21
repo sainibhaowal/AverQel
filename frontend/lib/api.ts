@@ -1,4 +1,5 @@
 import toast from "react-hot-toast";
+import { clearSupportEncryptionSessions } from "./supportEncryptionSession";
 
 export function isElectronEnvironment(): boolean {
   return typeof window !== "undefined" && window.electron?.isElectron === true;
@@ -114,6 +115,7 @@ export function clearStoredSession() {
     return;
   }
   clearSessionStorage();
+  clearSupportEncryptionSessions();
 }
 
 export function resetAuthSessionState() {
@@ -216,6 +218,7 @@ function createUnauthorizedResponse(): Response {
 export function invalidateAuthSession({ broadcast = true, notify = true } = {}) {
   authSessionInvalidated = true;
   clearSessionStorage();
+  clearSupportEncryptionSessions();
   onTokenRefreshed(null);
 
   if (typeof window !== "undefined" && notify) {

@@ -28,8 +28,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
     parser.add_argument("--git-sha", required=True)
-    parser.add_argument("--neosis-version", required=True)
-    parser.add_argument("--neosis-git-sha", required=True)
     parser.add_argument("--asset-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -42,10 +40,6 @@ def main() -> None:
         raise SystemExit("release version must be canonical vMAJOR.MINOR.PATCH")
     if not re.fullmatch(r"[0-9a-f]{40}", args.git_sha):
         raise SystemExit("AverQel git SHA must be a full lowercase commit SHA")
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", args.neosis_version):
-        raise SystemExit("NeoSIS version must be a valid SemVer version")
-    if not re.fullmatch(r"[0-9a-f]{40}", args.neosis_git_sha):
-        raise SystemExit("NeoSIS git SHA must be a full lowercase commit SHA")
 
     assets: dict[str, dict[str, object]] = {}
     for name in ASSET_NAMES:
@@ -70,7 +64,6 @@ def main() -> None:
         "git_sha": args.git_sha,
         "components": {
             "averqel": {"version": args.version, "git_sha": args.git_sha},
-            "neosis": {"version": args.neosis_version, "git_sha": args.neosis_git_sha},
         },
         "assets": assets,
     }

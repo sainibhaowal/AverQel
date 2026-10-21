@@ -38,6 +38,10 @@ describe("admin account deletion page", () => {
   it("loads accounts and permanently deletes only the confirmed account", async () => {
     fetchWithAuthMock.mockResolvedValueOnce({
       ok: true,
+      json: async () => ({ allowed: true, reason: null }),
+    });
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
       json: async () => ({
         items: [
           {
@@ -73,7 +77,7 @@ describe("admin account deletion page", () => {
     fireEvent.click(screen.getByRole("button", { name: /erase account and owned data/i }));
 
     await waitFor(() => {
-      expect(fetchWithAuthMock).toHaveBeenNthCalledWith(4, "/admin/users/target-1", {
+      expect(fetchWithAuthMock).toHaveBeenNthCalledWith(5, "/admin/users/target-1", {
         method: "DELETE",
         body: JSON.stringify({ confirmation: "DELETE member@example.org" }),
       });
@@ -81,11 +85,15 @@ describe("admin account deletion page", () => {
     expect(toastSuccessMock).toHaveBeenCalledWith(
       "Account erased. 3 stored files are queued for background cleanup.",
     );
-    expect(fetchWithAuthMock).toHaveBeenNthCalledWith(5, "/admin/storage-cleanup?limit=200");
+    expect(fetchWithAuthMock).toHaveBeenNthCalledWith(6, "/admin/storage-cleanup?limit=200");
     expect(screen.queryByText("member@example.org")).not.toBeInTheDocument();
   });
 
   it("requires the exact account confirmation before sending a deletion request", async () => {
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ allowed: true, reason: null }),
+    });
     fetchWithAuthMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -109,6 +117,40 @@ describe("admin account deletion page", () => {
     expect(await screen.findAllByText("another@example.org")).toHaveLength(3);
     const deleteButton = screen.getByRole("button", { name: /erase account and owned data/i });
     expect(deleteButton).toBeDisabled();
-    expect(fetchWithAuthMock).toHaveBeenCalledTimes(3);
+    expect(fetchWithAuthMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not request cross-tenant deletion data when platform MFA setup is required", async () => {
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ allowed: false, reason: "ADMIN_MFA_SETUP_REQUIRED" }),
+    });
+
+    render(<DeletionPage />);
+
+    expect(
+      await screen.findByText("Set up authenticator MFA before using platform administration."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open account security settings/i })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/profile",
+    );
+    expect(fetchWithAuthMock).toHaveBeenCalledTimes(1);
+    expect(fetchWithAuthMock).toHaveBeenCalledWith("/admin/access");
+  });
+
+  it("explains platform allowlist requirements without loading global accounts", async () => {
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ allowed: false, reason: "PLATFORM_ADMIN_ALLOWLIST_REQUIRED" }),
+    });
+
+    render(<DeletionPage />);
+
+    expect(
+      await screen.findByText(/not configured in the deployment’s platform-admin allowlist/i),
+    ).toBeInTheDocument();
+    expect(fetchWithAuthMock).toHaveBeenCalledTimes(1);
+    expect(fetchWithAuthMock).toHaveBeenCalledWith("/admin/access");
   });
 });

@@ -27,6 +27,7 @@ import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
 import type { StructuredBlock } from "../_lib/deepspace-stream";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
 import type {
@@ -56,9 +57,7 @@ const DeferredDeepSpaceEditor = dynamic<DeferredEditorProps>(
   {
     ssr: false,
     loading: () => (
-      <div className="text-muted-foreground flex h-full min-h-48 items-center justify-center text-xs font-medium">
-        Loading note editor…
-      </div>
+      <AverQelLoading label="Loading note editor…" size="section" className="h-full" />
     ),
   },
 );

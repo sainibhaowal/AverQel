@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
 
@@ -430,13 +431,11 @@ function CsvPreviewTable({
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
         {loadingPage && !activePage ? (
-          <div
-            role="status"
-            className="text-muted-foreground flex h-full items-center justify-center gap-2 text-xs"
-          >
-            <span className="border-primary/30 border-t-primary h-4 w-4 animate-spin rounded-full border-2" />
-            Loading secure rows…
-          </div>
+          <AverQelLoading
+            label="Loading secure rows…"
+            size="section"
+            className="h-full min-h-[12rem]"
+          />
         ) : pageError && !activePage ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <p className="text-muted-foreground text-xs">{pageError}</p>
@@ -473,12 +472,14 @@ function CsvPreviewTable({
             <ChevronLeft size={13} /> Previous
           </button>
           <span className={pageError ? "text-danger" : "text-foreground/55"} role="status">
-            {loadingPage
-              ? "Loading rows…"
-              : pageError ||
-                (activePage
-                  ? `Rows ${(activePage.offset ?? 0) + 1}–${(activePage.offset ?? 0) + activePage.rows.length}`
-                  : "No rows loaded")}
+            {loadingPage ? (
+              <AverQelLoading size="inline" label="Loading rows" />
+            ) : (
+              pageError ||
+              (activePage
+                ? `Rows ${(activePage.offset ?? 0) + 1}–${(activePage.offset ?? 0) + activePage.rows.length}`
+                : "No rows loaded")
+            )}
           </span>
           {pageError && activePage ? (
             <button

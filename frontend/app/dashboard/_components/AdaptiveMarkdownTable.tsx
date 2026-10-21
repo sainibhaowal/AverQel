@@ -182,7 +182,7 @@ export default function AdaptiveMarkdownTable({
       className="group relative my-5 overflow-x-auto rounded-xl border border-white/10"
       data-adaptive-table="grid"
     >
-      <div className="absolute top-1 right-1 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+      <div className="flex min-h-10 justify-end px-1 pt-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
         <TableActions rows={tableMatrix} title="Markdown table" onSaveToLibrary={saveToLibrary} />
       </div>
       <table className="w-full min-w-[36rem] border-collapse text-left">{children}</table>

@@ -92,10 +92,10 @@ export default function TermsPage() {
       <PolicySection title="Changes and contact">
         <p>
           Features and these terms may change. Material changes should be announced before they
-          apply where required by law. The hosted service is operated by Ravinder Singh —
-          Independent Developer, AverQel Independent Project. Questions about these terms can be
-          sent through the public Contact the developer form on the landing page or the Support
-          Centre for signed-in users. The form requires the deployment to configure SMTP delivery.
+          apply where required by law. The hosted service is operated by AverQel Independent
+          Project. Questions about these terms can be sent through the public Contact the developer
+          form on the landing page or the Support Centre for signed-in users. The form requires the
+          deployment to configure SMTP delivery.
           Direct mail sent to the contact address is forwarded only when the deployment has
           configured Resend inbound processing. A postal address and deployment-specific providers
           are not specified here and must be confirmed for the hosted service. This page was

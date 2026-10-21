@@ -2,7 +2,7 @@
   "name": "averqel-desktop",
   "private": true,
   "version": "0.1.6",
-  "description": "AI workspace for documents and connected tools",
+  "description": "AverQel is an AI workspace for document management and search, source-grounded questions, DeepSpace conversations and agent workflows, configurable model providers, approved connected apps, Qel Connect shared spaces and messaging, feedback and support, and tenant-aware security and administration. Provider and app integrations require configuration; Qel Connect is experimental beta.",
   "homepage": "https://averqel.com",
   "desktopName": "AverQel",
   "author": {
@@ -18,12 +18,12 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
+    "pretest": "pnpm run prepare:brand-assets",
     "test": "node --test tests/*.test.cjs",
     "prepare:brand-assets": "node scripts/prepare-brand-assets.mjs",
-    "prepare:neosis-runtime": "node scripts/prepare-neosis-runtime.mjs",
-    "build": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never",
-    "build:linux": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never --linux deb && node scripts/verify-neosis-runtime.cjs release/linux-unpacked/resources/neosis linux x64",
-    "build:windows": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never --win nsis && node scripts/verify-neosis-runtime.cjs release/win-unpacked/resources/neosis win32 x64",
+    "build": "pnpm run prepare:brand-assets && electron-builder --publish never",
+    "build:linux": "pnpm run prepare:brand-assets && electron-builder --publish never --linux deb",
+    "build:windows": "pnpm run prepare:brand-assets && electron-builder --publish never --win nsis",
     "build:mac": "pnpm run prepare:brand-assets && electron-builder --publish never --mac dmg --universal"
   },
   "devDependencies": {
@@ -43,24 +43,6 @@
       {
         "from": "../../frontend/out",
         "to": "frontend"
-      },
-      {
-        "from": ".neosis-runtime/neosis",
-        "to": "neosis",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": ".neosis-runtime/neosis/node_modules",
-        "to": "neosis/node_modules",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "assets/neosis-local-profile.patch.yml",
-        "to": "neosis/averqel-local-profile.patch.yml"
       }
     ],
     "directories": {
@@ -71,8 +53,8 @@
       "category": "Office",
       "icon": "assets/icon.png",
       "syncDesktopName": true,
-      "synopsis": "AI workspace for documents and connected tools",
-      "description": "Search your documents, chat with AI models, and work with connected services in one desktop app.",
+      "synopsis": "AI workspace for documents, grounded answers, agent workflows, and team messaging",
+      "description": "AverQel is an AI workspace for document management and search, source-grounded questions, DeepSpace conversations and agent workflows, configurable model providers, approved connected apps, Qel Connect shared spaces and messaging, feedback and support, and tenant-aware security and administration. Provider and app integrations require configuration; Qel Connect is experimental beta.",
       "desktop": {
         "entry": {
           "Name": "AverQel"
@@ -97,7 +79,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
     },
     "mac": {
       "category": "public.app-category.productivity",

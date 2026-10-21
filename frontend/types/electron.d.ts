@@ -46,14 +46,8 @@ declare global {
         close: () => Promise<void>;
         toggleMaximize: () => Promise<boolean>;
         isMaximized: () => Promise<boolean>;
-        hide: () => Promise<void>;
       };
       openExternal: (url: string) => Promise<boolean>;
-      workspace: {
-        neosisAvailable: () => Promise<boolean>;
-        openNeosis: () => Promise<{ ok: boolean; error?: string }>;
-        openAverQel: () => Promise<{ ok: boolean; error?: string }>;
-      };
       codex: {
         status: () => Promise<{
           available: boolean;

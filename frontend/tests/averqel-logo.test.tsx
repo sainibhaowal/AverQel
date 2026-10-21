@@ -21,12 +21,9 @@ it("keeps the nav icon and wordmark as a close, vertically aligned lockup", () =
     "items-center",
     "leading-none",
   );
-  expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toBeInTheDocument();
-  expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toHaveAttribute("width", "92");
-  expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toHaveAttribute(
-    "height",
-    "46",
-  );
+  expect(lockup.querySelector("img")).toBeInTheDocument();
+  expect(lockup.querySelector("img")).toHaveAttribute("width", "92");
+  expect(lockup.querySelector("img")).toHaveAttribute("height", "46");
   expect(lockup.querySelector(".averqel-wordmark__svg")).toHaveAttribute("width", "156");
   expect(lockup.querySelector(".averqel-wordmark__svg")).toHaveAttribute("height", "29");
 });

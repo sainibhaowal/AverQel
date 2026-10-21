@@ -3,6 +3,14 @@
 The AverQel desktop client is packaged with Electron and uses the shared Next.js
 frontend. The packaged application opens the production AverQel web origin so
 OAuth cookies, session refresh, and the web experience remain consistent.
+Google and GitHub sign-in open in a compact child window that shares the
+desktop session. The main AverQel window stays on the login page and returns to
+the signed-in workspace after authentication; closing the sign-in window
+returns to login with a cancellation message.
+
+Closing the desktop window exits AverQel. Minimizing keeps it in the taskbar,
+and launching AverQel again while it is already running focuses the existing
+window. AverQel does not run in the system notification area.
 
 ## Development
 
@@ -35,36 +43,39 @@ BUILD_TARGET=desktop pnpm --dir frontend build
 pnpm --dir applications/desktop build:linux
 ```
 
-The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
-include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
-commit recorded in the GitHub release manifest.
+The release workflow builds AverQel Linux `.deb` and Windows `.exe` packages
+from the AverQel source and shared frontend.
 
 ### AverQel product mark
 
-The shared product mark is `frontend/public/brand/AverQel_Icon.svg`. The
+The shared web product mark is `frontend/public/brand/AverQel_Icon.svg`. The
 frontend uses it on the landing, authentication, onboarding, dashboard, and
-Electron title-bar surfaces. The packaged shell uses matching derivatives in
-`applications/desktop/assets/icon.png`, `icon.ico`, and `icon.icns`; these are
-the icons embedded in Linux, Windows, and macOS builds respectively.
+other web surfaces. Desktop package icons use the icon-only source
+`frontend/public/AverQel Logo/AverQel_Icon.svg` in
+`applications/desktop/assets/icon.png`, `icon.ico`, and `icon.icns`. Linux and
+the Electron window use the PNG, Windows and its NSIS installer use the ICO,
+and macOS uses the ICNS.
 
 The visible text wordmark is `frontend/public/brand/AverQel_Text.svg`, rendered
 through `frontend/app/components/ui/AverQelWordmark.tsx` on the web surfaces
 loaded inside the shell. The login page uses the complete
 `frontend/public/brand/AverQel_Exact_Logo.svg` artwork and its
-`INTELLIGENCE ALL YOU NEED` tagline. The Electron preload title bar also loads
-the same `/brand/AverQel_Icon.svg` and `/brand/AverQel_Text.svg` URLs, so the
-installed window chrome uses both canonical files. The original opaque-canvas
-input is retained beside it as `AverQel_Text_Source.svg`.
-The web titlebar and Electron preload titlebar use the same compact spacing and
-wordmark baseline so the installed shell matches the web lockup.
+`INTELLIGENCE ALL YOU NEED` tagline. The Electron preload renders a 40px title
+bar with only window controls and no product logo or wordmark. Page scrolling
+starts below it. The original opaque-canvas input is retained beside the
+wordmark as `AverQel_Text_Source.svg`.
 
-`pnpm run prepare:brand-assets` stages both canonical SVGs into the Electron
-resource tree before any desktop build. The Linux AppStream and desktop-entry
-display name is `AverQel`; the Windows NSIS and macOS DMG product names use the
-same value from `package.json`.
+The `prepare:brand-assets` script stages both canonical SVGs into the Electron
+resource tree before desktop builds and test runs. The Linux AppStream and
+desktop-entry display name is `AverQel`; the Windows NSIS and macOS DMG product
+names use the same value from `package.json`.
 
-When updating the mark, regenerate all three desktop formats from the same SVG
-and run `pnpm --dir applications/desktop test` before creating a package.
+The desktop PNG is a transparent 512 by 512 square with the centered mark
+filling about 80 to 85 percent of the canvas. The ICO and ICNS contain matching
+size variants. The source SVG has a wide viewBox with transparent margins, so
+trim its transparent edges before fitting it into the square. When updating the
+source, regenerate all three desktop formats and run
+`pnpm --dir applications/desktop test` before creating a package.
 
 The Linux installer keeps the package ID `averqel-desktop` for upgrade
 compatibility. Its software-center listing uses the AppStream name
@@ -72,14 +83,6 @@ compatibility. Its software-center listing uses the AppStream name
 menu uses the same display name. The release workflow checks the actual `.deb`
 for both the AppStream metadata and an ASCII-only Debian description before it
 publishes an installer.
-
-The Linux and Windows build commands verify the generated desktop resource
-tree against NeoSIS's runtime manifest before they succeed. The check confirms
-the runtime entry point, the AverQel profile, every listed file's size and
-SHA-256 checksum, and the target platform and architecture. The Linux release
-workflow also extracts the final `.deb` and repeats this verification on the
-installer contents before upload. A missing or changed runtime therefore fails
-the release job instead of producing a successful release with NeoSIS absent.
 
 The Electron main process owns the OpenAI Codex runtime used by the OpenAI
 provider's desktop-only Codex Login tab. It checks for a signed-in ChatGPT
@@ -115,21 +118,6 @@ browser sign-in. The macOS `.dmg` is built with
 ChatGPT guidance requires paid or remotely hosted apps to complete its
 eligibility process.
 
-Linux packaging builds NeoSIS's static Landlock launcher with `musl-gcc`. The
-release workflow installs Ubuntu's `musl-tools` package on the Linux runner;
-local Ubuntu builds need the same package:
-
-```bash
-sudo apt-get update
-sudo apt-get install --no-install-recommends --yes musl-tools
-```
-
-Each release runner creates the matching ignored NeoSIS `.env` file from the
-pinned checkout's template for `--prepare-only` runtime staging. It includes
-only the application ID and test policy settings required by that validation;
-the reserved `test.example.com` origin is not used for network requests or
-copied into the AverQel package. Signing credentials are not included.
-
 The desktop pnpm policy allows the `electron-winstaller` install script only.
 That reviewed script copies its bundled 7-Zip binaries to the names required by
 Windows installer packaging; keep this allowlist narrow rather than enabling
@@ -153,28 +141,3 @@ through the AverQel backend, so this option does not make the whole product
 offline. Remote or server-hosted endpoints remain available through their
 hosted provider families; LM Studio and Ollama are intentionally local desktop
 connections.
-
-## NeoSIS Local workspace
-
-The desktop build contains one Electron shell. In a packaged desktop build with
-the NeoSIS runtime present, signed-in AverQel users can switch to NeoSIS from the
-center of the dashboard header or the sidebar item directly below DeepSpace.
-Browser users, signed-out users, and the Electron development build do not see
-these dashboard controls. The desktop window has a controls-only top strip;
-NeoSIS shows its AverQel return control in the page below that strip. Returning
-restores the last AverQel page in the same window. NeoSIS starts as a private
-loopback service with an authenticated launch URL; it does not receive AverQel
-cookies, API tokens, tenant data, or server credentials. The local profile opts
-the sidebar Browser into NeoSIS, since the standard Web profile keeps it off by
-default. NeoSIS receives only the operating-system runtime variables it needs
-and its own `NEOSIS_HOME`; AverQel credentials and server configuration are not
-forwarded to the child process. Open NeoSIS's right sidebar to use Browser.
-
-For Linux builds, `pnpm --dir applications/desktop build:linux` prepares the
-production NeoSIS runtime from `neosis/` in the AverQel workspace, or from the
-adjacent `AverQel Neosis/` checkout when present. Set `NEOSIS_SOURCE_DIR` to use
-another local clone path. The separate NeoSIS Electron application is not
-included. The packaged NeoSIS runtime uses the same Electron executable as
-AverQel. The development launcher uses the same source lookup order, so the
-adjacent `AverQel Neosis/` checkout works without moving or copying its source
-into this repository.

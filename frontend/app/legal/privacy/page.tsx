@@ -191,8 +191,8 @@ export default function PrivacyPage() {
 
       <PolicySection title="Contact and deployment details">
         <p>
-          Operator: Ravinder Singh — Independent Developer, AverQel Independent Project. The Support
-          Centre requires an account. A postal address, production hosting region, and the exact
+          Operator: AverQel Independent Project. The Support Centre requires an account. A postal
+          address, production hosting region, and the exact
           providers enabled for a live deployment are not specified in this repository and must be
           confirmed for the hosted service. This page was reviewed 17 October 2026; a review date
           does not mean a deployment has published or adopted this revision.

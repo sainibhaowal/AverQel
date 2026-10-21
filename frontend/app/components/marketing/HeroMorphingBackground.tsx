@@ -43,6 +43,12 @@ const COLORS = ["#00ffa3", "#00b8ff", "#ffffff"] as const;
 const ARCHITECTURE_COLORS = ["#00b8ff", "#54f4ff", "#00ffa3"] as const;
 const QUANTUM_COLORS = ["#54f4ff", "#3c9dff", "#8a72ff"] as const;
 const TUNNEL_GATE_COLORS = ["#00b8ff", "#54f4ff", "#00ffa3"] as const;
+const ENTANGLEMENT_TILT_X = 0.38;
+const ENTANGLEMENT_TILT_Y = 0.43;
+const ENTANGLEMENT_COS_X = Math.cos(ENTANGLEMENT_TILT_X);
+const ENTANGLEMENT_SIN_X = Math.sin(ENTANGLEMENT_TILT_X);
+const ENTANGLEMENT_COS_Y = Math.cos(ENTANGLEMENT_TILT_Y);
+const ENTANGLEMENT_SIN_Y = Math.sin(ENTANGLEMENT_TILT_Y);
 
 function sampleTextTargets(text: string, fontSize: number, lines?: readonly TextLineConfig[]) {
   const canvas = document.createElement("canvas");
@@ -367,7 +373,7 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
             iNorm,
             particle.randomOffset,
             time,
-            tuning.ringRadius,
+            tuning.ringRadius * 1.1,
           );
           particle.targetX = target.x;
           particle.targetY = target.y;
@@ -402,9 +408,12 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
             time,
             tuning.sphereRadius,
           );
-          particle.targetX = target.x;
-          particle.targetY = target.y;
-          particle.targetZ = target.z;
+          const tiltedX = target.x * ENTANGLEMENT_COS_Y + target.z * ENTANGLEMENT_SIN_Y;
+          const rotatedZ = -target.x * ENTANGLEMENT_SIN_Y + target.z * ENTANGLEMENT_COS_Y;
+
+          particle.targetX = tiltedX;
+          particle.targetY = target.y * ENTANGLEMENT_COS_X - rotatedZ * ENTANGLEMENT_SIN_X;
+          particle.targetZ = target.y * ENTANGLEMENT_SIN_X + rotatedZ * ENTANGLEMENT_COS_X;
         } else if (stage.id === "rotating-earth") {
           const radius = tuning.sphereRadius;
           const currentTheta = particle.sphereTheta + time * 0.4;

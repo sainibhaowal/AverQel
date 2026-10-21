@@ -19,6 +19,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import { hasAdminRole } from "@/lib/roles";
 
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import { useRealtimeEvents } from "@/lib/realtime";
 import { saveMCPActiveContext } from "@/lib/mcp-context";
@@ -58,11 +59,7 @@ import type {
   StructuredBlock,
 } from "../_lib/deepspace-stream";
 import type { GalleryAssetRef, GalleryAssetRetention } from "../../query/_components/GalleryBlock";
-import {
-  calculateLiveTokensPerSecond,
-  estimateLiveOutputTokens,
-  mergeOutputTokenEstimate,
-} from "../_lib/live-token-metrics";
+import { estimateLiveOutputTokens, mergeOutputTokenEstimate } from "../_lib/live-token-metrics";
 
 import DeepSpaceComposer, { type DeepSpaceRuntimePhase } from "./DeepSpaceComposer";
 import type { DeepSpaceAgentNotePreview } from "./DeepSpaceEditor";
@@ -364,14 +361,6 @@ export default function DeepSpaceChatClient({
     scrollTop: number;
     viewportHeight: number;
   } | null>(null);
-  const [liveMetricsNow, setLiveMetricsNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!state.isStreaming) return;
-    const interval = window.setInterval(() => setLiveMetricsNow(Date.now()), 250);
-    return () => window.clearInterval(interval);
-  }, [state.isStreaming]);
-
   useEffect(() => {
     let active = true;
     const loadSummary = async () => {
@@ -3121,13 +3110,6 @@ export default function DeepSpaceChatClient({
     : latestAssistant?.createdAt
       ? Date.parse(latestAssistant.createdAt)
       : NaN;
-  const liveTokensPerSecond = state.isStreaming
-    ? calculateLiveTokensPerSecond(
-        streamedOutputTokens,
-        Number.isFinite(startedAtMs) ? startedAtMs : null,
-        liveMetricsNow,
-      )
-    : null;
   const liveContextUsedTokens =
     contextUsedTokens === null
       ? draftTokens || null
@@ -3290,27 +3272,21 @@ export default function DeepSpaceChatClient({
               isMobileStacked ? "pb-24 sm:pr-12 sm:pl-4" : "sm:pr-12 sm:pl-4"
             }`}
           >
-            {isConversationSwitching ? (
+            {isConversationSwitching && selectedConversationLoadFailed ? (
               <div
                 className="sticky top-2 z-30 mx-auto mb-3 flex w-fit max-w-[min(36rem,100%)] items-center gap-3 rounded-xl border border-cyan-200/70 bg-white/95 px-4 py-2 text-sm text-slate-700 shadow-lg dark:border-cyan-900 dark:bg-slate-950/95 dark:text-slate-200"
-                role={selectedConversationLoadFailed ? "alert" : "status"}
+                role="alert"
               >
-                {selectedConversationLoadFailed ? (
-                  <>
-                    <span>Could not load this conversation. Your other chats are still saved.</span>
-                    <button
-                      type="button"
-                      className="shrink-0 font-semibold text-cyan-800 underline underline-offset-2 dark:text-cyan-200"
-                      onClick={() => {
-                        if (activeConversationId) void loadConversation(activeConversationId);
-                      }}
-                    >
-                      Try again
-                    </button>
-                  </>
-                ) : (
-                  <span>Loading selected conversation…</span>
-                )}
+                <span>Could not load this conversation. Your other chats are still saved.</span>
+                <button
+                  type="button"
+                  className="shrink-0 font-semibold text-cyan-800 underline underline-offset-2 dark:text-cyan-200"
+                  onClick={() => {
+                    if (activeConversationId) void loadConversation(activeConversationId);
+                  }}
+                >
+                  Try again
+                </button>
               </div>
             ) : null}
             {operationalSummary && !isConversationSwitching && (
@@ -3414,7 +3390,8 @@ export default function DeepSpaceChatClient({
               requestOutputTokens={requestOutputTokens}
               requestInputTokensSource={requestInputTokensSource}
               requestOutputTokensSource={requestOutputTokensSource}
-              liveTokensPerSecond={liveTokensPerSecond}
+              liveOutputTokens={streamedOutputTokens}
+              liveOutputStartedAtMs={Number.isFinite(startedAtMs) ? startedAtMs : null}
               reservedOutputTokens={reservedOutputTokens}
               maxOutputTokens={maxOutputTokens}
               contextStatus={contextStatus}
@@ -3453,6 +3430,15 @@ export default function DeepSpaceChatClient({
             />
           </div>
         </div>
+        {isConversationSwitching && !selectedConversationLoadFailed ? (
+          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center backdrop-blur-sm">
+            <AverQelLoading
+              label="Loading selected conversation…"
+              size="section"
+              className="h-full w-full"
+            />
+          </div>
+        ) : null}
       </div>
 
       <AnimatePresence>

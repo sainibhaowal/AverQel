@@ -118,6 +118,7 @@ def test_admin_can_list_and_disable_users(
     }
     assert account["email"] == "member@example.org"
     assert account["is_active"] is True
+
     assert account["totp_enabled"] is False
     assert account["roles"] == ["editor"]
     assert account["created_at"]
@@ -227,6 +228,35 @@ def test_admin_can_list_and_disable_users(
         item["action"] == "admin.user.reactivated" and item["resource_id"] == target_user_id
         for item in reactivated_history.json()["items"]
     )
+
+
+def test_admin_access_status_does_not_grant_platform_access_without_allowlist(
+    client: TestClient,
+    seed_user,
+) -> None:
+    owner = seed_user(
+        "tenant-unlisted-admin",
+        "unlisted-admin@example.org",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    get_settings().bootstrap_super_admin_emails = ["different-owner@example.org"]
+    access_token = _login(client, owner)
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Tenant-Id": str(owner.tenant_id),
+    }
+
+    access = client.get("/api/v1/admin/access", headers=headers)
+    assert access.status_code == 200
+    assert access.json() == {
+        "allowed": False,
+        "reason": "PLATFORM_ADMIN_ALLOWLIST_REQUIRED",
+    }
+
+    denied = client.get("/api/v1/admin/users", headers=headers)
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "FORBIDDEN"
 
 
 def test_admin_can_delete_non_protected_user(

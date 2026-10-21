@@ -19,6 +19,7 @@ import {
 } from "@/lib/mcp-api";
 import { useRealtimeEvents } from "@/lib/realtime";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 import MCPConnectionPolicyPanel from "../../_components/MCPConnectionPolicyPanel";
 import MCPHealthStatus from "../../_components/MCPHealthStatus";
@@ -135,8 +136,8 @@ export default function MCPInspectorClient() {
     );
   if (!data || !policy)
     return (
-      <main className="mcp-theme-scope mx-auto max-w-5xl p-6 text-sm text-white/60">
-        Loading MCP connection…
+      <main className="mcp-theme-scope mx-auto max-w-5xl p-6">
+        <AverQelLoading label="Loading MCP connection…" size="section" />
       </main>
     );
   const server = data.server;

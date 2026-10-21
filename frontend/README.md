@@ -6,9 +6,11 @@ the AverQel API in production and is also used by the Electron desktop client.
 ## Getting Started
 
 Use Node.js 22 (the production Docker image uses Node 22) and pnpm 10. The
-workspace declaration in `pnpm-workspace.yaml` is required so the checked-in
-Vitest 3 toolchain is installed instead of falling back to an incompatible
-temporary Vitest version.
+workspace declaration in `frontend/pnpm-workspace.yaml` is required so the
+checked-in Vitest 3 toolchain is installed instead of falling back to an
+incompatible temporary Vitest version. Run the following frontend commands
+from `frontend/`, or prefix them with `pnpm --dir frontend` from the repository
+root.
 
 ```bash
 corepack enable
@@ -23,8 +25,8 @@ Start the web client directly:
 pnpm dev
 ```
 
-The repository's normal desktop development command starts the frontend and
-Electron together:
+From the repository root, the normal desktop development command starts the
+frontend and Electron together:
 
 ```bash
 pnpm electron dev
@@ -46,32 +48,31 @@ configured Tavily provider for that turn, then injects bounded Tavily results in
 
 ## Remote MCP Marketplace
 
-AverQel includes a curated marketplace for approved remote MCP providers. Users can browse provider
-details, reviewed tools, requested OAuth scopes, transport, health, risk labels, and trust badges
-from `Dashboard -> MCP Marketplace`.
+AverQel's MCP Marketplace browses Composio's live app and tool catalog. Each AverQel account supplies
+its own Composio project API key under Dashboard → Providers → MCP; AverQel encrypts and scopes that
+key to the account and never returns it to the browser. The running backend decrypts it when it
+calls Composio, so the key is not end-to-end encrypted from the server. The current Marketplace does
+not list AverQel's former bundled Google, GitHub, Notion, and Slack cards; existing connection
+records are retained.
 
-The supported connection flow is:
+The current connection flow is: user adds their Composio project key → browses the live catalog →
+inspects an app and its tools → connects the selected app → completes its hosted authorization
+when needed → uses the account-owned connection in DeepSpace, subject to tool policy and approval.
 
-```text
-Marketplace → provider details → Connect → provider OAuth consent
-→ AverQel callback → encrypted per-user connection → catalog refresh
-→ connection policy → protected MCP action surface
-```
-
-Google and GitHub authentication happens on the provider's authorization page. AverQel never receives
-the user's provider password. OAuth access and refresh tokens remain encrypted on the backend and are
-never returned to the browser, prompts, logs, or raw MCP events. Disconnect removes the local token
-record and requests provider revocation where supported.
+The deployment must configure the canonical public HTTPS origin for OAuth callbacks; local
+development may use an HTTP localhost origin. Users do not configure a shared AverQel callback
+verifier. Composio and the connected app handle authorization; each AverQel account must authorize
+its own external app account. A catalog listing does not guarantee that an app is enabled for a
+specific Composio project or will accept a requested action.
 
 MCP connections are tenant- and user-scoped. Connected accounts are automatically available across
 the owner's DeepSpace conversations. Tool access is checked through connection ownership,
-provider approval, catalog freshness, read-only mode, risk ceiling,
-and per-tool mode. `Blocked` wins first; then allowlists and risk/read-only rules apply; `Needs
-approval` pauses risky actions; `Always allow` cannot bypass platform or tenant safety rules.
-
-The marketplace distinguishes Official providers from reviewed Community providers. New, Trending, and
-Interactive are catalog review attributes, not automatic security approvals. Health and tool previews
-are useful status metadata, not uptime guarantees; connected providers can change their live catalog.
+current tool definitions, the saved connection policy, and the action approval rules. Writes,
+deletions, and external messages require approval before execution; Always allow cannot bypass that
+side-effect approval check. Disconnecting or removing a key clears local session state but does not
+necessarily revoke authorization held by Composio or the external app. See the
+[Composio hosted MCP guide](../backend/docs/capabilities/mcp/03-composio-hosted-mcp.md) for setup,
+privacy, API, and troubleshooting details.
 
 ## Request and service reliability
 
@@ -88,10 +89,13 @@ the API request loop.
 
 ### DeepSpace live activity timeline
 
-DeepSpace renders only real streamed evidence in order: provider reasoning, an actual function-tool
-call, its streamed arguments, its real result, approval/input requests, and genuine errors. Fixed
-backend status prose is not rendered as an agent step. Function arguments are shown incrementally when
-a provider sends them. A tool that only returns a final response is shown as running immediately and
+DeepSpace renders safe streamed activity in order: actual function-tool calls,
+their streamed arguments and results, approval/input requests, task-plan and
+verification events, and genuine errors. Raw provider reasoning remains
+private backend state; it is not sent through SSE or persisted in assistant
+metadata. Fixed backend status prose is not rendered as an agent step.
+Function arguments are shown incrementally when a provider sends them. A tool
+that only returns a final response is shown as running immediately and
 completed when that real result arrives; the UI does not fabricate progress.
 
 The model chooses whether a request needs a direct answer, workspace inspection, research, a connected
@@ -184,14 +188,17 @@ tenant, quota, moderation, and policy checks.
 The desktop Electron workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 
-This release supports approved remote Streamable HTTP and SSE MCP servers. Stdio, SSH, local process
-servers, and arbitrary vendor repositories are not supported. AverQel does not clone vendor MCP
-servers: vendors operate their endpoints, while AverQel provides the secure marketplace, OAuth broker,
-encryption, tenant isolation, policy enforcement, approval flow, and DeepSpace routing.
+The current Marketplace uses Composio's live app catalog. Each account supplies its own Composio
+project key under Providers → MCP; AverQel encrypts it at rest and scopes it to that account, while the
+server decrypts it to call Composio. OAuth apps also require the deployment's public callback origin.
+The app catalog and which apps a project can use depend on Composio. The connection flow, security
+boundaries, configuration, and deployment checks are documented in
+[`backend/docs/capabilities/mcp/03-composio-hosted-mcp.md`](../backend/docs/capabilities/mcp/03-composio-hosted-mcp.md).
 
-Provider OAuth client credentials are configured by the AverQel operator on the VPS. Until the correct
-Google or GitHub OAuth profile is configured, the provider can remain visible in the marketplace but
-will show `Setup pending` and cannot start user authorization.
+The runtime supports the Composio-hosted Streamable HTTP path and its supported SSE fallback. Stdio,
+SSH, local process servers, and arbitrary user-entered endpoints are not supported. Existing legacy
+provider-profile OAuth connections remain a separate compatibility path; their configuration does
+not control the new Composio Marketplace.
 
 ## Verification
 

@@ -46,9 +46,10 @@ export default function NotificationsDocsPage() {
           Notification content is designed to avoid including prompts, provider credentials, raw
           exception details, or internal support notes. Notifications are scoped to the account and
           tenant authorized for the underlying event. Support and feedback message text is encrypted
-          in the browser for the submitter and allowlisted platform administrator. Legacy manager
-          roles do not grant access. Notification text is generic; account, event type, and resource
-          routing metadata remain visible to the service.
+          in the browser for the submitter and the single platform-key owner. Other allowlisted
+          administrators cannot unlock the key or decrypt message bodies. Legacy manager roles do
+          not grant access. Notification text is generic; account, event type, and resource routing
+          metadata remain visible to the service.
         </p>
       </DocsSection>
     </DocsShell>

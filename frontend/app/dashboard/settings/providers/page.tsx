@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   Link2Off,
+  PlugZap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -27,11 +28,13 @@ import ProviderForm from "@/app/components/providers/ProviderForm";
 import ProviderListTable from "@/app/components/providers/ProviderListTable";
 import ProviderHealthBadge from "@/app/components/providers/ProviderHealthBadge";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import ComposioCredentialCard from "./_components/ComposioCredentialCard";
 import {
   providerHasConfiguredRuntime,
   providerMatchesInventoryTab,
 } from "@/app/components/providers/provider-visibility";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import type {
   ProviderCatalogEntry,
   ProviderConfig,
@@ -52,7 +55,7 @@ import {
   pullProviderModel,
 } from "@/lib/providers-api";
 
-type TabKind = "runtime" | "chat" | "embedding" | "reranker" | "web";
+type TabKind = "runtime" | "chat" | "embedding" | "reranker" | "web" | "mcp";
 
 const HIDDEN_CATALOG_TYPES = new Set(["groq-openai-compatible"]);
 const DESKTOP_ONLY_LOCAL_TYPES = new Set(["lmstudio", "ollama"]);
@@ -77,6 +80,7 @@ export default function ProvidersSettingsPage() {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [selectedMcpProvider, setSelectedMcpProvider] = useState(false);
   const [showCreateFlow, setShowCreateFlow] = useState(false);
   const [selectedCatalogType, setSelectedCatalogType] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
@@ -122,6 +126,14 @@ export default function ProvidersSettingsPage() {
   }, [loadPage]);
 
   useEffect(() => {
+    queueMicrotask(() => {
+      if (new URLSearchParams(window.location.search).get("tab") === "mcp") {
+        setActiveTab("mcp");
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -150,7 +162,14 @@ export default function ProvidersSettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (loading || activeTab === "runtime" || showCreateFlow || browsingCatalog) return;
+    if (
+      loading ||
+      activeTab === "runtime" ||
+      activeTab === "mcp" ||
+      showCreateFlow ||
+      browsingCatalog
+    )
+      return;
 
     const kindProviders = providers
       .filter((pr) => providerMatchesInventoryTab(pr, activeTab))
@@ -336,10 +355,16 @@ export default function ProvidersSettingsPage() {
 
   function handleTabChange(tab: TabKind) {
     setActiveTab(tab);
+    setSelectedMcpProvider(false);
     setShowCreateFlow(false);
     setBrowsingCatalog(false);
     setSelectedCatalogType(null);
     setIsInventoryExpanded(true); // Re-expand on tab change
+
+    if (tab === "mcp") {
+      setSelectedProviderId(null);
+      return;
+    }
 
     if (tab === "runtime") {
       setSelectedProviderId(null);
@@ -414,7 +439,11 @@ export default function ProvidersSettingsPage() {
         <div className="shrink-0">
           <DashboardSectionHeader
             title="Providers"
-            subtitle="Manage foundation models and runtime connectivity"
+            subtitle={
+              activeTab === "mcp"
+                ? "Configure Composio and your connected app accounts"
+                : "Manage foundation models and runtime connectivity"
+            }
             icon={Zap}
             accentClassName="bg-primary text-primary"
             accentGlowClassName="shadow-[0_0_18px_hsl(var(--primary)/0.28)]"
@@ -423,10 +452,7 @@ export default function ProvidersSettingsPage() {
           />
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="space-y-4 text-center">
-            <div className="border-primary mx-auto h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"></div>
-            <p className="text-muted-foreground">Loading providers...</p>
-          </div>
+          <AverQelLoading label="Loading providers…" size="section" className="w-full" />
         </div>
       </div>
     );
@@ -448,37 +474,45 @@ export default function ProvidersSettingsPage() {
           backHref="/dashboard/settings"
           backLabel="Back to Settings"
           actions={
-            <div className="border-glass-border bg-surface-1/50 flex flex-wrap items-center gap-1 rounded-xl border p-1 shadow-inner">
-              <NavItem
-                active={activeTab === "runtime"}
-                label="Navigator"
-                icon={<LayoutGrid size={12} />}
-                onClick={() => handleTabChange("runtime")}
-              />
-              <NavItem
-                active={activeTab === "chat"}
-                label="LLM"
-                icon={<Bot size={12} />}
-                onClick={() => handleTabChange("chat")}
-              />
-              <NavItem
-                active={activeTab === "embedding"}
-                label="Embedding"
-                icon={<Database size={12} />}
-                onClick={() => handleTabChange("embedding")}
-              />
-              <NavItem
-                active={activeTab === "reranker"}
-                label="Reranker"
-                icon={<ScanSearch size={12} />}
-                onClick={() => handleTabChange("reranker")}
-              />
-              <NavItem
-                active={activeTab === "web"}
-                label="Web"
-                icon={<Globe2 size={12} />}
-                onClick={() => handleTabChange("web")}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="border-glass-border bg-surface-1/50 flex flex-wrap items-center gap-1 rounded-xl border p-1 shadow-inner">
+                <NavItem
+                  active={activeTab === "runtime"}
+                  label="Navigator"
+                  icon={<LayoutGrid size={12} />}
+                  onClick={() => handleTabChange("runtime")}
+                />
+                <NavItem
+                  active={activeTab === "chat"}
+                  label="LLM"
+                  icon={<Bot size={12} />}
+                  onClick={() => handleTabChange("chat")}
+                />
+                <NavItem
+                  active={activeTab === "embedding"}
+                  label="Embedding"
+                  icon={<Database size={12} />}
+                  onClick={() => handleTabChange("embedding")}
+                />
+                <NavItem
+                  active={activeTab === "reranker"}
+                  label="Reranker"
+                  icon={<ScanSearch size={12} />}
+                  onClick={() => handleTabChange("reranker")}
+                />
+                <NavItem
+                  active={activeTab === "web"}
+                  label="Web"
+                  icon={<Globe2 size={12} />}
+                  onClick={() => handleTabChange("web")}
+                />
+                <NavItem
+                  active={activeTab === "mcp"}
+                  label="MCP"
+                  icon={<PlugZap size={12} />}
+                  onClick={() => handleTabChange("mcp")}
+                />
+              </div>
             </div>
           }
         />
@@ -555,7 +589,13 @@ export default function ProvidersSettingsPage() {
                     )}
                   </div>
                   <button
-                    aria-label={browsingCatalog ? "Back to inventory" : "Browse provider families"}
+                    aria-label={
+                      browsingCatalog
+                        ? "Back to inventory"
+                        : activeTab === "mcp"
+                          ? "Browse MCP provider families"
+                          : "Browse provider families"
+                    }
                     onClick={() => {
                       setBrowsingCatalog(!browsingCatalog);
                       if (isNarrowViewport) setIsInventoryExpanded(true);
@@ -581,12 +621,137 @@ export default function ProvidersSettingsPage() {
                       <div
                         role="region"
                         aria-label={
-                          browsingCatalog ? "Provider families" : "Connected provider inventory"
+                          activeTab === "mcp"
+                            ? browsingCatalog
+                              ? "MCP provider families"
+                              : "MCP provider inventory"
+                            : browsingCatalog
+                              ? "Provider families"
+                              : "Connected provider inventory"
                         }
                         className="custom-scrollbar min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-4"
                       >
                         <AnimatePresence mode="wait">
-                          {browsingCatalog ? (
+                          {activeTab === "mcp" && browsingCatalog ? (
+                            <motion.div
+                              key="mcp-families"
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -20 }}
+                              className="flex w-full flex-col"
+                            >
+                              <div className="border-glass-border mb-6 flex flex-col gap-1 border-b pb-6">
+                                <p className="text-muted-foreground font-mono text-[10px] tracking-[0.24em] uppercase">
+                                  MCP providers
+                                </p>
+                                <div className="flex items-center justify-between">
+                                  <h2 className="text-foreground text-lg font-bold">Families</h2>
+                                  <div className="theme-pill opacity-70">1 option</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Select Composio MCP provider"
+                                aria-pressed={selectedMcpProvider}
+                                onClick={() => {
+                                  setSelectedMcpProvider(true);
+                                  setSelectedProviderId(null);
+                                  setShowCreateFlow(false);
+                                }}
+                                className={`group w-full rounded-[1.25rem] border p-4 text-left transition-all duration-300 ${
+                                  selectedMcpProvider
+                                    ? "border-primary/40 bg-surface-1 ring-primary/20 shadow-[0_4px_20px_-8px_hsl(var(--primary)/0.15)] ring-1"
+                                    : "border-glass-border bg-surface-0 hover:border-primary/30 hover:bg-surface-1"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="bg-primary/10 text-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                                      <PlugZap size={20} aria-hidden="true" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-foreground truncate text-sm font-bold tracking-tight">
+                                        Composio
+                                      </p>
+                                      <p className="text-muted-foreground mt-0.5 truncate text-[11px] font-medium">
+                                        Live MCP apps and tools
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {selectedMcpProvider ? (
+                                    <CheckCircle2
+                                      size={16}
+                                      className="text-primary shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                  ) : null}
+                                </div>
+                                <p className="text-muted-foreground mt-3 text-xs leading-5">
+                                  Configure your project key and account connections.
+                                </p>
+                              </button>
+                            </motion.div>
+                          ) : activeTab === "mcp" ? (
+                            <motion.div
+                              key="mcp-inventory"
+                              initial={{ opacity: 0, x: 20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              className="flex w-full flex-col"
+                            >
+                              <div className="border-glass-border mb-6 flex flex-col gap-1 border-b pb-6">
+                                <p className="text-muted-foreground font-mono text-[10px] tracking-[0.24em] uppercase">
+                                  MCP providers
+                                </p>
+                                <div className="flex items-center justify-between">
+                                  <h2 className="text-foreground text-lg font-bold">Inventory</h2>
+                                  <div className="theme-pill opacity-70">1 option</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Select Composio MCP provider"
+                                aria-pressed={selectedMcpProvider}
+                                onClick={() => {
+                                  setSelectedMcpProvider(true);
+                                  setSelectedProviderId(null);
+                                  setShowCreateFlow(false);
+                                  setBrowsingCatalog(false);
+                                }}
+                                className={`group w-full rounded-[1.25rem] border p-4 text-left transition-all duration-300 ${
+                                  selectedMcpProvider
+                                    ? "border-primary/40 bg-surface-1 ring-primary/20 shadow-[0_4px_20px_-8px_hsl(var(--primary)/0.15)] ring-1"
+                                    : "border-glass-border bg-surface-0 hover:border-primary/30 hover:bg-surface-1"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="bg-primary/10 text-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                                      <PlugZap size={20} aria-hidden="true" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-foreground truncate text-sm font-bold tracking-tight">
+                                        Composio
+                                      </p>
+                                      <p className="text-muted-foreground mt-0.5 truncate text-[11px] font-medium">
+                                        Live MCP apps and tools
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {selectedMcpProvider ? (
+                                    <CheckCircle2
+                                      size={16}
+                                      className="text-primary shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                  ) : null}
+                                </div>
+                                <p className="text-muted-foreground mt-3 text-xs leading-5">
+                                  Configure your project key and account connections.
+                                </p>
+                              </button>
+                            </motion.div>
+                          ) : browsingCatalog ? (
                             <motion.div
                               key="catalog"
                               initial={{ opacity: 0, x: -20 }}
@@ -721,7 +886,9 @@ export default function ProvidersSettingsPage() {
                   <div
                     className={`flex-1 ${isNarrowViewport ? "" : "custom-scrollbar overflow-y-auto"} p-4 sm:p-8`}
                   >
-                    {selectedProvider || showCreateFlow ? (
+                    {activeTab === "mcp" && selectedMcpProvider ? (
+                      <ComposioCredentialCard />
+                    ) : selectedProvider || showCreateFlow ? (
                       <ProviderForm
                         // A catalog family is a different configuration
                         // boundary. Remount a new-family form so URLs,
@@ -773,13 +940,20 @@ export default function ProvidersSettingsPage() {
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center space-y-6 py-12 text-center">
                         <div className="bg-primary/10 text-primary rounded-3xl p-6 shadow-[0_0_40px_rgba(var(--primary-rgb),0.1)]">
-                          <Zap size={48} className="animate-pulse" />
+                          {activeTab === "mcp" ? (
+                            <PlugZap size={48} className="animate-pulse" />
+                          ) : (
+                            <Zap size={48} className="animate-pulse" />
+                          )}
                         </div>
                         <div className="max-w-sm space-y-3 px-4">
-                          <h3 className="text-xl font-bold tracking-tight">System Navigator</h3>
+                          <h3 className="text-xl font-bold tracking-tight">
+                            {activeTab === "mcp" ? "MCP Providers" : "System Navigator"}
+                          </h3>
                           <p className="text-muted-foreground text-sm leading-relaxed">
-                            Select a provider from the inventory to adjust its parameters or test
-                            connectivity.
+                            {activeTab === "mcp"
+                              ? "Select Composio from the inventory to configure your API key and connected apps."
+                              : "Select a provider from the inventory to adjust its parameters or test connectivity."}
                           </p>
                           {isNarrowViewport && !isInventoryExpanded && (
                             <button

@@ -2,37 +2,26 @@ const {
   app,
   BrowserWindow,
   Menu,
-  Tray,
   ipcMain,
-  nativeImage,
   safeStorage,
   shell,
 } = require("electron");
 const path = require("node:path");
-const { existsSync } = require("node:fs");
-const { spawn } = require("node:child_process");
-const { resolveNeosisSourceRoot } = require("./neosis-source.cjs");
-const { createNeosisEnvironment } = require("./neosis-environment.cjs");
-const { resolveAverQelReturnUrl } = require("./workspace-navigation.cjs");
+const { registerAppLifecycle } = require("./app-lifecycle.cjs");
 const {
-  getPackagedNeosisPaths,
-  hasPackagedNeosisRuntime,
-} = require("./neosis-runtime.cjs");
+  createOAuthWindow,
+  interceptOAuthStartNavigation,
+  parseOAuthStartUrl,
+} = require("./oauth-window.cjs");
 const { CodexDesktopRuntime } = require("./codex-runtime.cjs");
 const { registerCodexIpcHandlers } = require("./codex-ipc.cjs");
 const { LocalRuntime } = require("./local-runtime.cjs");
 const { registerLocalRuntimeIpcHandlers } = require("./local-runtime-ipc.cjs");
 
 let mainWindow;
-let tray;
-let isQuitting = false;
-let neosisProcess;
-let neosisStart;
-let neosisUrl;
-let neosisOrigin;
+let oauthWindow;
 let codexRuntime;
 let localRuntime;
-let lastAverQelUrl;
 
 const trustedHosts = new Set([
   "averqel.com",
@@ -58,10 +47,6 @@ function appStartUrl() {
   return process.env.ELECTRON_PRODUCTION_URL || "https://averqel.com";
 }
 
-function neosisHome() {
-  return path.join(app.getPath("userData"), "neosis");
-}
-
 function isAverQelRenderer(rawUrl) {
   try {
     return new URL(rawUrl).origin === new URL(appStartUrl()).origin;
@@ -70,130 +55,60 @@ function isAverQelRenderer(rawUrl) {
   }
 }
 
-function isNeosisRenderer(rawUrl) {
-  try {
-    return neosisOrigin !== undefined && new URL(rawUrl).origin === neosisOrigin;
-  } catch {
-    return false;
-  }
-}
-
-function isWorkspaceSender(event) {
-  return event.sender === mainWindow?.webContents
-    && (isAverQelRenderer(event.senderFrame?.url ?? "") || isNeosisRenderer(event.senderFrame?.url ?? ""));
-}
-
 function isAverQelSender(event) {
   return event.sender === mainWindow?.webContents
     && isAverQelRenderer(event.senderFrame?.url ?? "");
 }
 
-function launchPackagedNeosis() {
-  const {
-    root: runtimeRoot,
-    entry,
-    profilePatch,
-  } = getPackagedNeosisPaths(process.resourcesPath);
-  if (!existsSync(entry)) {
-    throw new Error("NeoSIS runtime is missing from this AverQel installation.");
+function allowedOAuthStartOrigins() {
+  return [appStartUrl(), process.env.NEXT_PUBLIC_API_URL].filter(Boolean);
+}
+
+function openOAuthWindow(startUrl, provider) {
+  if (oauthWindow && !oauthWindow.isDestroyed()) {
+    oauthWindow.focus();
+    return true;
   }
-  if (!existsSync(profilePatch)) {
-    throw new Error("NeoSIS local profile configuration is missing from this AverQel installation.");
-  }
-  return spawn(process.execPath, [entry, "web", "--patch", profilePatch, "--host", "127.0.0.1", "--port", "0", "--no-open"], {
-    cwd: runtimeRoot,
-    env: createNeosisEnvironment(process.env, neosisHome(), { electronRunAsNode: true }),
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
+
+  oauthWindow = createOAuthWindow({
+    BrowserWindow,
+    parentWindow: mainWindow,
+    startUrl,
+    allowedOrigins: allowedOAuthStartOrigins(),
+    callbackOrigin: appStartUrl(),
+    onComplete: (callbackUrl) => {
+      oauthWindow = null;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      void mainWindow.loadURL(callbackUrl).catch(() => undefined);
+    },
+    onCancel: (cancelledProvider) => {
+      oauthWindow = null;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const loginUrl = new URL("/auth/login", appStartUrl());
+      loginUrl.searchParams.set("oauth", "error");
+      loginUrl.searchParams.set("provider", cancelledProvider || provider);
+      loginUrl.searchParams.set("reason", "cancelled");
+      void mainWindow.loadURL(loginUrl.toString()).catch(() => undefined);
+    },
   });
+
+  return Boolean(oauthWindow);
 }
 
-function launchDevelopmentNeosis() {
-  const root = resolveNeosisSourceRoot(__dirname);
-  const profilePatch = path.resolve(__dirname, "../assets/neosis-local-profile.patch.yml");
-  if (!existsSync(profilePatch)) {
-    throw new Error("NeoSIS local profile configuration is missing from this AverQel checkout.");
-  }
-  const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  return spawn(command, ["neosis", "web", "--patch", profilePatch, "--host", "127.0.0.1", "--port", "0", "--no-open"], {
-    cwd: root,
-    env: createNeosisEnvironment(process.env, neosisHome()),
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-  });
-}
-
-function startNeosis() {
-  if (neosisUrl !== undefined) return Promise.resolve(neosisUrl);
-  if (neosisStart !== undefined) return neosisStart;
-  neosisStart = new Promise((resolve, reject) => {
-    let settled = false;
-    let timeout;
-    const finish = (error, url) => {
-      if (settled) return;
-      settled = true;
-      if (timeout !== undefined) clearTimeout(timeout);
-      if (error) {
-        neosisStart = undefined;
-        reject(error);
-        return;
-      }
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1" || !parsed.searchParams.has("token")) {
-          throw new Error("NeoSIS returned an unsafe local launch URL.");
-        }
-        neosisUrl = parsed.toString();
-        neosisOrigin = parsed.origin;
-        resolve(neosisUrl);
-      } catch (validationError) {
-        neosisStart = undefined;
-        reject(validationError);
-      }
-    };
-    const child = app.isPackaged ? launchPackagedNeosis() : launchDevelopmentNeosis();
-    neosisProcess = child;
-    let output = "";
-    const readOutput = (chunk) => {
-      output = (output + String(chunk)).slice(-16384);
-      const match = /neosis web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)/.exec(output);
-      if (match) finish(undefined, match[1]);
-    };
-    child.stdout?.on("data", readOutput);
-    child.stderr?.on("data", readOutput);
-    child.on("message", (message) => {
-      if (message && message.type === "ready" && typeof message.url === "string") finish(undefined, message.url);
-      if (message && message.type === "fatal") finish(new Error(message.message || "NeoSIS failed to start."));
-    });
-    child.once("error", finish);
-    child.once("exit", (code, signal) => {
-      if (!settled) finish(new Error(`NeoSIS stopped before it was ready (${code ?? signal ?? "unknown"}).`));
-      neosisProcess = undefined;
-      neosisUrl = undefined;
-      neosisOrigin = undefined;
-      neosisStart = undefined;
-    });
-    timeout = setTimeout(() => finish(new Error("NeoSIS did not become ready within 60 seconds.")), 60000);
-  });
-  return neosisStart;
-}
-
-async function openNeosis() {
-  const currentUrl = mainWindow?.webContents.getURL();
-  if (currentUrl && isAverQelRenderer(currentUrl)) lastAverQelUrl = currentUrl;
-  const url = await startNeosis();
-  await mainWindow?.loadURL(url);
-}
-
-async function openAverQel() {
-  await mainWindow?.loadURL(resolveAverQelReturnUrl(lastAverQelUrl, appStartUrl()));
-}
-
-function stopNeosis() {
-  const child = neosisProcess;
-  neosisProcess = undefined;
-  neosisStart = undefined;
-  neosisUrl = undefined;
-  neosisOrigin = undefined;
-  if (child && child.exitCode === null) child.kill("SIGTERM");
+function handleOAuthStartNavigation(event, rawUrl) {
+  return interceptOAuthStartNavigation(
+    event,
+    rawUrl,
+    allowedOAuthStartOrigins(),
+    (startUrl, provider) => {
+      if (openOAuthWindow(startUrl, provider)) return;
+      const loginUrl = new URL("/auth/login", appStartUrl());
+      loginUrl.searchParams.set("oauth", "error");
+      loginUrl.searchParams.set("provider", provider);
+      loginUrl.searchParams.set("reason", "provider");
+      void mainWindow?.loadURL(loginUrl.toString()).catch(() => undefined);
+    },
+  );
 }
 
 function createWindow() {
@@ -216,6 +131,11 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const oauthStart = parseOAuthStartUrl(url, allowedOAuthStartOrigins());
+    if (oauthStart) {
+      void openOAuthWindow(oauthStart.url.toString(), oauthStart.provider);
+      return { action: "deny" };
+    }
     if (!isTrustedUrl(url)) {
       void shell.openExternal(url);
     }
@@ -230,16 +150,10 @@ function createWindow() {
   });
 
   mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (handleOAuthStartNavigation(event, url)) return;
     if (!isTrustedUrl(url)) {
       event.preventDefault();
       void shell.openExternal(url);
-    }
-  });
-
-  mainWindow.on("close", (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
     }
   });
 
@@ -252,33 +166,16 @@ function createWindow() {
 
 function showWindow() {
   if (!mainWindow) {
+    if (!app.isReady()) return;
     createWindow();
     return;
   }
+  if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
 }
 
-function createTray() {
-  const iconPath = path.join(__dirname, "../assets/icon.png");
-  tray = new Tray(nativeImage.createFromPath(iconPath));
-  tray.setToolTip("AverQel");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show AverQel", click: showWindow },
-      { label: "Open AverQel Workspace", click: () => void openAverQel() },
-      { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
-      },
-    ]),
-  );
-  tray.on("click", showWindow);
-}
+const hasSingleInstanceLock = registerAppLifecycle({ app, showWindow });
 
 ipcMain.handle("window:minimize", () => mainWindow?.minimize());
 ipcMain.handle("window:close", () => mainWindow?.close());
@@ -289,7 +186,6 @@ ipcMain.handle("window:toggle-maximize", () => {
   return mainWindow.isMaximized();
 });
 ipcMain.handle("window:is-maximized", () => Boolean(mainWindow?.isMaximized()));
-ipcMain.handle("window:hide", () => mainWindow?.hide());
 ipcMain.handle("open-external", (_event, rawUrl) => {
   if (typeof rawUrl !== "string") return false;
   try {
@@ -301,33 +197,6 @@ ipcMain.handle("open-external", (_event, rawUrl) => {
     return false;
   }
 });
-ipcMain.handle("workspace:current", (event) => {
-  if (!isWorkspaceSender(event)) return null;
-  return isNeosisRenderer(event.senderFrame?.url ?? "") ? "neosis" : "averqel";
-});
-ipcMain.handle("workspace:neosis-available", (event) => {
-  if (!isWorkspaceSender(event)) return false;
-  return hasPackagedNeosisRuntime(process.resourcesPath, app.isPackaged);
-});
-ipcMain.handle("workspace:open-neosis", async (event) => {
-  if (!isWorkspaceSender(event)) return { ok: false, error: "Unauthorized workspace request." };
-  try {
-    await openNeosis();
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "NeoSIS could not be started." };
-  }
-});
-ipcMain.handle("workspace:open-averqel", async (event) => {
-  if (!isWorkspaceSender(event)) return { ok: false, error: "Unauthorized workspace request." };
-  try {
-    await openAverQel();
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "AverQel could not be opened." };
-  }
-});
-
 registerCodexIpcHandlers({
   ipcMain,
   getRuntime: () => codexRuntime,
@@ -340,8 +209,8 @@ registerLocalRuntimeIpcHandlers({
 });
 
 app.whenReady().then(() => {
-  // AverQel uses its own in-app controls and tray menu; do not show Electron's
-  // default File/Edit/View/Window menu bar in the desktop window.
+  if (!hasSingleInstanceLock) return;
+  // AverQel uses its own in-app controls; do not show Electron's default menu.
   Menu.setApplicationMenu(null);
   codexRuntime = new CodexDesktopRuntime({
     app,
@@ -361,17 +230,10 @@ app.whenReady().then(() => {
     },
   });
   createWindow();
-  createTray();
   app.on("activate", showWindow);
 });
 
 app.on("before-quit", () => {
-  isQuitting = true;
   codexRuntime?.cancelAllStreams?.();
   localRuntime?.cancelAllStreams?.();
-  stopNeosis();
-});
-
-app.on("window-all-closed", () => {
-  // Keep the app available from the tray on every desktop platform.
 });

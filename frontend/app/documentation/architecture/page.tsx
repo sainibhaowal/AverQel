@@ -26,7 +26,7 @@ export default function ArchitectureDocsPage() {
           },
           {
             title: "External providers",
-            body: "OAuth providers, model providers, SearXNG, and approved remote MCP servers are reached by the backend through bounded and policy checked integrations.",
+            body: "OAuth and model providers, SearXNG, and Composio-hosted MCP apps are reached by the backend through bounded, account-scoped, policy-checked integrations.",
           },
           {
             title: "Evidence-first web research",
@@ -87,9 +87,8 @@ export default function ArchitectureDocsPage() {
           content server-side. Allowlisted platform administrators can read support tickets and
           submitted feedback to respond to requests; legacy Support Manager and Feedback Manager
           assignments do not grant queue access. Tenant moderators can read Qel Connect report
-          details. Do not
-          infer a client-only or end-to-end encryption guarantee from tenant isolation or encrypted
-          storage.
+          details. Do not infer a client-only or end-to-end encryption guarantee from tenant
+          isolation or encrypted storage.
         </p>
       </DocsSection>
     </DocsShell>

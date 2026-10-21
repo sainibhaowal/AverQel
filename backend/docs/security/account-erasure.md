@@ -1,5 +1,15 @@
 # Platform-admin account erasure
 
+The authenticated `GET /api/v1/admin/access` endpoint reports whether the current session is ready
+for platform administration. A `200` response with `allowed: false` gives a reason code for a
+missing administrator role, platform-admin allowlist entry, authenticator setup, or MFA-verified
+sign-in. This readiness response grants no access; all account, cleanup, and purge endpoints retain
+their server-side platform-admin and permission checks. The Data Deletion page uses it to show the
+next required step without requesting global deletion data from an ineligible session.
+
+For the full set of platform-admin modules, permission boundaries, and UTC/audit identifier
+display rules, see the [platform administration guide](../platform/06-platform-administration.md).
+
 `DELETE /api/v1/admin/users/{user_id}` is the platform-admin account-erasure path. The Data
 Deletion screen calls this endpoint after the operator completes recent MFA reauthentication and
 types `DELETE <account email>`; the server checks the exact phrase. The currently signed-in account
@@ -15,6 +25,13 @@ the target. Notifications delivered to other users are retained with a generic a
 If a purge is already processing, account erasure returns `409 ACCOUNT_DELETION_IN_PROGRESS` so the
 two operations cannot race. In a tenant with other users, their account-owned records and shared
 tenant records remain. If the deleted account was the tenant's last member, the tenant is removed.
+
+Before erasing an account, check whether it owns the platform Support/Feedback encryption key.
+That key is currently tied to its creator's user row, and account deletion cascades to the stored key
+backup. The product has no key-transfer or recovery workflow, so deleting its owner can leave
+existing support and feedback content encrypted to an unavailable administrator key. Keep the owner
+account active until an approved key-recovery plan exists. See the
+[platform-administration guide](../platform/06-platform-administration.md#support-and-feedback-encryption-is-not-mfa).
 
 Before relational rows are deleted, the service creates durable cleanup jobs for account-owned
 document files, dataset derivatives, support attachments, Qel Connect media, DeepSpace media and

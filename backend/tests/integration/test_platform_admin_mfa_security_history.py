@@ -44,6 +44,13 @@ def test_platform_admin_mfa_enrollment_and_security_history_are_account_scoped(
     password_only_token = login.json()["access_token"]
     headers = _headers(password_only_token, admin.tenant_id)
 
+    access_status = client.get("/api/v1/admin/access", headers=headers)
+    assert access_status.status_code == 200
+    assert access_status.json() == {
+        "allowed": False,
+        "reason": "ADMIN_MFA_SETUP_REQUIRED",
+    }
+
     blocked = client.get("/api/v1/admin/users", headers=headers)
     assert blocked.status_code == 403
     assert blocked.json()["error"]["code"] == "ADMIN_MFA_SETUP_REQUIRED"
@@ -58,6 +65,10 @@ def test_platform_admin_mfa_enrollment_and_security_history_are_account_scoped(
     )
     assert confirmed.status_code == 200
     assert len(confirmed.json()["backup_codes"]) == 8
+    assert client.get("/api/v1/admin/access", headers=headers).json() == {
+        "allowed": True,
+        "reason": None,
+    }
     assert client.get("/api/v1/admin/users", headers=headers).status_code == 200
 
     cannot_disable = client.post(

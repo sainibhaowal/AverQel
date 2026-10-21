@@ -1,6 +1,6 @@
 ---
 name: desktop-release
-description: Build, inspect, or troubleshoot AverQel desktop releases containing the shared Electron shell and separately sourced NeoSIS runtime. Use for .deb, .exe, release workflow, or release-manifest tasks.
+description: Build, inspect, or troubleshoot AverQel desktop releases containing the shared Electron shell and frontend. Use for .deb, .exe, release workflow, or release-manifest tasks.
 ---
 
 Before running commands, read and follow the canonical workflow in

@@ -98,17 +98,22 @@ recipient.
 There is no platform staff-role assignment endpoint. Legacy
 `support_manager` and `feedback_manager` role rows may remain in existing
 databases, but they grant no access to support or feedback queues. Only an
-allowlisted platform administrator can open those queues. The
+allowlisted platform administrator can pass the queue API access gate; the
+current browser queue also requires the platform-key owner to unlock the key.
+The
 `collection_moderator` role remains separately permissioned for tenant-scoped
 Qel Connect moderation; it does not grant platform administration access.
 
 Reads of the platform support queue, ticket history, ticket details, support
 attachments, and app-feedback submissions are recorded as metadata-only audit
 events. Message and status changes are also audited without copying message
-bodies into those audit events. Only allowlisted platform administrators can
-read ticket content, attachments, or feedback across tenants. Admin access is
-limited to the support or feedback that a user submitted; it does not grant
-access to that user's chats, documents, or other workspace content. The
+bodies into those audit events. Allowlisted platform administrators with the
+appropriate route permission can request ticket content, attachments, or
+feedback across tenants through these APIs. Decrypting message bodies also
+requires the platform-key owner's account and unlocked private key; the current
+admin UI cannot open a queue under a different administrator account. Admin
+access is limited to the support or feedback that a user submitted; it does not
+grant access to that user's chats, documents, or other workspace content. The
 feedback API omits submitter email addresses and user IDs, while the backend
 keeps the account link needed to deliver in-app replies.
 
@@ -124,10 +129,43 @@ The authenticated notification feed is `/api/v1/notifications`: list (maximum 10
 
 ## Security and persistence
 
+Support/feedback encryption protects message content in storage while allowing
+the submitting user and the platform-key owner to read the thread. The platform
+private key is currently owned by the single administrator account that
+created it; another allowlisted administrator cannot retrieve that private-key
+backup or decrypt the message body. This is separate from TOTP MFA: the user
+passphrase unlocks a browser-held private key and does not authenticate the
+account. The platform key owner creates the platform key once; each user
+creates a personal key once. The browser retains an unlocked key across
+Support and Feedback navigation for up to four hours of inactivity, then locks
+it. Sign-out, login-session expiry, reload, or closing the page also clears the
+in-memory unlock. This is a rolling idle timeout, not a fixed 12-hour period.
+
+If no platform public key is initialized, the authenticated
+`GET /api/v1/support/encryption/admin-public-key` returns `503`; encrypted
+submission is unavailable until an authorized platform admin creates the key.
+`GET /api/v1/support/encryption/me` returns `404` when the user's personal key
+has not been set up. The first visit to Support or Feedback then offers key
+creation. During legacy migration, records for users without a personal key are
+skipped and can be retried after setup. Ordinary setup cannot replace an
+existing user or platform key (`409`); key recovery is separate.
+
+The platform key is tied to its creator's account. Only that same account can
+retrieve and unlock its encrypted private-key backup; another administrator
+receives `403`. Keep the owner account active and preserve its passphrase. The
+current product has no platform-key transfer or recovery workflow: losing the
+passphrase or erasing the owner account can make existing messages encrypted to
+the platform key unreadable in AverQel. Do not erase or replace that account
+until an approved recovery plan exists.
+
+For the six admin modules and their access gates, see
+[`06-platform-administration.md`](06-platform-administration.md).
+
 - User list/detail/reply queries constrain both tenant and authenticated user. Support ticket/message/attachment and feedback/message tables enforce tenant RLS; cross-tenant and cross-user resource lookups return 404.
-- New support and feedback bodies are encrypted in the browser with a random AES-256-GCM content key. Each content key is wrapped to the submitter's RSA-3072 key and the platform administrator's RSA-3072 key; internal notes are wrapped only to the administrator. Support attachment bytes, filenames, and content types are encrypted before storage. Private keys are stored only as AES-GCM ciphertext derived from a user-entered passphrase with PBKDF2-SHA256 (600,000 iterations); the passphrase and unlocked key are not sent to the API. The API validates envelope structure, recipient key IDs, key fingerprints, and the RSA public-key parameters, but it does not receive or decrypt message content.
-- A browser-based migration is available on both admin management pages. It encrypts legacy ticket/feedback content in the administrator's browser and only replaces database plaintext after the API validates the ciphertext. Support attachment replacement stores the encrypted object and queues the old object for cleanup in the same database transaction. Records for users who have not initialized their own encryption key are skipped until that user visits Support or Feedback to set it up. Older backups can retain plaintext until their configured expiry; the application cannot rewrite already-created backup snapshots.
-- The service still sees account/tenant IDs, support email, category, status, timestamps, assignment and SLA state, attachment size, and event routing metadata. The administrator is an intended decryption recipient. Since this is a web application, a compromised live server could serve changed JavaScript or substitute recipient keys; compromised clients can expose plaintext after decryption. The key bootstrapping design has no out-of-band key verification, and this application scheme has not received an independent cryptographic audit. It does not make all AverQel data end-to-end encrypted.
+- New support and feedback bodies are encrypted in the browser with a random AES-256-GCM content key. Each content key is wrapped to the submitter's RSA-3072 key and the single platform-key owner's RSA-3072 key; internal notes are wrapped only to that administrator key. Support attachment bytes, filenames, and content types are encrypted before storage. Private keys are stored on the server only as AES-GCM ciphertext derived from a user-entered passphrase with PBKDF2-SHA256 (600,000 iterations); the passphrase is never sent to the API. After unlocking, a private key stays in browser memory across Support and Feedback navigation and is cleared after four hours without user activity, on logout, or when the authenticated session expires. A full page reload or tab close also clears the in-memory unlock. The API validates envelope structure, recipient key IDs, key fingerprints, and the RSA public-key parameters, but it does not receive or decrypt message content.
+- Conversation responses include each visible participant's avatar once, then refer to that profile from its messages. Support admin views also include participant display names. Feedback admin views retain submitter anonymity and return avatars without names or email addresses. User views keep staff identified as the AverQel team and continue to exclude internal notes and their authors. The server returns profiles only for the submitter and authors in the authorized thread.
+- A browser-based migration is available on both admin management pages. The platform-key owner must create or unlock that key; each affected user must create their own passphrase-protected key by opening Support or Feedback once. Only the platform-key owner can decrypt the administrator copy or run this migration. The migration encrypts legacy ticket/feedback content in that administrator's browser and only replaces database plaintext after the API validates the ciphertext. Support attachment replacement stores the encrypted object and queues the old object for cleanup in the same database transaction. Records whose owners have not initialized a key are reported as skipped, not failed; after those users complete setup, the key owner can retry the migration. On later visits, the application decrypts content in the browser after the relevant recipient unlocks their own key; there is no separate server-side decrypt action. Losing a passphrase can make that recipient's encrypted copy unreadable. Older backups can retain plaintext until their configured expiry; the application cannot rewrite already-created backup snapshots.
+- The service still sees account/tenant IDs, support email, category, status, timestamps, assignment and SLA state, attachment size, and event routing metadata. The platform-key owner is an intended decryption recipient; ordinary queue access by another allowlisted administrator does not give that account the private key. Since this is a web application, a compromised live server could serve changed JavaScript or substitute recipient keys; compromised clients can expose plaintext after decryption. The key bootstrapping design has no out-of-band key verification, and this application scheme has not received an independent cryptographic audit. It does not make all AverQel data end-to-end encrypted.
 - Encrypted attachments cannot be scanned by server-side ClamAV. The browser encrypts them before upload, so users should only download files they trust. Existing plaintext attachments were scanned under the prior upload path; a migration encrypts them client-side before replacing the stored object.
 - Platform-admin feedback replies omit the submitter email and account ID. Allowlisted platform administrators reviewing support can see the submitter email because it is needed to answer that ticket.
 - Support-management routes require platform-admin allowlisting and the `admin:support:read` or `admin:support:write` permission. Feedback management requires platform-admin allowlisting and the `admin:feedback:read` or `admin:feedback:write` permission. Legacy `support_manager` and `feedback_manager` roles do not grant cross-tenant content access. Admin messages set visibility explicitly.

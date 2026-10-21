@@ -48,20 +48,20 @@ const controlAreas = [
     icon: SlidersHorizontal,
     color: "text-amber-300 border-amber-400/25 bg-amber-500/[0.08]",
     items: [
-      "OAuth consent happens with the provider",
+      "Each user supplies their own Composio project key",
       "Per-tool permission and risk settings",
-      "Approval before sensitive external actions",
+      "Approval before writes, deletions, and external messages",
     ],
     href: "/documentation/connectors-mcp",
   },
 ];
 
 const connectionSteps = [
-  "Choose an approved remote MCP provider",
-  "Review the provider, tools, scopes, and risk labels",
-  "Authorize on the provider's official OAuth page",
-  "Set permissions and approval requirements",
-  "Use only the tools your connection allows",
+  "Add your Composio project key and browse its live app catalog",
+  "Review an app's details, authentication requirements, and tools",
+  "Connect your own app account using its supported authorization flow",
+  "Set tool policies and review approval requirements",
+  "Use allowed tools in DeepSpace",
 ];
 
 export default function ControlCenter() {

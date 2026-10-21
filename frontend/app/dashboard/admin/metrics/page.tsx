@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { readServerSentEvents } from "./metricsStream";
 
 interface MetricsSummary {
@@ -401,11 +402,13 @@ export default function MetricsPage() {
             </div>
             <p className="text-primary/90 mb-1 text-sm font-bold">Configuration Status</p>
             <p className="text-primary/60 text-[10px] font-black uppercase">
-              {capabilitiesStatus === "available"
-                ? "Loaded from API"
-                : capabilitiesStatus === "loading"
-                  ? "Loading"
-                  : "Unavailable"}
+              {capabilitiesStatus === "available" ? (
+                "Loaded from API"
+              ) : capabilitiesStatus === "loading" ? (
+                <AverQelLoading size="inline" label="Loading capabilities" />
+              ) : (
+                "Unavailable"
+              )}
             </p>
           </div>
         </div>

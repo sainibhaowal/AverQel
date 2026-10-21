@@ -22,9 +22,11 @@ from app.providers.services.openai_compatible_config import (
     set_json_path,
 )
 from app.providers.services.reasoning_capabilities import (
+    is_deepseek_v4_model,
     merge_reasoning_capabilities,
     model_supports_reasoning,
     supports_required_tool_choice,
+    uses_deepseek_reasoning_protocol,
     uses_enable_thinking_controls,
     uses_gemma_think_trigger,
     uses_groq_reasoning_api,
@@ -1091,7 +1093,10 @@ class OpenAICompatibleProvider:
                     delta = {}
                 continuation = delta.get("reasoning_content")
                 if (
-                    self.provider_name == "deepseek"
+                    uses_deepseek_reasoning_protocol(
+                        str(request.metadata.get("provider_type") or self.provider_name),
+                        request.model,
+                    )
                     and isinstance(continuation, str)
                     and continuation
                 ):
@@ -1761,6 +1766,12 @@ class OpenAICompatibleProvider:
         request: ChatGenerateRequest,
     ) -> str | dict[str, Any] | None:
         choice = request.tool_choice
+        if is_deepseek_v4_model(
+            request.model
+        ) and OpenAICompatibleProvider._reasoning_observation_enabled(request):
+            # DeepSeek V4 rejects tool_choice while thinking is on; omitting it
+            # leaves the advertised tool list available to the model.
+            return None
         if choice == "required" and not supports_required_tool_choice(
             str(request.metadata.get("provider_type") or ""), request.model
         ):

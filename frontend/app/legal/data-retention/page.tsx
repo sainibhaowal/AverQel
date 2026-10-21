@@ -97,10 +97,9 @@ export default function DataRetentionPage() {
         <p>
           Use the in-app Trust &amp; Privacy settings or Support Centre to request an export or
           deletion. The Support Centre requires an account; visitors can use the public contact form
-          at the bottom of the landing page. The hosted service is operated by Ravinder Singh —
-          Independent Developer, AverQel Independent Project. This source does not publish a direct
-          email address; the form is available only when the deployment has configured its SMTP mail
-          service.
+          at the bottom of the landing page. The hosted service is operated by AverQel Independent
+          Project. This source does not publish a direct email address; the form is available only
+          when the deployment has configured its SMTP mail service.
         </p>
       </PolicySection>
     </PolicyLayout>

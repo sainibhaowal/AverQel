@@ -214,12 +214,12 @@ The implementation snapshot was locally checked with backend pytest, frontend
 Vitest, Playwright browser tests, Ruff, mypy, ESLint, TypeScript, production
 build, Python compilation, and whitespace checks on 2026-09-27. Those results
 are historical and do not certify later changes or any hosted environment.
-The current source migration graph is at `20261012_0012`; the latest recorded
-Docker database observation is `20261012_0011` on 2026-10-03. This checkout
-does not establish that the current head has been applied to staging or that
-the updated app has been deployed and smoke-tested there. Before release,
-verify the target migration, healthy workers, real object storage, OCR,
-malware scanning, provider credentials, and authenticated staging workflows.
+For the latest checked source migration graph and recorded database evidence,
+see the [current worktree and release index](../release/03-current-worktree-change-index.md).
+A source migration head does not establish that a target database or app has
+been migrated or deployed. Before release, verify the target migration,
+healthy workers, real object storage, OCR, malware scanning, provider
+credentials, and authenticated staging workflows.
 
 See [`../release/03-current-worktree-change-index.md`](../release/03-current-worktree-change-index.md)
 for the latest known source and environment status,

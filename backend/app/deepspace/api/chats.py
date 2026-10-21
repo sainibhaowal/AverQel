@@ -290,6 +290,7 @@ def _safe_history_metadata(value: Any) -> dict[str, Any]:
     # Continuation blobs are encrypted provider protocol data, never history
     # or activity content for a client.
     metadata.pop("_deepspace_provider_continuations", None)
+    metadata.pop("_deepspace_provider_continuation_last_turn", None)
     thinking = metadata.get("thinking")
     if not isinstance(thinking, dict):
         return metadata

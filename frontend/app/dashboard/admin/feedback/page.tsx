@@ -17,6 +17,8 @@ import {
   Loader2,
 } from "lucide-react";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import ProfileAvatar from "@/app/components/profile/ProfileAvatar";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
@@ -39,6 +41,7 @@ interface Submission {
   recipient_public_key?: SupportPublicKey | null;
   messages?: Array<{
     id: string;
+    author_ref?: string | null;
     author_role: string;
     kind: string;
     body: string;
@@ -46,6 +49,13 @@ interface Submission {
     is_internal: boolean;
     created_at: string;
   }>;
+  participants?: ConversationParticipant[];
+}
+
+interface ConversationParticipant {
+  ref: string;
+  display_name?: string | null;
+  avatar?: string | null;
 }
 
 async function decryptSubmission(
@@ -121,42 +131,45 @@ export default function AdminFeedbackPage() {
   const [refreshing, setRefreshing] = useState(false);
   const detailRequest = useRef(0);
 
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) setRefreshing(true);
-    try {
-      const [subRes, campRes] = await Promise.all([
-        fetchWithAuth("/app-feedback/admin/submissions"),
-        fetchWithAuth("/app-feedback/campaigns"),
-      ]);
+  const fetchData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setRefreshing(true);
+      try {
+        const [subRes, campRes] = await Promise.all([
+          fetchWithAuth("/app-feedback/admin/submissions"),
+          fetchWithAuth("/app-feedback/campaigns"),
+        ]);
 
-      if (!subRes.ok) {
-        const reason =
-          subRes.status === 403
-            ? "Your account cannot review feedback. Use an allowlisted platform-administrator account."
-            : `Could not load feedback submissions (${subRes.status}).`;
-        throw new Error(reason);
+        if (!subRes.ok) {
+          const reason =
+            subRes.status === 403
+              ? "Your account cannot review feedback. Use an allowlisted platform-administrator account."
+              : `Could not load feedback submissions (${subRes.status}).`;
+          throw new Error(reason);
+        }
+        if (!cryptoContext) throw new Error("Support encryption is locked.");
+        const rows = (await subRes.json()) as Submission[];
+        const queueRows = await Promise.all(
+          rows.map((row) => decryptSubmission(row, cryptoContext.privateKey, cryptoContext.keyId)),
+        );
+        setSubmissions((current) =>
+          queueRows.map((row) => {
+            const loadedDetail = current.find((item) => item.id === row.id);
+            return loadedDetail?.messages ? { ...row, messages: loadedDetail.messages } : row;
+          }),
+        );
+        setQueueError(null);
+        if (campRes.ok) setCampaigns(await campRes.json());
+      } catch (err) {
+        console.error("Failed to fetch admin data", err);
+        setQueueError(err instanceof Error ? err.message : "Could not load feedback submissions.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      if (!cryptoContext) throw new Error("Support encryption is locked.");
-      const rows = (await subRes.json()) as Submission[];
-      const queueRows = await Promise.all(
-        rows.map((row) => decryptSubmission(row, cryptoContext.privateKey, cryptoContext.keyId)),
-      );
-      setSubmissions((current) =>
-        queueRows.map((row) => {
-          const loadedDetail = current.find((item) => item.id === row.id);
-          return loadedDetail?.messages ? { ...row, messages: loadedDetail.messages } : row;
-        }),
-      );
-      setQueueError(null);
-      if (campRes.ok) setCampaigns(await campRes.json());
-    } catch (err) {
-      console.error("Failed to fetch admin data", err);
-      setQueueError(err instanceof Error ? err.message : "Could not load feedback submissions.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [cryptoContext]);
+    },
+    [cryptoContext],
+  );
 
   useEffect(() => {
     if (!encryption.ready || !cryptoContext) return;
@@ -167,34 +180,37 @@ export default function AdminFeedbackPage() {
     return () => window.clearInterval(timer);
   }, [fetchData, encryption.ready, cryptoContext]);
 
-  const loadDetail = useCallback(async (id: string) => {
-    setSelectedId(id);
-    setThreadError(null);
-    setLoadingThread(true);
-    const requestId = ++detailRequest.current;
-    try {
-      const res = await fetchWithAuth(`/app-feedback/admin/submissions/${id}`);
-      if (!res.ok) throw new Error(`Could not load feedback (${res.status})`);
-      const detail = (await res.json()) as Submission;
-      if (requestId === detailRequest.current) {
-        if (!cryptoContext) throw new Error("Support encryption is locked.");
-        const decrypted = await decryptSubmission(
-          detail,
-          cryptoContext.privateKey,
-          cryptoContext.keyId,
-        );
-        setSubmissions((current) => [decrypted, ...current.filter((item) => item.id !== id)]);
+  const loadDetail = useCallback(
+    async (id: string) => {
+      setSelectedId(id);
+      setThreadError(null);
+      setLoadingThread(true);
+      const requestId = ++detailRequest.current;
+      try {
+        const res = await fetchWithAuth(`/app-feedback/admin/submissions/${id}`);
+        if (!res.ok) throw new Error(`Could not load feedback (${res.status})`);
+        const detail = (await res.json()) as Submission;
+        if (requestId === detailRequest.current) {
+          if (!cryptoContext) throw new Error("Support encryption is locked.");
+          const decrypted = await decryptSubmission(
+            detail,
+            cryptoContext.privateKey,
+            cryptoContext.keyId,
+          );
+          setSubmissions((current) => [decrypted, ...current.filter((item) => item.id !== id)]);
+        }
+      } catch (err) {
+        console.error(err);
+        if (requestId === detailRequest.current) {
+          setThreadError("Could not load this conversation. Check access or try again.");
+          toast.error("Could not load this feedback thread.");
+        }
+      } finally {
+        if (requestId === detailRequest.current) setLoadingThread(false);
       }
-    } catch (err) {
-      console.error(err);
-      if (requestId === detailRequest.current) {
-        setThreadError("Could not load this conversation. Check access or try again.");
-        toast.error("Could not load this feedback thread.");
-      }
-    } finally {
-      if (requestId === detailRequest.current) setLoadingThread(false);
-    }
-  }, [cryptoContext]);
+    },
+    [cryptoContext],
+  );
 
   useEffect(() => {
     if (!encryption.ready || !cryptoContext) return;
@@ -263,11 +279,9 @@ export default function AdminFeedbackPage() {
     (item) =>
       (!statusFilter || item.status === statusFilter) &&
       (!categoryFilter || item.category === categoryFilter) &&
-      (!search ||
-        `${item.subject} ${item.content}`
-          .toLowerCase()
-          .includes(search.toLowerCase())),
+      (!search || `${item.subject} ${item.content}`.toLowerCase().includes(search.toLowerCase())),
   );
+  const selectedSubmission = submissions.find((item) => item.id === selectedId);
 
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -293,13 +307,25 @@ export default function AdminFeedbackPage() {
   const getCategoryStyles = (category: string) => {
     switch (category) {
       case "bug":
-        return { icon: <AlertCircle size={14} />, color: "text-red-400 bg-red-400/10" };
+        return {
+          icon: <AlertCircle size={14} />,
+          color: "border border-rose-500/25 bg-rose-50 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300",
+        };
       case "achievement":
-        return { icon: <Trophy size={14} />, color: "text-emerald-400 bg-emerald-400/10" };
+        return {
+          icon: <Trophy size={14} />,
+          color: "border border-emerald-500/25 bg-emerald-50 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300",
+        };
       case "ux_improvement":
-        return { icon: <Star size={14} />, color: "text-blue-400 bg-blue-400/10" };
+        return {
+          icon: <Star size={14} />,
+          color: "border border-violet-500/25 bg-violet-50 text-violet-800 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
+        };
       default:
-        return { icon: <Sparkles size={14} />, color: "text-amber-400 bg-amber-400/10" };
+        return {
+          icon: <Sparkles size={14} />,
+          color: "border border-amber-500/25 bg-amber-50 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300",
+        };
     }
   };
 
@@ -317,9 +343,7 @@ export default function AdminFeedbackPage() {
           backHref="/dashboard"
           backLabel="Back To Dashboard"
         />
-        <div className="flex h-[60vh] items-center justify-center">
-          <Loader2 className="text-primary animate-spin" size={32} />
-        </div>
+        <AverQelLoading label="Loading feedback…" size="section" className="min-h-[60vh]" />
       </div>
     );
   }
@@ -337,7 +361,7 @@ export default function AdminFeedbackPage() {
         actions={
           <button
             onClick={() => setShowCreateCampaign(true)}
-            className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-black shadow-lg transition-all hover:scale-[1.02] active:scale-98"
+            className="bg-primary text-primary-foreground shadow-primary/20 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold shadow-lg transition-all hover:scale-[1.02] active:scale-98"
           >
             <Plus size={18} />
             Launch Campaign
@@ -348,9 +372,9 @@ export default function AdminFeedbackPage() {
       <SupportEncryptionMigration mode="feedback" context={cryptoContext} />
 
       <aside className="border-border bg-surface-1 text-muted-foreground rounded-2xl border px-4 py-3 text-sm">
-        New and migrated feedback is decrypted in this browser for the submitter and the
-        allowlisted platform administrator. Other users and legacy manager roles cannot read it.
-        Replies stay in the encrypted in-app thread.
+        New and migrated feedback is decrypted in this browser for the submitter and the allowlisted
+        platform administrator. Other users and legacy manager roles cannot read it. Replies stay in
+        the encrypted in-app thread.
       </aside>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-4">
@@ -361,11 +385,11 @@ export default function AdminFeedbackPage() {
           </h2>
           <div className="space-y-4">
             {campaigns.map((c) => (
-              <div key={c.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+              <div key={c.id} className="theme-panel-muted rounded-2xl border border-border p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-primary text-[10px] font-bold uppercase">Active</span>
                 </div>
-                <h3 className="text-sm font-bold text-white">{c.title}</h3>
+                <h3 className="text-foreground text-sm font-bold">{c.title}</h3>
                 <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">{c.description}</p>
                 <div className="text-muted-foreground mt-4 flex items-center gap-4 text-[10px]">
                   <span className="flex items-center gap-1">
@@ -375,7 +399,7 @@ export default function AdminFeedbackPage() {
               </div>
             ))}
             {campaigns.length === 0 && (
-              <p className="text-muted-foreground rounded-2xl border border-dashed border-white/10 py-10 text-center text-sm">
+              <p className="text-muted-foreground rounded-2xl border border-dashed border-border py-10 text-center text-sm">
                 No active campaigns
               </p>
             )}
@@ -461,7 +485,7 @@ export default function AdminFeedbackPage() {
                 <motion.div
                   key={s.id}
                   layout
-                  className="group relative rounded-3xl border border-white/5 bg-white/[0.03] p-6 transition-all hover:border-white/10 hover:bg-white/[0.05]"
+                  className="theme-panel group relative rounded-3xl border border-border p-6 transition-all hover:border-primary/40 hover:bg-primary/5"
                 >
                   <div className="flex items-start justify-between gap-6">
                     <div className="flex-1 space-y-4">
@@ -475,12 +499,12 @@ export default function AdminFeedbackPage() {
                         <span className="text-muted-foreground text-xs">
                           {new Date(s.created_at).toLocaleDateString()}
                         </span>
-                        <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-white/70 uppercase">
+                        <span className="text-foreground rounded-full border border-border bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase">
                           {s.status?.replace("_", " ") ?? "new"}
                         </span>
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-white">{s.subject}</h3>
+                        <h3 className="text-foreground text-lg font-bold">{s.subject}</h3>
                         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
                           {s.content}
                         </p>
@@ -513,11 +537,11 @@ export default function AdminFeedbackPage() {
               );
             })}
             {visibleSubmissions.length === 0 && (
-              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 py-32 text-center">
-                <div className="text-muted-foreground mb-4 rounded-full bg-white/5 p-4">
+              <div className="border-border bg-surface-1 flex flex-col items-center justify-center rounded-3xl border border-dashed py-32 text-center">
+                <div className="theme-chip text-primary mb-4 rounded-full p-4">
                   <MessageSquare size={32} />
                 </div>
-                <h3 className="font-bold text-white">
+                <h3 className="text-foreground font-bold">
                   {submissions.length ? "No matching feedback" : "No feedback yet"}
                 </h3>
                 <p className="text-muted-foreground mt-2 max-w-xs text-sm">
@@ -566,8 +590,23 @@ export default function AdminFeedbackPage() {
                         Feedback conversation
                       </p>
                       <h2 className="text-foreground mt-1 text-lg font-bold break-words">
-                        {submissions.find((item) => item.id === selectedId)?.subject ?? "Loading…"}
+                        {selectedSubmission?.subject ?? (
+                          <AverQelLoading size="inline" label="Loading feedback subject" />
+                        )}
                       </h2>
+                      {selectedSubmission && (
+                        <div className="text-muted-foreground mt-3 flex items-center gap-2 text-xs">
+                          <ProfileAvatar
+                            avatar={selectedSubmission.participants?.[0]?.avatar}
+                            displayName={selectedSubmission.participants?.[0]?.display_name}
+                            fallbackLabel="Feedback submitter"
+                            className="h-8 w-8 rounded-full"
+                          />
+                          <span>
+                            Submitted by {selectedSubmission.participants?.[0]?.display_name || "user"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -575,7 +614,11 @@ export default function AdminFeedbackPage() {
                       disabled={loadingThread}
                       className="border-border text-foreground rounded-lg border px-3 py-2 text-xs disabled:opacity-50"
                     >
-                      {loadingThread ? "Loading…" : "Refresh conversation"}
+                      {loadingThread ? (
+                        <AverQelLoading size="inline" label="Loading conversation" />
+                      ) : (
+                        "Refresh conversation"
+                      )}
                     </button>
                     <button
                       onClick={() => setSelectedId(null)}
@@ -586,9 +629,11 @@ export default function AdminFeedbackPage() {
                   </div>
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain py-4">
                     {loadingThread && (
-                      <div className="text-muted-foreground flex items-center gap-2 py-3 text-sm">
-                        <Loader2 size={15} className="animate-spin" /> Loading conversation…
-                      </div>
+                      <AverQelLoading
+                        label="Loading conversation…"
+                        size="compact"
+                        className="justify-start py-3"
+                      />
                     )}
                     {threadError && (
                       <div
@@ -605,27 +650,54 @@ export default function AdminFeedbackPage() {
                         </button>
                       </div>
                     )}
-                    {(submissions.find((item) => item.id === selectedId)?.messages ?? []).map(
-                      (message) => (
+                    {(selectedSubmission?.messages ?? []).map((message) => {
+                      const participant = selectedSubmission?.participants?.find(
+                        (candidate) => candidate.ref === message.author_ref,
+                      );
+                      const authorLabel = message.is_internal
+                        ? "Internal note"
+                        : message.kind === "status_changed"
+                          ? "Status update"
+                          : message.author_role === "admin"
+                            ? "Support team"
+                            : "User";
+                      return (
                         <article
                           key={message.id}
-                          className={`min-w-0 rounded-xl border p-4 ${message.is_internal ? "border-amber-500/30 bg-amber-500/10" : "border-border bg-surface-1"}`}
+                          className={`min-w-0 rounded-xl border p-4 ${message.is_internal ? "border-amber-500/35 bg-amber-50 text-amber-950 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-100" : "border-border bg-surface-1 text-foreground"}`}
                         >
-                          <div className="text-muted-foreground mb-2 flex flex-wrap justify-between gap-2 text-[10px] uppercase">
-                            <span>
-                              {message.is_internal ? "Internal note" : message.author_role}
-                            </span>
-                            <time>{new Date(message.created_at).toLocaleString()}</time>
+                          <div className="mb-2 flex items-start gap-3">
+                            <ProfileAvatar
+                              avatar={participant?.avatar}
+                              displayName={participant?.display_name}
+                              fallbackLabel={authorLabel}
+                              className="h-9 w-9 rounded-xl"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-foreground text-xs font-semibold">
+                                  {participant?.display_name || authorLabel}
+                                </span>
+                                <time className="text-muted-foreground text-[10px]">
+                                  {new Date(message.created_at).toLocaleString()}
+                                </time>
+                              </div>
+                              {message.is_internal && (
+                                <span className="mt-1 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-bold tracking-wide text-amber-950 uppercase dark:bg-amber-300/15 dark:text-amber-200">
+                                  Internal note
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-foreground text-sm leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
+                          <p className="text-sm leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
                             {message.body}
                           </p>
                         </article>
-                      ),
-                    )}
+                      );
+                    })}
                     {!loadingThread &&
                       !threadError &&
-                      !submissions.find((item) => item.id === selectedId)?.messages?.length && (
+                      !selectedSubmission?.messages?.length && (
                         <p className="text-muted-foreground py-10 text-center text-sm">
                           No replies yet. Send a public response or add an internal note.
                         </p>

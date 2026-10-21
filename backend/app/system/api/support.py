@@ -25,6 +25,7 @@ from app.system.schemas.support import (
     AdminSupportMessageCreate,
     AdminSupportQueueItem,
     AdminSupportQueueResponse,
+    AdminSupportQueueUserProfile,
     SupportTicketAttachmentResponse,
     SupportTicketCreate,
     SupportTicketDetailResponse,
@@ -40,6 +41,7 @@ from app.system.schemas.support_encryption import (
     SupportRecordEncryptionMigration,
 )
 from app.system.services.audit_service import AuditService
+from app.system.services.conversation_profiles import conversation_participants
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_quota import StorageQuotaService
 from app.system.services.storage_service import StorageService, StorageServiceError
@@ -159,7 +161,16 @@ def _detail(
     *,
     include_internal: bool,
     user_email: str | None = None,
+    tenant_id_to_restore: uuid.UUID | None = None,
 ) -> SupportTicketDetailResponse:
+    message_rows = _ticket_messages(db, ticket=ticket, include_internal=include_internal)
+    participants, author_refs = conversation_participants(
+        db,
+        message_rows,
+        primary_author_ids=[ticket.user_id],
+        include_display_names=include_internal,
+        tenant_id_to_restore=tenant_id_to_restore,
+    )
     attachment_rows = (
         db.execute(
             select(SupportTicketAttachment)
@@ -182,9 +193,18 @@ def _detail(
         **SupportTicketResponse.model_validate(ticket).model_dump(),
         user_email=user_email,
         messages=[
-            SupportTicketMessageResponse.model_validate(item)
-            for item in _ticket_messages(db, ticket=ticket, include_internal=include_internal)
+            SupportTicketMessageResponse.model_validate(item).model_copy(
+                update={
+                    "author_ref": (
+                        author_refs.get(item.author_user_id)
+                        if item.author_user_id is not None
+                        else None
+                    )
+                }
+            )
+            for item in message_rows
         ],
+        participants=participants,
         attachments=attachments,
     )
 
@@ -288,7 +308,7 @@ def get_my_ticket(
     ticket = _ticket_for_user(
         db, ticket_id=ticket_id, tenant_id=tenant.tenant_id, user_id=auth.user_id
     )
-    return _detail(db, ticket, include_internal=False)
+    return _detail(db, ticket, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
 
 
 @router.post("/tickets/{ticket_id}/messages", response_model=SupportTicketDetailResponse)
@@ -342,7 +362,7 @@ def add_user_ticket_message(
         resource_id=f"{ticket.id}:user-reply:{uuid.uuid4()}",
     )
     db.flush()
-    detail = _detail(db, ticket, include_internal=False)
+    detail = _detail(db, ticket, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
     db.commit()
     return detail
 
@@ -568,7 +588,9 @@ def list_support_queue_admin(
     _no_store(response)
     set_db_tenant_context(db, "bypass")
     now = datetime.now(UTC)
-    base = select(SupportTicket, User.email).join(User, User.id == SupportTicket.user_id)
+    base = select(SupportTicket, User.email, User.display_name, User.avatar).join(
+        User, User.id == SupportTicket.user_id
+    )
     if status:
         base = base.where(SupportTicket.status == status)
     if priority:
@@ -599,11 +621,22 @@ def list_support_queue_admin(
     rows = db.execute(
         base.order_by(priority_rank, SupportTicket.updated_at.asc()).limit(limit).offset(offset)
     ).all()
+    user_profiles: dict[uuid.UUID, AdminSupportQueueUserProfile] = {}
+    for ticket, _, display_name, avatar in rows:
+        user_profiles.setdefault(
+            ticket.user_id,
+            AdminSupportQueueUserProfile(
+                user_id=ticket.user_id,
+                display_name=display_name,
+                avatar=avatar,
+            ),
+        )
     tickets = [
         AdminSupportQueueItem(
-            **SupportTicketResponse.model_validate(ticket).model_dump(), user_email=email
+            **SupportTicketResponse.model_validate(ticket).model_dump(),
+            user_email=email,
         )
-        for ticket, email in rows
+        for ticket, email, display_name, avatar in rows
     ]
     open_count = (
         db.scalar(
@@ -636,6 +669,7 @@ def list_support_queue_admin(
     )
     return AdminSupportQueueResponse(
         items=tickets,
+        users=list(user_profiles.values()),
         total=int(total),
         open_count=int(open_count),
         overdue_count=int(overdue_count),
@@ -673,8 +707,19 @@ def list_legacy_support_records(
         SupportTicket.encrypted_payload.is_(None), has_legacy_messages, has_legacy_attachments
     )
     total = db.scalar(select(func.count()).select_from(SupportTicket).where(legacy_filter)) or 0
+    user_key_initialized = exists(
+        select(1).where(
+            SupportEncryptionKey.user_id == SupportTicket.user_id,
+            SupportEncryptionKey.tenant_id == SupportTicket.tenant_id,
+            SupportEncryptionKey.scope == "user",
+        )
+    )
     rows = db.execute(
-        select(SupportTicket.id, SupportTicket.user_id)
+        select(
+            SupportTicket.id,
+            SupportTicket.user_id,
+            user_key_initialized.label("user_key_initialized"),
+        )
         .where(legacy_filter)
         .order_by(SupportTicket.created_at, SupportTicket.id)
         .limit(limit)
@@ -687,7 +732,14 @@ def list_legacy_support_records(
         resource_type="support_encryption_migration",
     )
     return LegacySupportRecordPage(
-        items=[LegacySupportRecord(id=row.id, user_id=row.user_id) for row in rows],
+        items=[
+            LegacySupportRecord(
+                id=row.id,
+                user_id=row.user_id,
+                user_key_initialized=row.user_key_initialized,
+            )
+            for row in rows
+        ],
         total=int(total),
     )
 

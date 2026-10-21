@@ -23,6 +23,8 @@ and must be checked against their target and date before release decisions.
   — reproducible local evidence and remaining staging/VPS gates.
 - [Current worktree change index](release/03-current-worktree-change-index.md)
   — feature families, source areas, migrations, and current verification.
+- [Electron desktop guide](../../applications/desktop/README.md) — local setup,
+  package targets, app-icon assets, and desktop window lifecycle.
 
 ### 01. Capabilities
 
@@ -33,6 +35,7 @@ and must be checked against their target and date before release decisions.
 - [Scheduled jobs](capabilities/05-scheduled-jobs.md)
 - [MCP connections](capabilities/06-mcp-connections.md)
 - [MCP current release status](capabilities/mcp/01-current-release-status.md)
+- [Composio hosted MCP apps](capabilities/mcp/03-composio-hosted-mcp.md)
 - [OCR, RAG, Library, sandbox, and artifacts](capabilities/07-ocr-rag-library-sandbox-artifacts.md)
 - [Public landing and capability directory](capabilities/08-public-landing-and-capabilities.md)
 - [Advanced capability index](capabilities/09-advanced-capabilities-index.md)
@@ -76,6 +79,7 @@ and must be checked against their target and date before release decisions.
 - [Historical Documents Hub end-to-end verification (2026-09-27)](platform/04-end-to-end-verification.md)
 - [Realtime websocket events](platform/04-realtime-events.md)
 - [Feedback, support, and durable notifications](platform/05-feedback-support-notifications.md)
+- [Platform administration: access, audit, and operational modules](platform/06-platform-administration.md)
 
 ### 05. Storage and recovery
 
@@ -102,11 +106,12 @@ and must be checked against their target and date before release decisions.
 - **Providers and MCP** are separate: model providers generate or embed
   content, while MCP connections expose policy-controlled remote tools.
 - **Support and feedback** are encrypted in the browser for the submitter and
-  platform administrator after key setup. The admin pages include a browser
-  migration for legacy plaintext records; older backups can retain old copies
-  until expiry. Metadata remains service-visible, encrypted attachments cannot
-  be scanned server-side, and the web server can replace the browser code or
-  recipient keys if compromised. See
+  the single platform-key owner after key setup. Other allowlisted admins
+  cannot unlock that key, so the current queue UI cannot open for them. The
+  admin pages include a browser migration for legacy plaintext records; older
+  backups can retain old copies until expiry. Metadata remains service-visible,
+  encrypted attachments cannot be scanned server-side, and the web server can
+  replace the browser code or recipient keys if compromised. See
   [`platform/05-feedback-support-notifications.md`](platform/05-feedback-support-notifications.md).
 
 ## Release-status convention

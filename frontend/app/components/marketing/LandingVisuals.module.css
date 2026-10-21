@@ -270,73 +270,35 @@
 
 .domainSection {
   --domain-accent: #2dd4bf;
-  --domain-glow: rgba(45, 212, 191, 0.11);
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-top: 1px solid rgba(148, 163, 184, 0.095);
   padding-block: clamp(4rem, 8vw, 7.5rem);
-}
-
-.domainSection::before {
-  position: absolute;
-  z-index: -1;
-  top: -8rem;
-  right: -8rem;
-  width: min(48vw, 44rem);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--domain-glow), transparent 67%);
-  content: "";
-  pointer-events: none;
-}
-
-.domainSection::after {
-  position: absolute;
-  top: 0;
-  left: clamp(1rem, 4vw, 4rem);
-  width: min(24rem, 45vw);
-  height: 1px;
-  background: linear-gradient(90deg, var(--domain-accent), transparent);
-  opacity: 0.52;
-  content: "";
-  pointer-events: none;
 }
 
 .domainSection[data-layout="documents-hub"] {
   --domain-accent: #51d8f4;
-  --domain-glow: rgba(34, 211, 238, 0.115);
-  border-top: 0;
 }
 
 .domainSection[data-layout="query"] {
   --domain-accent: #7dd3fc;
-  --domain-glow: rgba(56, 189, 248, 0.13);
 }
 
 .domainSection[data-layout="qel-connect"] {
   --domain-accent: #a78bfa;
-  --domain-glow: rgba(139, 92, 246, 0.12);
 }
 
 .domainSection[data-layout="deepspace"] {
   --domain-accent: #5eead4;
-  --domain-glow: rgba(20, 184, 166, 0.13);
 }
 
 .domainSection[data-layout="providers"] {
   --domain-accent: #fbbf24;
-  --domain-glow: rgba(245, 158, 11, 0.12);
 }
 
 .domainSection[data-layout="mcp"] {
   --domain-accent: #fb7185;
-  --domain-glow: rgba(244, 63, 94, 0.11);
 }
 
 .domainSection[data-layout="workspace-controls"] {
   --domain-accent: #86efac;
-  --domain-glow: rgba(74, 222, 128, 0.1);
 }
 
 .domainInner {
@@ -371,14 +333,7 @@
 }
 
 .domainIndex {
-  display: grid;
-  min-width: 2.4rem;
-  height: 1.45rem;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--domain-accent) 42%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--domain-accent) 9%, transparent);
-  padding-inline: 0.4rem;
+  display: inline;
   font-size: 0.58rem;
   letter-spacing: 0.08em;
 }
@@ -413,47 +368,11 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--card-accent) 15%, rgba(148, 163, 184, 0.12));
+  overflow: visible;
+  border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 1.25rem;
-  background:
-    radial-gradient(
-      ellipse at 90% 0%,
-      color-mix(in srgb, var(--card-accent) 7%, transparent),
-      transparent 48%
-    ),
-    linear-gradient(145deg, rgba(12, 19, 26, 0.96), rgba(5, 10, 15, 0.96));
+  background: linear-gradient(145deg, rgba(12, 19, 26, 0.96), rgba(5, 10, 15, 0.96));
   padding: clamp(1rem, 2vw, 1.5rem);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
-  transition:
-    border-color 220ms ease,
-    background-color 220ms ease,
-    box-shadow 220ms ease;
-}
-
-.domainCard::before {
-  position: absolute;
-  top: 0;
-  left: 1.25rem;
-  width: 3rem;
-  height: 1px;
-  background: linear-gradient(90deg, var(--card-accent), transparent);
-  opacity: 0.9;
-  content: "";
-  transition:
-    width 220ms ease,
-    opacity 220ms ease;
-}
-
-.domainCard:hover {
-  border-color: color-mix(in srgb, var(--card-accent) 38%, rgba(148, 163, 184, 0.2));
-  box-shadow:
-    0 26px 66px rgba(0, 0, 0, 0.25),
-    0 0 30px color-mix(in srgb, var(--card-accent) 9%, transparent);
-}
-
-.domainCard:hover::before {
-  width: 6rem;
 }
 
 .domainCard[data-accent="cyan"] {
@@ -489,11 +408,7 @@
   height: 2.65rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--card-accent) 30%, transparent);
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--card-accent) 10%, transparent);
   color: var(--card-accent);
-  box-shadow: inset 0 0 18px color-mix(in srgb, var(--card-accent) 8%, transparent);
 }
 
 .cardOrdinal {
@@ -506,10 +421,6 @@
 
 .cardStatus {
   margin-left: auto;
-  border: 1px solid rgba(251, 191, 36, 0.24);
-  border-radius: 999px;
-  background: rgba(251, 191, 36, 0.07);
-  padding: 0.35rem 0.6rem;
   color: #fde68a;
   font-size: 0.6rem;
   font-weight: 700;
@@ -536,8 +447,6 @@
   display: grid;
   gap: 0.65rem;
   margin-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
-  padding-top: 1rem;
 }
 
 .cardPoint {
@@ -591,9 +500,6 @@
 .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="0"] {
   grid-area: intake;
   justify-content: center;
-  border-radius: 1.8rem 1.1rem 1.1rem 1.8rem;
-  background: linear-gradient(115deg, rgba(8, 25, 34, 0.97), rgba(5, 11, 16, 0.94)), #071018;
-  padding: clamp(1.4rem, 3.3vw, 3rem);
 }
 
 .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="0"] .cardTitle {
@@ -615,7 +521,6 @@
   grid-template-columns: auto minmax(0, 1fr) minmax(14rem, 0.9fr) auto;
   align-items: center;
   gap: 0 1.2rem;
-  border-radius: 1rem 1.8rem 1rem 1rem;
 }
 
 .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="3"] .cardTitle,
@@ -624,10 +529,6 @@
 .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="3"] .cardAction {
   margin-top: 0;
   padding-top: 0;
-}
-
-.domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="3"] .cardPoints {
-  border-top: 0;
 }
 
 .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="3"] .cardHeader {
@@ -642,18 +543,10 @@
 
 .domainBoard[data-layout="query"] .domainCard[data-card-index="0"] {
   grid-area: retrieval;
-  border-radius: 1.7rem 1rem 1rem 1rem;
-  background:
-    radial-gradient(ellipse at 12% 100%, rgba(56, 189, 248, 0.12), transparent 50%),
-    linear-gradient(145deg, rgba(9, 22, 32, 0.96), rgba(5, 10, 16, 0.96));
 }
 
 .domainBoard[data-layout="query"] .domainCard[data-card-index="1"] {
   grid-area: evidence;
-  border-radius: 1rem 1.7rem 1rem 1rem;
-  background:
-    radial-gradient(ellipse at 90% 10%, rgba(34, 211, 238, 0.13), transparent 46%),
-    linear-gradient(150deg, rgba(9, 22, 30, 0.96), rgba(5, 10, 16, 0.96));
 }
 
 .domainBoard[data-layout="query"] .domainCard[data-card-index="2"] {
@@ -662,8 +555,6 @@
   grid-template-columns: auto minmax(14rem, 0.9fr) minmax(16rem, 1.3fr) auto;
   align-items: center;
   gap: 0 1.25rem;
-  border-radius: 1rem 1rem 1.7rem 1rem;
-  background: linear-gradient(100deg, rgba(28, 26, 54, 0.42), rgba(7, 14, 20, 0.96) 42%);
 }
 
 .domainBoard[data-layout="query"] .domainCard[data-card-index="2"] .cardHeader {
@@ -672,7 +563,6 @@
 
 .domainBoard[data-layout="query"] .domainCard[data-card-index="2"] .cardPoints {
   grid-row: span 2;
-  border-top: 0;
   padding-top: 0;
 }
 
@@ -685,22 +575,18 @@
 
 .domainBoard[data-layout="qel-connect"] .domainCard[data-card-index="0"] {
   grid-area: members;
-  border-radius: 2rem 1rem 1rem 1rem;
 }
 
 .domainBoard[data-layout="qel-connect"] .domainCard[data-card-index="1"] {
   grid-area: conversation;
-  border-radius: 1rem 2rem 1rem 1rem;
 }
 
 .domainBoard[data-layout="qel-connect"] .domainCard[data-card-index="2"] {
   grid-area: shared;
-  border-radius: 1rem 1rem 1rem 2rem;
 }
 
 .domainBoard[data-layout="qel-connect"] .domainCard[data-card-index="3"] {
   grid-area: safety;
-  border-radius: 1rem 1rem 2rem 1rem;
 }
 
 .domainBoard[data-layout="qel-connect"] .cardStatus {
@@ -724,10 +610,6 @@
 .domainBoard[data-layout="deepspace"] .domainCard[data-card-index="0"] {
   grid-area: runs;
   justify-content: center;
-  border-radius: 1.8rem 1rem 1rem 1.8rem;
-  background:
-    radial-gradient(ellipse at 92% 12%, rgba(167, 139, 250, 0.15), transparent 42%),
-    linear-gradient(145deg, rgba(22, 17, 38, 0.96), rgba(6, 10, 17, 0.96));
 }
 
 .domainBoard[data-layout="deepspace"] .domainCard[data-card-index="0"] .cardTitle {
@@ -775,7 +657,6 @@
     "header action";
   align-items: start;
   gap: 0.35rem 1rem;
-  border-radius: 1rem 1rem 1rem 1.8rem;
 }
 
 .domainBoard[data-layout="deepspace"] .domainCard[data-card-index="5"] .cardHeader,
@@ -823,11 +704,6 @@
 .domainBoard[data-layout="providers"] .domainCard[data-card-index="0"] {
   grid-area: config;
   justify-content: center;
-  border-radius: 2rem 1rem 1rem 1rem;
-  background:
-    radial-gradient(ellipse at 10% 85%, rgba(56, 189, 248, 0.13), transparent 48%),
-    linear-gradient(145deg, rgba(8, 25, 34, 0.97), rgba(5, 10, 16, 0.96));
-  padding: clamp(1.4rem, 3vw, 2.5rem);
 }
 
 .domainBoard[data-layout="providers"] .domainCard[data-card-index="0"] .cardTitle {
@@ -837,21 +713,67 @@
 
 .domainBoard[data-layout="providers"] .domainCard[data-card-index="1"] {
   grid-area: roles;
-  border-radius: 1rem;
 }
 
 .domainBoard[data-layout="providers"] .domainCard[data-card-index="2"] {
   grid-area: health;
-  border-radius: 1rem 1.8rem 1.8rem 1rem;
+}
+
+.providerCatalog {
+  margin-top: clamp(2rem, 4vw, 3rem);
+}
+
+.providerCatalogHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.providerCatalogHeading {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.providerCatalogNote {
+  margin: 0;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.providerCatalogList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 0.9rem 1.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.providerCatalogItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.providerCatalogLogo {
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
 }
 
 .domainBoard[data-layout="mcp"] {
   grid-template-areas: "catalog catalog catalog catalog authorize authorize authorize authorize policy policy policy policy";
   align-items: stretch;
-}
-
-.domainBoard[data-layout="mcp"] .domainCard {
-  border-radius: 1.1rem 1.1rem 2rem 1.1rem;
 }
 
 .domainBoard[data-layout="mcp"] .domainCard[data-card-index="0"] {
@@ -861,14 +783,10 @@
 .domainBoard[data-layout="mcp"] .domainCard[data-card-index="1"] {
   grid-area: authorize;
   margin-block-start: 1.2rem;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(56, 189, 248, 0.12), transparent 48%),
-    linear-gradient(145deg, rgba(10, 22, 31, 0.96), rgba(5, 10, 16, 0.96));
 }
 
 .domainBoard[data-layout="mcp"] .domainCard[data-card-index="2"] {
   grid-area: policy;
-  border-radius: 1.1rem 2rem 1.1rem 1.1rem;
 }
 
 .domainBoard[data-layout="workspace-controls"] {
@@ -883,14 +801,6 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-content: start;
   column-gap: 1rem;
-  border-width: 0 0 1px 2px;
-  border-radius: 0 1rem 1rem 0;
-  background: linear-gradient(
-    100deg,
-    color-mix(in srgb, var(--card-accent) 6%, transparent),
-    transparent 85%
-  );
-  box-shadow: none;
 }
 
 .domainBoard[data-layout="workspace-controls"] .domainCard[data-card-index="0"] {
@@ -925,7 +835,6 @@
 }
 
 .domainBoard[data-layout="workspace-controls"] .cardPoints {
-  border-top: 0;
   padding-top: 0;
 }
 
@@ -1559,8 +1468,7 @@
 
   .domainBoard[data-layout="documents-hub"] .domainCard[data-card-index="3"] .cardPoints,
   .domainBoard[data-layout="query"] .domainCard[data-card-index="2"] .cardPoints {
-    border-top: 1px solid rgba(148, 163, 184, 0.1);
-    padding-top: 1rem;
+    padding-top: 0;
   }
 }
 
@@ -1636,7 +1544,6 @@
 
   .heroAction,
   .domainCard,
-  .domainCard::before,
   .cardAction {
     scroll-behavior: auto;
     transition-duration: 0.01ms !important;

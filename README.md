@@ -29,9 +29,9 @@ explains that distinction and the release path.
 | Query                         | Retrieval-first questions over documents the authenticated user is allowed to access, with source references and query history.                                           | Depends on successfully processed sources and a configured answer provider; retrieval and generated answers can be incomplete. See [Grounded Query in the in-app documentation](frontend/app/documentation/grounded-query/page.tsx).                                                                                                 |
 | DeepSpace                     | Durable AI conversations, provider selection, tool use, approvals, queued work, retries, memory, document context, research, and generated artifacts.                     | Model calls require a configured provider. Sandboxed execution, browser rendering, scheduled tasks, and voice have additional service or deployment requirements. See the [runtime guide](backend/docs/deepspace/04-deepspace-agent-runtime.md) and [operations runbook](backend/docs/deepspace/05-deepspace-operations-runbook.md). |
 | Qel Connect and collaboration | Membership and invitations, shared documents, Qel Connect chat, notifications, blocking, user-submitted reports, and moderation history.                                   | Qel Connect rooms are documented as experimental beta pending external staging and real-device verification. See the [Qel Connect guide](backend/docs/library/12-collection-rooms.md) and [hardening and release boundaries](backend/docs/release/collection-bridge-hardening.md).                                                     |
-| MCP connectors                | Reviewed remote connector catalog, OAuth or encrypted credentials, tool discovery, policy controls, and approval for configured side-effecting actions.                   | A connector must be approved, configured, and connected. See the [MCP guide](backend/docs/capabilities/06-mcp-connections.md).                                                                                                                                                                                                       |
+| MCP app connections           | Composio's live app/tool catalog, per-account encrypted project keys, user-owned app sessions, tool policies, and approval for writes, deletions, and external messages. | Each user supplies a Composio project key; OAuth apps also need the deployment callback origin. See the [MCP guide](backend/docs/capabilities/06-mcp-connections.md) and [Composio setup](backend/docs/capabilities/mcp/03-composio-hosted-mcp.md). |
 | Feedback and support          | Feedback submissions and campaigns, support tickets, public replies, internal notes, status and priority workflows, attachments, notifications, and admin queues.         | Email notifications require SMTP configuration, a running worker, and Celery Beat. There is no paid-subscription or payment lifecycle integration. See [feedback, support, and notifications](backend/docs/platform/05-feedback-support-notifications.md).                                                                           |
-| Identity and administration   | Tenant and role-aware workspace access, account and session controls, security settings, and authorized admin surfaces for operations and governance.                     | Optional identity providers and security factors need environment configuration. See the [OAuth guide](backend/docs/platform/02-auth-oauth-login.md).                                                                                                                                                                                |
+| Identity and administration   | Tenant and role-aware workspace access, account and session controls, security settings, and authorized admin surfaces for operations and governance.                     | Optional identity providers need configuration; platform administration requires allowlisting, TOTP, and route permissions. See the [OAuth and MFA guide](backend/docs/platform/02-auth-oauth-login.md) and [admin modules guide](backend/docs/platform/06-platform-administration.md). |
 | Web and desktop               | Next.js browser workspace and Electron packaging for Linux, Windows, and macOS.                                                                                           | Desktop release assets are published through the manual release workflow. See the [frontend guide](frontend/README.md) and [desktop guide](applications/desktop/README.md).                                                                                                                                                          |
 | Storage lifecycle             | Tenant retention settings, previews, reversible metadata-only archive and restore paths, and recovery controls.                                                           | Automatic archive remains disabled in production/VPS until the documented external restore and staging gates pass. Permanent purge through this lifecycle feature is disabled. See the [storage production guide](backend/docs/storage/02-storage-retention-production-guide.md).                                                    |
 
@@ -83,7 +83,7 @@ Browser or Electron client
           |
           v
     FastAPI API ----------> configured model and OAuth providers
-      |   |   |  \--------> approved MCP servers
+      |   |   |  \--------> Composio-hosted MCP apps (account-scoped)
       |   |   |  \--------> SearXNG and isolated research renderer
       |   |   |
       |   |   +-----------> PostgreSQL with pgvector
@@ -98,7 +98,7 @@ Browser or Electron client
 | Service or boundary                                                       | Responsibility                                                                                                                                                   |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `frontend`                                                                | Serves the Next.js application and proxies configured API requests.                                                                                              |
-| `api`                                                                     | Authenticated FastAPI endpoints and request orchestration. API startup runs Alembic migrations and idempotently seeds the reviewed integration and MCP catalogs. |
+| `api`                                                                     | Authenticated FastAPI endpoints and request orchestration. Its startup script applies Alembic migrations and seeds integrations plus code-reviewed MCP metadata; Composio's live app catalog is fetched per user. |
 | `worker`, `ingestion-worker`, `library-worker`, `dataset-worker`          | Run DeepSpace, document ingestion, Library, and dataset background work on dedicated queues.                                                                     |
 | `mcp-worker`, `collection-push-worker`, `maintenance-worker`, `scheduler` | Connector tasks, collection push outbox, maintenance tasks, and scheduled Celery jobs.                                                                           |
 | `postgres`, `redis`, `minio`, `clamav`                                    | Durable relational and vector data, queues and coordination, private object storage, and malware scanning.                                                       |
@@ -206,13 +206,10 @@ integration tests do not establish production deployment status.
 The repository's release and VPS deployment workflows are manual and use
 protected `main`:
 
-1. **Release - Manual SemVer and Desktop** calculates the next version, checks
-   out NeoSIS separately at a recorded commit, builds the Linux `.deb` and
-   Windows `.exe` desktop packages, creates checksums and a release manifest,
-   and publishes a GitHub release. Both platform payloads are checked against
-   the NeoSIS runtime manifest, and the final Linux `.deb` is checked again
-   before upload. NeoSIS source is not added to the AverQel repository or its
-   source archives.
+1. **Release - Manual SemVer and Desktop** calculates the next version, builds
+   the Linux `.deb` and Windows `.exe` desktop packages, creates checksums and
+   a release manifest, and publishes a GitHub release. The Linux installer is
+   checked for its AverQel AppStream metadata and package identity.
    The default version follows Conventional Commits since the latest published
    release: breaking changes increment the major number, `feat:` increments
    minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level
@@ -256,16 +253,19 @@ using it as evidence for a current deployment.
 - API routes enforce authentication, authorization, and tenant-scoped access;
   the database also uses row-level security for protected records. Preserve
   those checks when extending a workflow.
-- Provider credentials are stored through the backend's encrypted secret
-  handling and are not sent to the browser or model prompts. MCP servers are
-  catalog-approved; connector ownership, tool policy, and approval rules still
-  apply.
+- Provider credentials use encrypted backend secret handling. Saved credentials
+  are not returned in API responses or sent to model prompts. MCP connections
+  are tenant/user scoped. Composio's live catalog is supplied by Composio and
+  is not an AverQel review of every listed app; ownership, tool policy, and
+  side-effect approval rules still apply.
 - Document uploads use private storage and the configured malware scanner.
   Production document readiness fails closed when required scanning is
   unavailable.
-- Feedback and support conversations are readable by the submitter and
-  authorized support staff; they are not end-to-end encrypted. Email is
-  opt-in and requires SMTP configuration, a worker, and Celery Beat.
+- Support and feedback message bodies and attachments are browser-encrypted
+  for the submitter and the single platform-key owner. Other allowlisted admins
+  cannot decrypt that content; routing metadata remains service-visible. This
+  is not server-blind end-to-end encryption. Email is opt-in and requires SMTP
+  configuration, a worker, and Celery Beat.
 - Qel Connect moderation is tenant-admin report triage. It does not grant a
   platform-wide view of private Qel Connect spaces or message bodies.
 - Optional browser research, sandboxing, push, voice, OAuth providers, and
@@ -291,6 +291,8 @@ a public issue; use a private GitHub Security Advisory.
 - [Qel Connect chat and rooms](backend/docs/library/11-collection-chat.md)
 - [Feedback, support, and notifications](backend/docs/platform/05-feedback-support-notifications.md)
 - [MCP connections](backend/docs/capabilities/06-mcp-connections.md)
+- [Composio hosted MCP apps](backend/docs/capabilities/mcp/03-composio-hosted-mcp.md)
+- [Platform administration](backend/docs/platform/06-platform-administration.md)
 - [Storage recovery and retention](backend/docs/storage/01-storage-backup-and-disaster-recovery.md)
 - [Frontend and DeepSpace guide](frontend/README.md)
 - [Electron desktop guide](applications/desktop/README.md)

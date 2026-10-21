@@ -36,6 +36,7 @@ from app.system.schemas.support_encryption import (
     LegacyFeedbackRecordPage,
 )
 from app.system.services.audit_service import AuditService
+from app.system.services.conversation_profiles import conversation_participants
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.support_encryption import EncryptedPayloadError, validate_payload
 from app.system.services.user_notifications import (
@@ -132,16 +133,38 @@ def _feedback_messages(
 
 
 def _detail(
-    db: Session, feedback: AppFeedback, *, include_internal: bool, email: str | None = None
+    db: Session,
+    feedback: AppFeedback,
+    *,
+    include_internal: bool,
+    email: str | None = None,
+    tenant_id_to_restore: uuid.UUID | None = None,
 ) -> AppFeedbackDetailResponse:
     response = AppFeedbackResponse.model_validate(feedback)
     response.email = email
+    message_rows = _feedback_messages(db, feedback=feedback, include_internal=include_internal)
+    participants, author_refs = conversation_participants(
+        db,
+        message_rows,
+        primary_author_ids=[feedback.user_id],
+        include_display_names=include_internal,
+        tenant_id_to_restore=tenant_id_to_restore,
+    )
     return AppFeedbackDetailResponse(
         **response.model_dump(),
         messages=[
-            AppFeedbackMessageResponse.model_validate(item)
-            for item in _feedback_messages(db, feedback=feedback, include_internal=include_internal)
+            AppFeedbackMessageResponse.model_validate(item).model_copy(
+                update={
+                    "author_ref": (
+                        author_refs.get(item.author_user_id)
+                        if item.author_user_id is not None
+                        else None
+                    )
+                }
+            )
+            for item in message_rows
         ],
+        participants=participants,
     )
 
 
@@ -152,6 +175,13 @@ def _admin_detail(db: Session, feedback: AppFeedback) -> AdminAppFeedbackDetailR
             SupportEncryptionKey.scope == "user",
         )
     ).scalar_one_or_none()
+    message_rows = _feedback_messages(db, feedback=feedback, include_internal=True)
+    participants, author_refs = conversation_participants(
+        db,
+        message_rows,
+        primary_author_ids=[feedback.user_id],
+        include_display_names=False,
+    )
     return AdminAppFeedbackDetailResponse(
         **AdminAppFeedbackResponse.model_validate(feedback).model_dump(),
         recipient_public_key=(
@@ -160,9 +190,18 @@ def _admin_detail(db: Session, feedback: AppFeedback) -> AdminAppFeedbackDetailR
             else None
         ),
         messages=[
-            AdminAppFeedbackMessageResponse.model_validate(item)
-            for item in _feedback_messages(db, feedback=feedback, include_internal=True)
+            AdminAppFeedbackMessageResponse.model_validate(item).model_copy(
+                update={
+                    "author_ref": (
+                        author_refs.get(item.author_user_id)
+                        if item.author_user_id is not None
+                        else None
+                    )
+                }
+            )
+            for item in message_rows
         ],
+        participants=participants,
     )
 
 
@@ -260,7 +299,7 @@ def get_my_feedback(
     feedback = _feedback_for_user(
         db, feedback_id=feedback_id, tenant_id=tenant.tenant_id, user_id=auth.user_id
     )
-    return _detail(db, feedback, include_internal=False)
+    return _detail(db, feedback, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
 
 
 @router.post("/mine/{feedback_id}/messages", response_model=AppFeedbackDetailResponse)
@@ -300,7 +339,7 @@ def add_user_feedback_message(
         resource_id=reply_event_id,
     )
     db.flush()
-    detail = _detail(db, feedback, include_internal=False)
+    detail = _detail(db, feedback, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
     db.commit()
     return detail
 
@@ -442,8 +481,19 @@ def list_legacy_feedback_records(
     )
     legacy_filter = or_(AppFeedback.encrypted_payload.is_(None), has_legacy_messages)
     total = db.scalar(select(func.count()).select_from(AppFeedback).where(legacy_filter)) or 0
+    user_key_initialized = exists(
+        select(1).where(
+            SupportEncryptionKey.user_id == AppFeedback.user_id,
+            SupportEncryptionKey.tenant_id == AppFeedback.tenant_id,
+            SupportEncryptionKey.scope == "user",
+        )
+    )
     rows = db.execute(
-        select(AppFeedback.id, AppFeedback.user_id)
+        select(
+            AppFeedback.id,
+            AppFeedback.user_id,
+            user_key_initialized.label("user_key_initialized"),
+        )
         .where(legacy_filter)
         .order_by(AppFeedback.created_at, AppFeedback.id)
         .limit(limit)
@@ -456,7 +506,14 @@ def list_legacy_feedback_records(
         resource_type="feedback_encryption_migration",
     )
     return LegacyFeedbackRecordPage(
-        items=[LegacyFeedbackRecord(id=row.id, user_id=row.user_id) for row in rows],
+        items=[
+            LegacyFeedbackRecord(
+                id=row.id,
+                user_id=row.user_id,
+                user_key_initialized=row.user_key_initialized,
+            )
+            for row in rows
+        ],
         total=int(total),
     )
 

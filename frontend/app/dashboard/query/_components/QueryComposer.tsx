@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import { MAX_QUERY_ATTACHMENTS } from "../_lib/query-limits";
 
@@ -823,9 +824,11 @@ export default function QueryComposer({
                 </div>
                 <div className="max-h-64 overflow-y-auto p-1.5" aria-live="polite">
                   {hubLoading && hubDocuments.length === 0 ? (
-                    <div className="text-foreground/55 flex items-center gap-2 px-3 py-5 text-xs">
-                      <LoaderCircle size={14} className="animate-spin" /> Searching Documents Hub…
-                    </div>
+                    <AverQelLoading
+                      label="Searching Documents Hub…"
+                      size="compact"
+                      className="justify-start px-3 py-3"
+                    />
                   ) : hubError ? (
                     <div className="text-danger px-3 py-4 text-xs" role="alert">
                       {hubError}
@@ -873,7 +876,11 @@ export default function QueryComposer({
                       onClick={() => setHubSkip((skip) => skip + 50)}
                       className="text-primary hover:bg-primary/10 w-full rounded-lg px-3 py-2 text-xs disabled:opacity-50"
                     >
-                      {hubLoading ? "Loading…" : "Load more files"}
+                      {hubLoading ? (
+                        <AverQelLoading size="inline" label="Loading more files" />
+                      ) : (
+                        "Load more files"
+                      )}
                     </button>
                   ) : null}
                 </div>

@@ -26,6 +26,12 @@ from app.integrations.models.mcp_server import (
     MCPRegistryEntry,
     MCPServer,
 )
+from app.integrations.services.composio_service import (
+    ComposioConfigurationError,
+    ComposioService,
+    classify_composio_tool,
+    is_composio_server,
+)
 from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_value,
@@ -78,6 +84,38 @@ _MCP_RISK_RANK: dict[str, int] = {
     "external_message": 3,
 }
 _MCP_RISK_LABELS = set(_MCP_RISK_RANK)
+MAX_TOOL_CATALOG_PAGES = 1_000
+MCP_CATALOG_CHANGED_REASON = "MCP tool catalog changed; refresh the tool list."
+
+
+def mcp_tool_catalog_fingerprint(tools: Any) -> str:
+    """Hash tool definitions independent of catalog ordering and JSON key order."""
+    items = tools if isinstance(tools, list) else []
+    canonical_items = [
+        json.dumps(item, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
+        for item in items
+        if isinstance(item, dict)
+    ]
+    canonical_items.sort()
+    encoded = json.dumps(canonical_items, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def next_mcp_tool_catalog_revision(
+    current_revision: Any,
+    previous_tools: Any,
+    refreshed_tools: Any,
+) -> int:
+    """Advance the catalog revision only when its tool definitions changed."""
+    try:
+        revision = max(0, int(current_revision or 0))
+    except (TypeError, ValueError):
+        revision = 0
+    if mcp_tool_catalog_fingerprint(previous_tools) != mcp_tool_catalog_fingerprint(
+        refreshed_tools
+    ):
+        revision += 1
+    return revision
 
 
 def _safe_remote_detail(value: Any, *, limit: int = 500) -> str:
@@ -381,6 +419,15 @@ class MCPConnectorRuntime:
         api_key = str(bundle.get("api_key") or "").strip()
         api_key_header = str(bundle.get("api_key_header") or "").strip()
         headers = {api_key_header: api_key} if api_key and api_key_header else {}
+        extra_headers = bundle.get("headers")
+        if isinstance(extra_headers, dict):
+            headers.update(
+                {
+                    str(key): str(value)
+                    for key, value in extra_headers.items()
+                    if isinstance(key, str) and isinstance(value, str) and key.strip()
+                }
+            )
         token_expiry_time = cls._token_expiry_time_from_bundle(bundle)
 
         return cls(
@@ -710,13 +757,19 @@ class MCPConnectorRuntime:
         async with self.session() as session:
             items: list[dict[str, Any]] = []
             cursor = None
-            for _ in range(100):
+            seen_cursors: set[str] = set()
+            for _ in range(MAX_TOOL_CATALOG_PAGES):
                 result = await session.list_tools(cursor=cursor)
                 items.extend(MCPConnectorRuntime._dump_json_value(tool) for tool in result.tools)
-                cursor = getattr(result, "nextCursor", None)
-                if not cursor:
-                    break
-            return items
+                next_cursor = getattr(result, "nextCursor", None)
+                if not next_cursor:
+                    return items
+                cursor_key = str(next_cursor)
+                if cursor_key in seen_cursors:
+                    raise MCPRuntimeError("MCP server repeated a tool catalog cursor.")
+                seen_cursors.add(cursor_key)
+                cursor = next_cursor
+            raise MCPRuntimeError("MCP tool catalog exceeded the maximum pagination depth.")
 
     async def list_prompts(self) -> list[dict[str, Any]]:
         async with self.session() as session:
@@ -1001,9 +1054,7 @@ def evaluate_mcp_tool_policy(
     if expected_catalog_revision is not None and int(server.catalog_revision or 0) != int(
         expected_catalog_revision
     ):
-        return MCPToolPolicyDecision(
-            False, reason="MCP tool catalog changed; refresh the tool list."
-        )
+        return MCPToolPolicyDecision(False, reason=MCP_CATALOG_CHANGED_REASON)
 
     policy = db.execute(
         select(MCPConnectionPolicy).where(
@@ -1029,7 +1080,11 @@ def evaluate_mcp_tool_policy(
     if allowed_tools and normalized_name not in allowed_tools:
         return MCPToolPolicyDecision(False, reason="MCP tool is not in the connection allowlist.")
 
-    risk_level = infer_mcp_tool_risk(normalized_name, tool)
+    risk_level = (
+        classify_composio_tool(normalized_name, tool)
+        if is_composio_server(server)
+        else infer_mcp_tool_risk(normalized_name, tool)
+    )
     risk_ceiling = str(policy.risk_ceiling or "read").strip().lower()
     if risk_level not in _MCP_RISK_RANK or _MCP_RISK_RANK[risk_level] > _MCP_RISK_RANK.get(
         risk_ceiling, 0
@@ -1121,6 +1176,22 @@ def build_mcp_server_runtime(
     if not provider_available:
         logger.warning("MCP runtime blocked for server %s: %s", server.id, provider_reason)
         return None
+
+    if is_composio_server(server):
+        try:
+            endpoint_config = ComposioService(db, settings).mcp_endpoint_config(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                server=server,
+            )
+            return build_mcp_runtime(
+                endpoint_config,
+                message_handler=message_handler,
+                notification_handler=notification_handler,
+            )
+        except ComposioConfigurationError:
+            logger.warning("Composio MCP session could not be loaded for server %s", server.id)
+            return None
 
     token_record = db.execute(
         select(MCPOAuthToken).where(

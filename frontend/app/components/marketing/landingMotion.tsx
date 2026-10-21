@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useSyncExternalStore } from "react";
-import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
+import { useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
 
 type LandingSectionMotionOptions = {
   depth?: number;
@@ -52,35 +52,4 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
           transformOrigin: "center top" as const,
         },
   };
-}
-
-export function LandingAmbientEffects() {
-  const reduceMotion = useReducedMotion();
-  const isElectron = useSyncExternalStore(
-    subscribeToElectronRuntime,
-    getElectronRuntimeSnapshot,
-    getServerElectronRuntimeSnapshot,
-  );
-  const { scrollYProgress } = useScroll();
-  const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 90,
-    damping: 32,
-    mass: 0.55,
-    restDelta: 0.001,
-  });
-  const x = useTransform(smoothProgress, [0, 1], [0, -20]);
-  const y = useTransform(smoothProgress, [0, 1], [0, 28]);
-  const scale = useTransform(smoothProgress, [0, 0.5, 1], [1, 1.018, 1]);
-  const motionDisabled = Boolean(reduceMotion || isElectron);
-
-  return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <motion.div
-        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,163,0.04),transparent_35%)] opacity-70"
-        style={motionDisabled ? undefined : { x, y, scale }}
-        animate={motionDisabled ? undefined : { opacity: [0.28, 0.48, 0.28] }}
-        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
-      />
-    </div>
-  );
 }
