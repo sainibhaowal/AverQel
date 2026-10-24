@@ -35,6 +35,26 @@ healthy state.
 5. Authorized users can resume one document or use bulk retry/resume.
 6. Every action remains tenant-scoped and idempotency-aware.
 
+## Worker isolation and resource bounds
+
+The light ingestion worker consumes only `ingestion_light`. PDF, image, and
+Office extraction jobs consume `ingestion_heavy` and run in the separate
+`ingestion-heavy-worker` container. The two workers each default to one task at
+a time. Compose also applies container limits: light work defaults to 1 GiB
+and 1 CPU; heavy work defaults to 4 GiB, 2 CPUs, and 256 processes. Tune these
+limits in the deployment environment file to match host capacity while leaving
+resources for the API, database, Redis, and other services. These are upper
+bounds, not reserved capacity, and shared database or storage pressure still
+needs monitoring.
+
+If a heavy worker reaches its memory limit, the worker may be terminated. A
+checkpointed embedding job remains resumable from its last committed batch;
+work that failed before a durable checkpoint may need an operator retry. Keep
+the existing checkpoint/recovery path available and inspect the worker logs,
+last error, attempt count, and checkpoint before repeating a large extraction.
+Do not increase worker concurrency as the first response to a queue backlog;
+check host headroom and processing latency first.
+
 The recovery UI must show the reason, last checkpoint, remaining work, and a
 clear action. “Processing” must never be shown when the API reports a terminal
 failure or an unavailable recovery checkpoint.
@@ -103,6 +123,9 @@ reasoning.
 - Confirm `alembic current` is at `20261009_0001` or later.
 - Confirm API, worker, ingestion-worker, maintenance-worker, and scheduler
   use the same release and environment configuration.
+- Confirm `ingestion-worker` consumes `ingestion_light` and
+  `ingestion-heavy-worker` consumes `ingestion_heavy`; review both containers'
+  CPU and memory limits before scaling heavy-job concurrency.
 - Check `/api/v1/health/live` and `/api/v1/health/ready`.
 - Inspect failed/dead-lettered jobs and recovery checkpoints.
 - Confirm ClamAV, PostgreSQL, Redis, and object storage are reachable.

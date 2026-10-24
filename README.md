@@ -91,7 +91,7 @@ Browser or Electron client
       +-------------------> MinIO private objects + ClamAV scanning
           |
           +--------------- Celery worker roles:
-                            DeepSpace, ingestion, Library, dataset,
+                            DeepSpace, light/heavy ingestion, Library, dataset,
                             MCP, collection push, maintenance, scheduler
 ```
 
@@ -99,7 +99,7 @@ Browser or Electron client
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `frontend`                                                                | Serves the Next.js application and proxies configured API requests.                                                                                              |
 | `api`                                                                     | Authenticated FastAPI endpoints and request orchestration. Its startup script applies Alembic migrations and seeds integrations plus code-reviewed MCP metadata; Composio's live app catalog is fetched per user. |
-| `worker`, `ingestion-worker`, `library-worker`, `dataset-worker`          | Run DeepSpace, document ingestion, Library, and dataset background work on dedicated queues.                                                                     |
+| `worker`, `ingestion-worker`, `ingestion-heavy-worker`, `library-worker`, `dataset-worker` | Run DeepSpace, separately bounded light/heavy document ingestion, Library, and dataset background work on dedicated queues. |
 | `mcp-worker`, `collection-push-worker`, `maintenance-worker`, `scheduler` | Connector tasks, collection push outbox, maintenance tasks, and scheduled Celery jobs.                                                                           |
 | `postgres`, `redis`, `minio`, `clamav`                                    | Durable relational and vector data, queues and coordination, private object storage, and malware scanning.                                                       |
 | `inference`, `searxng`                                                    | Local model inference and server-side search services used by configured paths.                                                                                  |

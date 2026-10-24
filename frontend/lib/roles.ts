@@ -14,6 +14,10 @@ export function hasNamedRole(roles: string[] | undefined | null, requiredRole: s
   return Boolean(roles?.some((role) => normalizeRole(role) === normalizedRequiredRole));
 }
 
+export function hasDocumentOrganizationAdvancedAccess(roles: string[] | undefined | null): boolean {
+  return hasAdminRole(roles) || hasNamedRole(roles, "editor");
+}
+
 export function hasProviderAccess(roles: string[] | undefined | null): boolean {
   return Boolean(
     roles?.some((role) => {

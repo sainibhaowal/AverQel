@@ -17,6 +17,7 @@ from app.query.services.answer_service import (
     NonRetryableLlmError,
     RetryableLlmError,
 )
+from app.query.services.prompt_templates import PromptTemplates
 from app.query.services.query_classifier import QueryType
 from app.query.services.retrieval_service import RetrievedChunk
 
@@ -53,6 +54,31 @@ def test_synthesize_clamps_confidence_and_snippet_helpers() -> None:
     from app.query.services.snippet_service import SnippetService
 
     assert SnippetService.clean("  a   b ", 10) == "a b"
+
+
+def test_build_llm_messages_preserves_prompt_json_and_context_braces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AnswerService("no-result")
+    context = 'Document data includes {"key": "value"} and {literal} braces.'
+    template = 'Template JSON: {"title":"literal"}\nContext: {context}'
+    monkeypatch.setattr(
+        PromptTemplates,
+        "get_template",
+        classmethod(lambda _cls, _query_type: template),
+    )
+
+    for query_type in QueryType:
+        messages = service._build_llm_messages(
+            query="Summarize this document",
+            context=context,
+            history=None,
+            query_type=query_type,
+        )
+
+        system_prompt = messages[0]["content"]
+        assert context in system_prompt
+        assert 'Template JSON: {"title":"literal"}' in system_prompt
 
 
 def test_llm_generation_enabled_guards(monkeypatch: pytest.MonkeyPatch) -> None:
