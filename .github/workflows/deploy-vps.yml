@@ -206,6 +206,19 @@ jobs:
             docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
             exit 1
           fi
+          if ! docker exec "$FRONTEND_SMOKE_CONTAINER" node -e '
+            fetch("http://127.0.0.1:1030/").then(response => {
+              console.log("Built frontend loopback health check returned HTTP " + response.status);
+              process.exit(response.ok ? 0 : 1);
+            }).catch(error => {
+              console.error("Built frontend loopback health check failed: " + error.name + ": " + error.message);
+              process.exit(1);
+            });
+          '; then
+            echo "::error::Built frontend cannot reach its own loopback listener"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
           cleanup_frontend_smoke
           trap - EXIT
           echo "Image smoke tests passed for frontend $VERSION ($SHA) and LiveKit 1.13.9"

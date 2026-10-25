@@ -30,12 +30,18 @@ volume prune commands and does not remove PostgreSQL, Redis, MinIO, or runtime
 data volumes.
 
 Before SSH deployment, the workflow starts the built frontend image in an
-isolated container and requires its homepage to return HTTP 2xx. If production
+isolated container and requires its homepage to return HTTP 2xx through both
+the published port and the container's loopback listener. If production
 readiness fails, the workflow reports the frontend container state and recent
 health-probe status/error before attempting rollback. It reports rollback
 health separately; a failed rollback means the previous service was not
 restored and requires operator recovery. These checks improve detection and
 diagnosis but do not preserve traffic during the fixed-name container swap.
+
+The frontend explicitly sets `HOSTNAME=0.0.0.0`. Next's standalone server uses
+that variable as its bind address, while Docker otherwise provides the
+container IP. Binding to all interfaces keeps the frontend reachable through
+the gateway and through its `127.0.0.1:1030` health probe.
 
 ## Availability limitation
 

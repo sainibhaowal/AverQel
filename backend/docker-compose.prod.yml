@@ -195,6 +195,10 @@ services:
     init: true
     stop_grace_period: 20s
     environment:
+      # Next standalone uses HOSTNAME as its bind address. Docker otherwise
+      # provides the container IP here, which makes the loopback health probe
+      # fail even when the gateway can reach the frontend.
+      HOSTNAME: 0.0.0.0
       NEXT_PROXY_TARGET: http://api:1000
     depends_on:
       api:
