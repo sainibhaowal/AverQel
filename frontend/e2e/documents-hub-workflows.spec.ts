@@ -242,14 +242,7 @@ test.describe("Documents Hub production workflows", () => {
     await adminPage.goto("/dashboard/documents");
     await adminPage.getByRole("button", { name: "Manage" }).click();
     await expect(adminPage.getByRole("button", { name: "Hide" })).toBeVisible();
-    const webhooksLink = adminPage.getByRole("link", { name: "Open page" }).last();
-    await expect(webhooksLink).toHaveAttribute(
-      "href",
-      "/dashboard/documents/organization/webhooks",
-    );
-    // Verify the destination directly; the development server can leave a
-    // client-side RSC prefetch pending after the full route-heavy browser suite.
-    await adminPage.goto("/dashboard/documents/organization/webhooks");
+    await adminPage.getByRole("link", { name: "Open page" }).last().click();
     await expect(adminPage).toHaveURL(/\/dashboard\/documents\/organization\/webhooks$/, {
       timeout: 60_000,
     });

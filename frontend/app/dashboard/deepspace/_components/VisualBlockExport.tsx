@@ -31,12 +31,26 @@ function fallbackSvg(block: StructuredBlock): string {
   const lines: string[] = [];
   if (block.type === "card") {
     if (block.subtitle) lines.push(block.subtitle);
+    if (block.layout && block.layout !== "standard") lines.push(`Layout: ${block.layout}`);
+    if (block.image_alt) lines.push(`Image: ${block.image_alt}`);
     lines.push(...block.content.split(/\r?\n/));
     for (const metric of block.metrics ?? []) lines.push(`${metric.label}: ${metric.value}`);
+    for (const detail of block.details ?? []) lines.push(`${detail.label}: ${detail.value}`);
     for (const action of block.actions ?? []) lines.push(`Action: ${action.label}`);
+    for (const source of block.sources ?? []) lines.push(`Source: ${source.title} — ${source.url}`);
   } else if (block.type === "gallery") {
     lines.push(`${block.items.length} images`);
     block.items.forEach((item, index) => lines.push(`${index + 1}. ${item.caption || item.alt}`));
+  } else if (block.type === "infographic") {
+    lines.push(`${block.layout.replaceAll("_", " ")} infographic`);
+    for (const item of block.items) {
+      const time = item.date ? `${item.date} · ` : "";
+      const value = item.value != null ? ` — ${item.value}` : "";
+      lines.push(`${time}${item.title}${value}`);
+      if (item.description) lines.push(`  ${item.description}`);
+    }
+    if (block.note) lines.push(block.note);
+    for (const source of block.sources ?? []) lines.push(`Source: ${source.title} — ${source.url}`);
   } else if (block.type === "chart") {
     lines.push(`${block.chart_type} chart${block.equation ? ` · ${block.equation}` : ""}`);
     for (const point of block.series) lines.push(`${point.label}: ${point.value}`);
@@ -165,22 +179,30 @@ export default function VisualBlockExport({
   block,
   children,
   onSaveArtifact,
+  className,
+  contentClassName,
 }: {
   block: StructuredBlock;
   children: ReactNode;
   onSaveArtifact?: (block: StructuredBlock) => void | Promise<void>;
+  className?: string;
+  contentClassName?: string;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [savedRevision, setSavedRevision] = useState<number | null>(null);
+  const revision = "revision" in block && typeof block.revision === "number" ? block.revision : 0;
+  const saved = savedRevision === revision;
   const filename = safeExportName(
     "title" in block ? String(block.title ?? "visual") : block.type,
     "visual",
   );
   const source = async () => {
     if (block.type === "gallery") return gallerySvg(block);
-    if (block.type === "card" || block.type === "table") return fallbackSvg(block);
+    if (block.type === "card" || block.type === "infographic" || block.type === "table") {
+      return fallbackSvg(block);
+    }
     const svg =
       contentRef.current?.querySelector<SVGSVGElement>(
         '[data-visual-export-source="diagram"] svg',
@@ -217,10 +239,10 @@ export default function VisualBlockExport({
     if (!onSaveArtifact) return;
     setError(null);
     setBusy("save");
-    setSaved(false);
+    setSavedRevision(null);
     try {
       await onSaveArtifact(block);
-      setSaved(true);
+      setSavedRevision(revision);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "The visual artifact could not be saved.",
@@ -231,7 +253,7 @@ export default function VisualBlockExport({
   };
   return (
     <section
-      className="my-3 min-w-0"
+      className={`my-3 min-w-0 ${className ?? ""}`}
       data-visual-block-id={block.id}
       data-visual-block-type={block.type}
     >
@@ -279,7 +301,9 @@ export default function VisualBlockExport({
           </button>
         ))}
       </div>
-      <div ref={contentRef}>{children}</div>
+      <div ref={contentRef} className={contentClassName}>
+        {children}
+      </div>
       {error ? (
         <p className="mt-1 text-xs text-amber-500" role="alert">
           {error}

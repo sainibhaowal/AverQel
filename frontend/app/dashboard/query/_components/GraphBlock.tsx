@@ -19,7 +19,9 @@ import type { StreamDiagramBlock } from "../_lib/stream-protocol";
 
 interface GraphBlockProps {
   block: StreamDiagramBlock & { graph: NonNullable<StreamDiagramBlock["graph"]> };
-  onChange?: (block: StreamDiagramBlock) => void | Promise<void>;
+  onChange?: (
+    block: StreamDiagramBlock,
+  ) => void | boolean | StreamDiagramBlock | Promise<void | boolean | StreamDiagramBlock>;
 }
 
 type Graph = NonNullable<StreamDiagramBlock["graph"]> & {
@@ -52,6 +54,7 @@ export default function GraphBlock({ block, onChange }: GraphBlockProps) {
   const [history, setHistory] = useState<Graph[]>([]);
   const [future, setFuture] = useState<Graph[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<{ kind: "move" | "resize"; id: string; dx: number; dy: number } | null>(
@@ -262,17 +265,23 @@ export default function GraphBlock({ block, onChange }: GraphBlockProps) {
   };
 
   const copyGraph = async () => {
+    setImportError(null);
     try {
       await navigator.clipboard.writeText(JSON.stringify(draft, null, 2));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
-    } catch {
+    } catch (caught) {
       setCopied(false);
+      setImportError(
+        caught instanceof Error ? caught.message : "The diagram JSON could not be copied.",
+      );
     }
   };
 
-  const toggleEditing = () => {
+  const toggleEditing = async () => {
+    if (saving) return;
     if (!editing) {
+      setImportError(null);
       const laidOut = computeLayout(draft, SVG_WIDTH, SVG_HEIGHT);
       updateGraph((current) => ({
         ...current,
@@ -289,17 +298,33 @@ export default function GraphBlock({ block, onChange }: GraphBlockProps) {
             : node;
         }),
       }));
+      setEditing(true);
+      return;
     }
-    if (editing) {
-      void onChange?.({
+
+    setImportError(null);
+    setSaving(true);
+    try {
+      const saved = await onChange?.({
         ...block,
         source: "graph_json",
         syntax: JSON.stringify(draft),
         graph: draft,
         revision: ((block as StreamDiagramBlock & { revision?: number }).revision ?? 0) + 1,
       });
+      if (saved === false) {
+        throw new Error(
+          "This diagram changed in another session. Your canvas edits are still open; retry after reviewing the latest version.",
+        );
+      }
+      setEditing(false);
+    } catch (caught) {
+      setImportError(
+        caught instanceof Error ? caught.message : "The diagram changes could not be saved.",
+      );
+    } finally {
+      setSaving(false);
     }
-    setEditing((current) => !current);
   };
 
   return (
@@ -333,10 +358,12 @@ export default function GraphBlock({ block, onChange }: GraphBlockProps) {
           </button>
           <button
             type="button"
-            onClick={toggleEditing}
-            className={`visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] ${editing ? "visual-block-action--active" : ""}`}
+            onClick={() => void toggleEditing()}
+            disabled={saving}
+            aria-busy={saving}
+            className={`visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] disabled:opacity-50 ${editing ? "visual-block-action--active" : ""}`}
           >
-            <Pencil size={13} /> {editing ? "Done" : "Edit canvas"}
+            <Pencil size={13} /> {saving ? "Saving…" : editing ? "Done" : "Edit canvas"}
           </button>
           <button
             type="button"

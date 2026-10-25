@@ -64,6 +64,8 @@ type CodeBlockVariant = "plain" | "mermaid" | "preview";
 const COLLAPSED_BODY_MIN_HEIGHT = 260;
 const COLLAPSED_BODY_MAX_HEIGHT = 560;
 const COLLAPSED_MERMAID_MAX_HEIGHT = 640;
+const MERMAID_PREVIEW_MIN_HEIGHT = 420;
+const MERMAID_PREVIEW_MAX_HEIGHT = 900;
 const MERMAID_EXPORT_ITEM_CLASS =
   "text-foreground rounded-md px-3 py-2 text-left text-xs transition-colors duration-150 enabled:hover:bg-primary/10 enabled:hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -685,15 +687,23 @@ function useMermaidTheme(): "dark" | "default" {
   return theme;
 }
 
-function normalizeRenderedSvg(svg: string, mermaidFamily?: string): string {
+function normalizeRenderedSvg(
+  svg: string,
+  mermaidFamily: string | undefined,
+  isDark: boolean,
+): string {
   if (!svg.trim()) {
     return svg;
   }
 
+  const labelColor = isDark ? "#f8fafc" : "#102a43";
+  const lineColor = isDark ? "#cbd5e1" : "#64748b";
+  const canvasColor = isDark ? "#071a33" : "#f8fafc";
+
   const classDiagramContrastStyle = `
 <style>
 svg {
-  background: transparent !important;
+  background: ${canvasColor} !important;
 }
 .classBox,
 .divider,
@@ -701,7 +711,7 @@ svg {
 .classGroup path,
 .relation line,
 .relation path {
-  stroke: #cbd5e1 !important;
+  stroke: ${lineColor} !important;
 }
 .classTitle,
 .classTitle text,
@@ -714,8 +724,8 @@ svg {
 .label text,
 .label span,
 .edgeLabel text {
-  fill: #f8fafc !important;
-  color: #f8fafc !important;
+  fill: ${labelColor} !important;
+  color: ${labelColor} !important;
   opacity: 1 !important;
 }
 </style>`;
@@ -723,7 +733,7 @@ svg {
   const contrastStyle = `
 <style>
 svg {
-  background: transparent !important;
+  background: ${canvasColor} !important;
 }
 .node rect,
 .node polygon,
@@ -747,7 +757,7 @@ svg {
 .mindmap-node circle,
 .mindmap-node path,
 .mindmap-node polygon {
-  stroke: #cbd5e1 !important;
+  stroke: ${lineColor} !important;
   stroke-width: 1.6px !important;
 }
 .edgePath path,
@@ -768,15 +778,15 @@ svg {
 .mindmap-edge-connector,
 path[marker-end],
 path[marker-start] {
-  stroke: #cbd5e1 !important;
+  stroke: ${lineColor} !important;
   stroke-width: 1.7px !important;
 }
 .marker,
 .marker path,
 .arrowheadPath,
 marker path {
-  fill: #cbd5e1 !important;
-  stroke: #cbd5e1 !important;
+  fill: ${lineColor} !important;
+  stroke: ${lineColor} !important;
 }
 .label text,
 .cluster-label text,
@@ -803,15 +813,15 @@ marker path {
 .mindmap-node tspan,
 .mindmap-label,
 .nodeLabel {
-  fill: #f8fafc !important;
-  color: #f8fafc !important;
+  fill: ${labelColor} !important;
+  color: ${labelColor} !important;
   opacity: 1 !important;
 }
 .edgeLabel text,
 .edgeLabel span,
 .edgeLabel div {
-  fill: #f8fafc !important;
-  color: #f8fafc !important;
+  fill: ${labelColor} !important;
+  color: ${labelColor} !important;
   background: transparent !important;
   opacity: 1 !important;
 }
@@ -848,8 +858,8 @@ marker path {
 .zen-message text,
 .zen-note text,
 .zen-fragment text {
-  fill: #f8fafc !important;
-  color: #f8fafc !important;
+  fill: ${labelColor} !important;
+  color: ${labelColor} !important;
   opacity: 1 !important;
 }
 .divider,
@@ -857,7 +867,7 @@ marker path {
 .classGroup path,
 .relation line,
 .relation path {
-  stroke: #cbd5e1 !important;
+  stroke: ${lineColor} !important;
   stroke-width: 1.6px !important;
 }
 .node rect,
@@ -1961,6 +1971,23 @@ export default function CodeBlock({
     return () => observer.disconnect();
   }, [isExpanded, normalizedMermaidValue, normalizedLanguage]);
 
+  useEffect(() => {
+    if (!isExpanded || normalizedLanguage !== "mermaid") {
+      return;
+    }
+
+    const updatePreviewHeight = () => {
+      const availableHeight = Math.floor(window.innerHeight * 0.72);
+      setBodyHeight(
+        Math.max(MERMAID_PREVIEW_MIN_HEIGHT, Math.min(MERMAID_PREVIEW_MAX_HEIGHT, availableHeight)),
+      );
+    };
+
+    updatePreviewHeight();
+    window.addEventListener("resize", updatePreviewHeight);
+    return () => window.removeEventListener("resize", updatePreviewHeight);
+  }, [isExpanded, normalizedLanguage]);
+
   const clampScale = (nextScale: number) => Math.min(4.5, Math.max(0.25, nextScale));
 
   const getSvgBounds = () => {
@@ -2218,7 +2245,7 @@ export default function CodeBlock({
       cancelled = true;
       window.cancelAnimationFrame(rafId);
     };
-  }, [fitDiagram, isExpanded, renderedSvg, isRendering]);
+  }, [bodyHeight, fitDiagram, isExpanded, renderedSvg, isRendering]);
 
   // FIX: handleCopy now catches clipboard permission errors and shows feedback.
   const handleCopy = async () => {
@@ -2304,22 +2331,22 @@ export default function CodeBlock({
           const isDark = mermaidTheme === "dark";
           const isClassDiagram = mermaidFamily === "classdiagram";
           const mermaidThemeVariables: Record<string, unknown> = {
-            primaryColor: isDark ? "#e0f2fe" : "#d1fae5",
-            primaryTextColor: "#0f172a",
-            primaryBorderColor: isDark ? "#60a5fa" : "#0f766e",
-            secondaryColor: isDark ? "#dcfce7" : "#dcfce7",
-            secondaryTextColor: "#0f172a",
-            tertiaryColor: isDark ? "#fef3c7" : "#fef3c7",
-            tertiaryTextColor: "#0f172a",
-            nodeTextColor: "#0f172a",
-            lineColor: isDark ? "#94a3b8" : "#475569",
-            textColor: isDark ? "#e2e8f0" : "#0f172a",
-            mainBkg: isDark ? "#020817" : "#ffffff",
-            clusterBkg: isDark ? "#0f172a" : "#ecfdf5",
-            clusterBorder: isDark ? "#334155" : "#6ee7b7",
-            edgeLabelBackground: "transparent",
-            actorTextColor: "#f8fafc",
-            actorBorder: isDark ? "#cbd5e1" : "#334155",
+            primaryColor: isDark ? "#12345b" : "#e0f2fe",
+            primaryTextColor: isDark ? "#e6f1ff" : "#102a43",
+            primaryBorderColor: isDark ? "#60a5fa" : "#0284c7",
+            secondaryColor: isDark ? "#102b4a" : "#ecfeff",
+            secondaryTextColor: isDark ? "#e6f1ff" : "#102a43",
+            tertiaryColor: isDark ? "#153550" : "#f0f9ff",
+            tertiaryTextColor: isDark ? "#e6f1ff" : "#102a43",
+            nodeTextColor: isDark ? "#e6f1ff" : "#102a43",
+            lineColor: isDark ? "#8fb9e8" : "#475569",
+            textColor: isDark ? "#e6f1ff" : "#102a43",
+            mainBkg: isDark ? "#071a33" : "#f8fafc",
+            clusterBkg: isDark ? "#0b2444" : "#e0f2fe",
+            clusterBorder: isDark ? "#3b82f6" : "#7dd3fc",
+            edgeLabelBackground: isDark ? "#071a33" : "#f8fafc",
+            actorTextColor: isDark ? "#e6f1ff" : "#102a43",
+            actorBorder: isDark ? "#8fb9e8" : "#334155",
           };
 
           if (!isClassDiagram) {
@@ -2383,7 +2410,7 @@ export default function CodeBlock({
           }
 
           if (!cancelled && mountedRef.current) {
-            setRenderedSvg(normalizeRenderedSvg(svg, mermaidFamily));
+            setRenderedSvg(normalizeRenderedSvg(svg, mermaidFamily, isDark));
             setRenderError(null);
             setIsRendering(false);
           }
@@ -2454,8 +2481,8 @@ export default function CodeBlock({
           </span>
           {title ? (
             <>
-              <div className="h-3 w-[1px] bg-white/10" />
-              <h4 className="truncate text-[13px] font-semibold tracking-tight text-white/90">
+              <div className="bg-border h-3 w-[1px]" />
+              <h4 className="text-foreground truncate text-[13px] font-semibold tracking-tight">
                 {title}
               </h4>
             </>
@@ -2469,14 +2496,22 @@ export default function CodeBlock({
           }`}
         >
           {supportsRichPreview && isExpanded && !answerStreaming && renderedSvg && !isRendering ? (
-            <div className="flex items-center gap-1 rounded-full border border-white/10 bg-slate-900/90 p-0.5">
+            <div
+              className={`flex items-center gap-1 rounded-full border p-0.5 ${
+                mermaidTheme === "dark"
+                  ? "border-slate-700 bg-[#0b2444]"
+                  : "border-slate-300 bg-white/95 shadow-sm"
+              }`}
+            >
               <button
                 type="button"
                 onClick={() => setPanEnabled((current) => !current)}
                 className={`rounded-full px-2 py-1.5 transition ${
                   panEnabled
                     ? "bg-primary/25 text-primary"
-                    : "text-white/70 hover:bg-white/5 hover:text-white"
+                    : mermaidTheme === "dark"
+                      ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
                 }`}
                 title="Toggle pan"
               >
@@ -2485,7 +2520,11 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => zoomAtViewportCenter(1.2)}
-                className="rounded-full px-2 py-1.5 text-white/70 transition hover:bg-white/5 hover:text-white"
+                className={`rounded-full px-2 py-1.5 transition ${
+                  mermaidTheme === "dark"
+                    ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                }`}
                 title="Zoom in"
               >
                 <ZoomIn size={14} />
@@ -2493,7 +2532,11 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => zoomAtViewportCenter(1 / 1.2)}
-                className="rounded-full px-2 py-1.5 text-white/70 transition hover:bg-white/5 hover:text-white"
+                className={`rounded-full px-2 py-1.5 transition ${
+                  mermaidTheme === "dark"
+                    ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                }`}
                 title="Zoom out"
               >
                 <ZoomOut size={14} />
@@ -2501,7 +2544,11 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => fitDiagram()}
-                className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-white/70 transition hover:bg-white/5 hover:text-white"
+                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                  mermaidTheme === "dark"
+                    ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                }`}
                 title="Fit diagram"
               >
                 Fit
@@ -2509,7 +2556,11 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => centerDiagram(scaleRef.current)}
-                className="rounded-full px-2 py-1.5 text-white/70 transition hover:bg-white/5 hover:text-white"
+                className={`rounded-full px-2 py-1.5 transition ${
+                  mermaidTheme === "dark"
+                    ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                }`}
                 title="Center diagram"
               >
                 <LocateFixed size={14} />
@@ -2631,9 +2682,13 @@ export default function CodeBlock({
           <div
             ref={viewportRef}
             data-testid="diagram-stage"
-            className={`relative overflow-hidden bg-slate-950/70 ${
-              panEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default"
-            }`}
+            className={`relative overflow-hidden ${
+              normalizedLanguage === "mermaid"
+                ? mermaidTheme === "dark"
+                  ? "bg-[#071a33]"
+                  : "bg-slate-50"
+                : "bg-slate-950/70"
+            } ${panEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
             style={{ height: bodyHeight }}
             onPointerDown={(event) => {
               if (!panEnabled) {

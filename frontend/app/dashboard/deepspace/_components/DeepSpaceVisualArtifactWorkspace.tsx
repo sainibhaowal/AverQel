@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import ChartBlock from "../../query/_components/ChartBlock";
 import DiagramBlock from "../../query/_components/DiagramBlock";
 import GalleryBlock from "../../query/_components/GalleryBlock";
+import InfographicBlock from "../../query/_components/InfographicBlock";
 import type { StructuredBlock } from "../_lib/deepspace-stream";
 
 import { RichInfoCard } from "./DeepSpaceRichContent";
@@ -69,11 +70,42 @@ export default function DeepSpaceVisualArtifactWorkspace({
   onBlockChange: (block: StructuredBlock) => void | Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const pendingBlockRef = useRef<StructuredBlock | null>(null);
+  const syncingBlockRef = useRef(false);
+  const onBlockChangeRef = useRef(onBlockChange);
+  useEffect(() => {
+    onBlockChangeRef.current = onBlockChange;
+  }, [onBlockChange]);
+
   const document = parseVisualDocument(value);
   if (!document) return null;
 
+  const flushBlockChanges = async () => {
+    if (syncingBlockRef.current) return;
+    syncingBlockRef.current = true;
+    try {
+      while (pendingBlockRef.current) {
+        const pending = pendingBlockRef.current;
+        pendingBlockRef.current = null;
+        try {
+          await onBlockChangeRef.current(pending);
+          setError(null);
+        } catch (caught) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "The visual artifact could not be synchronized.",
+          );
+        }
+      }
+    } finally {
+      syncingBlockRef.current = false;
+      if (pendingBlockRef.current) void flushBlockChanges();
+    }
+  };
+
   const withError = (content: ReactNode) => (
-    <div>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {content}
       {error ? (
         <p className="mt-2 text-xs text-rose-400" role="alert">
@@ -93,14 +125,11 @@ export default function DeepSpaceVisualArtifactWorkspace({
       history: [
         ...(Array.isArray(document.history) ? document.history : []),
         { revision, source: "artifact-editor", at: new Date().toISOString() },
-      ],
+      ].slice(-100),
     };
     onChange(JSON.stringify(next, null, 2));
-    void Promise.resolve(onBlockChange(next.data)).catch((caught: unknown) => {
-      setError(
-        caught instanceof Error ? caught.message : "The visual artifact could not be synchronized.",
-      );
-    });
+    pendingBlockRef.current = next.data;
+    void flushBlockChanges();
   };
 
   switch (document.data.type) {
@@ -119,11 +148,22 @@ export default function DeepSpaceVisualArtifactWorkspace({
           <RichInfoCard block={document.data} onChange={update} />
         </VisualBlockExport>,
       );
-    case "diagram":
+    case "infographic":
       return withError(
         <VisualBlockExport block={document.data}>
+          <InfographicBlock block={document.data} onChange={update} />
+        </VisualBlockExport>,
+      );
+    case "diagram":
+      return withError(
+        <VisualBlockExport
+          block={document.data}
+          className="flex min-h-0 flex-1 flex-col"
+          contentClassName="min-h-0 flex-1"
+        >
           <DiagramBlock
             block={document.data as never}
+            fillHeight
             onChange={(block) => update(block as StructuredBlock)}
           />
         </VisualBlockExport>,

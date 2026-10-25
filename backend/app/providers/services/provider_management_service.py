@@ -305,6 +305,18 @@ SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
         "supports_account_linking": False,
         "is_local": False,
     },
+    "larprouter": {
+        "display_name": "LarpRouter",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
 }
 
 ALLOWED_SECRET_TYPES_BY_AUTH_MODE: dict[str, frozenset[str]] = {

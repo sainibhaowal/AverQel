@@ -9,17 +9,23 @@ import {
   shouldRefreshModelMetadata,
 } from "../app/dashboard/deepspace/_lib/reasoning-options";
 
-function openReasoningMenu(model: {
-  supportedReasoningEfforts?: string[];
-  reasoningCapabilitiesKnown?: boolean;
-  reasoningToggleOnly?: boolean;
-  reasoningAlwaysOn?: boolean;
-}) {
+function openReasoningMenu(
+  model: {
+    supportedReasoningEfforts?: string[];
+    reasoningCapabilitiesKnown?: boolean;
+    reasoningToggleOnly?: boolean;
+    reasoningAlwaysOn?: boolean;
+    defaultReasoningEffort?: string;
+    reasoningEffortValues?: Record<string, string>;
+  },
+  reasoningEffort: string | null = null,
+) {
   render(
     <DeepSpaceComposer
       query=""
       isStreaming={false}
       modelName="custom-model"
+      reasoningEffort={reasoningEffort}
       availableModels={[
         {
           providerId: "custom-provider",
@@ -134,6 +140,54 @@ describe("custom provider reasoning options", () => {
     expect(screen.getByRole("button", { name: "Low" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "High" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Extreme High" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Medium" })).not.toBeInTheDocument();
+  });
+
+  it("uses verified LarpRouter defaults and labels the native max effort", () => {
+    const deepseek = {
+      reasoningCapabilitiesKnown: true,
+      supportedReasoningEfforts: ["low", "high", "extreme_high"],
+      defaultReasoningEffort: "high",
+      reasoningEffortValues: { low: "low", high: "high", extreme_high: "max" },
+    };
+    const glm = {
+      ...deepseek,
+      reasoningAlwaysOn: true,
+      defaultReasoningEffort: "extreme_high",
+    };
+
+    expect(normalizeReasoningEffortForModel("medium", deepseek)).toBe("high");
+    expect(normalizeReasoningEffortForModel("medium", glm)).toBe("extreme_high");
+    expect(formatReasoningEffortLabel("extreme_high", "max")).toBe("Max");
+
+    openReasoningMenu(glm, "extreme_high");
+
+    expect(screen.getByRole("button", { name: "Choose reasoning effort" })).toHaveTextContent(
+      "Think Max",
+    );
+    expect(screen.getByRole("button", { name: "Low" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "High" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Max" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Off" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Medium" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Very High" })).not.toBeInTheDocument();
+  });
+
+  it("shows Off only for the LarpRouter DeepSeek route that supports it", () => {
+    const deepseek = {
+      reasoningCapabilitiesKnown: true,
+      supportedReasoningEfforts: ["low", "high", "extreme_high"],
+      defaultReasoningEffort: "high",
+      reasoningEffortValues: { low: "low", high: "high", extreme_high: "max" },
+    };
+
+    openReasoningMenu(deepseek, "high");
+
+    expect(screen.getByRole("button", { name: "Choose reasoning effort" })).toHaveTextContent(
+      "Think High",
+    );
+    expect(screen.getByRole("button", { name: "Off" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Max" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Medium" })).not.toBeInTheDocument();
   });
 

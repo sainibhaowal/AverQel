@@ -17,8 +17,22 @@ const voiceRoomMock = vi.hoisted(() => {
   const localParticipant = {
     setMicrophoneEnabled: vi.fn(async () => undefined),
     publishData: vi.fn(async (data: Uint8Array, options?: Record<string, unknown>) => {
-      void data;
       void options;
+      const message = JSON.parse(new TextDecoder().decode(data));
+      if (message.type === "set-mode" && typeof message.request_id === "string") {
+        queueMicrotask(() => {
+          handlers.get("dataReceived")?.(
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "voice-mode-result",
+                stt: message.stt,
+                tts: message.tts,
+                request_id: message.request_id,
+              }),
+            ),
+          );
+        });
+      }
     }),
   };
   return {
@@ -83,6 +97,7 @@ vi.mock("livekit-client", () => ({
   Room: vi.fn(() => voiceRoomMock),
   RoomEvent: {
     DataReceived: "dataReceived",
+    ActiveSpeakersChanged: "activeSpeakersChanged",
     TrackSubscribed: "trackSubscribed",
     TrackUnsubscribed: "trackUnsubscribed",
     ParticipantConnected: "participantConnected",
@@ -126,14 +141,24 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     onSteerQueuedTurn,
     sttActive = false,
     ttsActive = false,
+    voiceState = "idle",
+    voiceActivityLevel = 0,
     onSttToggle,
     onTtsToggle,
+    voiceLabel,
   }: {
     query: string;
     isStreaming?: boolean;
     stopping?: boolean;
     onQueryChange: (value: string) => void;
-    onSubmit: () => void;
+    onSubmit: (
+      attachments?: Array<{
+        id: string;
+        name: string;
+        content_type: string;
+        size_bytes: number;
+      }>,
+    ) => void;
     onStop: () => void;
     showActiveResponseControls?: boolean;
     queuedTurns?: Array<{ clientRequestId: string; prompt: string; status?: string }>;
@@ -147,8 +172,11 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     onSteerQueuedTurn?: (requestId: string) => void;
     sttActive?: boolean;
     ttsActive?: boolean;
+    voiceState?: "idle" | "listening" | "thinking" | "speaking";
+    voiceActivityLevel?: number;
     onSttToggle?: () => void;
     onTtsToggle?: () => void;
+    voiceLabel?: string;
   }) => (
     <div>
       <button type="button" onClick={() => onQueryChange("hi")}>
@@ -159,8 +187,23 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
       />
-      <button type="button" onClick={onSubmit}>
+      <button type="button" onClick={() => onSubmit()}>
         Submit Query
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSubmit([
+            {
+              id: "library-image-2",
+              name: "image (2).png",
+              content_type: "image/png",
+              size_bytes: 2048,
+            },
+          ])
+        }
+      >
+        Submit Query with image
       </button>
       <button type="button" aria-pressed={sttActive} onClick={onSttToggle}>
         Dictate to composer
@@ -168,6 +211,19 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
       <button type="button" aria-pressed={ttsActive} onClick={onTtsToggle}>
         Voice conversation
       </button>
+      {voiceState !== "idle" ? (
+        <div
+          role="status"
+          aria-label={`Voice mode is ${voiceState === "thinking" ? "working" : voiceState}`}
+          data-voice-state={voiceState}
+        >
+          <span
+            data-testid="deepspace-voice-waveform"
+            data-voice-level={voiceActivityLevel.toFixed(2)}
+          />
+        </div>
+      ) : null}
+      {voiceLabel ? <span>{voiceLabel}</span> : null}
       {isStreaming ? (
         <button
           type="button"
@@ -221,6 +277,10 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
     messages,
     queuedAssistantId,
     onRegenerate,
+    onStartEdit,
+    onCancelEdit,
+    onUpdateDraft,
+    onSaveEdit,
     onActivateVersion,
     onSubmitUserQuestion,
   }: {
@@ -232,14 +292,61 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
       activeVersionIndex?: number;
       versionCount?: number;
       versions?: Array<{ id: string; version_index: number }>;
+      isEditing?: boolean;
+      draftContent?: string | null;
+      attachments?: Array<{ id: string; name: string }>;
     }>;
     queuedAssistantId?: string | null;
     onRegenerate?: (messageId: string) => void;
+    onStartEdit?: (messageId: string) => void;
+    onCancelEdit?: (messageId: string) => void;
+    onUpdateDraft?: (messageId: string, value: string) => void;
+    onSaveEdit?: (messageId: string, value: string) => void;
     onActivateVersion?: (messageId: string, versionId: string) => void;
     onSubmitUserQuestion?: (answer: string) => Promise<void>;
   }) => (
     <div data-testid="deepspace-thread" data-queued-assistant={queuedAssistantId ?? ""}>
       {messages.map((message) => `${message.role}:${message.content}`).join("|")}
+      {messages.flatMap((message) =>
+        (message.attachments ?? []).map((attachment) => (
+          <span key={`${message.id}-${attachment.id}`}>{attachment.name}</span>
+        )),
+      )}
+      {(() => {
+        const latestEditablePromptId = messages.findLast(
+          (message, index) => message.role === "user" && messages[index + 1]?.role === "assistant",
+        )?.id;
+        return messages
+          .filter((message) => message.id === latestEditablePromptId)
+          .map((message) =>
+            message.isEditing ? (
+              <span key={message.id}>
+                <textarea
+                  aria-label="Edit prompt draft"
+                  value={message.draftContent ?? message.content}
+                  onChange={(event) => onUpdateDraft?.(message.id, event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => onSaveEdit?.(message.id, message.draftContent ?? message.content)}
+                >
+                  Save edited prompt
+                </button>
+                <button type="button" onClick={() => onCancelEdit?.(message.id)}>
+                  Cancel prompt edit
+                </button>
+              </span>
+            ) : (
+              <button key={message.id} type="button" onClick={() => onStartEdit?.(message.id)}>
+                Edit prompt
+              </button>
+            ),
+          );
+      })()}
+      {messages
+        .map((message) => message.error?.message ?? "")
+        .filter(Boolean)
+        .join("|")}
       {messages
         .map((message) => message.error?.message ?? "")
         .filter(Boolean)
@@ -386,18 +493,66 @@ describe("DeepSpaceChatClient history sync", () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(completionPulseTimeout);
   });
 
+  it("shows an attached image on the optimistic user message before the response finishes", async () => {
+    let finishStream: (() => void) | undefined;
+    startMock.mockImplementationOnce(
+      async (options: {
+        onEvent: (event: Record<string, unknown>) => void;
+        onFinally?: () => void;
+      }) => {
+        await new Promise<void>((resolve) => {
+          finishStream = () => {
+            options.onFinally?.();
+            resolve();
+          };
+        });
+      },
+    );
+
+    try {
+      renderChat({ activeConversationId: "conv-1" });
+      await waitForSelectedConversationReady();
+      fireEvent.click(screen.getByRole("button", { name: "Submit Query with image" }));
+
+      await waitFor(() => expect(startMock).toHaveBeenCalledOnce());
+      expect(await screen.findByText("image (2).png")).toBeInTheDocument();
+      expect(screen.getByTestId("deepspace-thread")).toHaveTextContent(
+        "user:Attached Library file(s)",
+      );
+      expect(
+        (startMock.mock.calls[0]?.[1] as { body: { attachment_file_ids: string[] } }).body
+          .attachment_file_ids,
+      ).toEqual(["library-image-2"]);
+    } finally {
+      finishStream?.();
+    }
+  });
+
   it("keeps dictation in the composer without submitting it", async () => {
     renderChat({ activeConversationId: "conv-1" });
     await waitForSelectedConversationReady();
 
     fireEvent.click(screen.getByRole("button", { name: "Dictate to composer" }));
     await waitFor(() => expect(voiceRoomMock.localParticipant.publishData).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Dictate to composer" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
 
     const dataHandler = voiceRoomMock.handlers.get("dataReceived");
     expect(dataHandler).toBeDefined();
     act(() => {
       dataHandler?.(
-        new TextEncoder().encode(JSON.stringify({ type: "dictation-result", text: "Search this" })),
+        new TextEncoder().encode(
+          JSON.stringify({ state: "listening", text: "...", segment_id: 1 }),
+        ),
+      );
+      dataHandler?.(
+        new TextEncoder().encode(
+          JSON.stringify({ type: "dictation-result", text: "Search this", segment_id: 1 }),
+        ),
       );
     });
 
@@ -405,6 +560,154 @@ describe("DeepSpaceChatClient history sync", () => {
       expect(screen.getByLabelText("DeepSpace composer draft")).toHaveValue("Search this");
     });
     expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the voice connection error visible after controls reset", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/voice/token?")) {
+        return { ok: false, status: 503, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ messages: [] }) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Voice server unreachable.")).toBeVisible();
+    });
+    expect(screen.getByRole("button", { name: "Voice conversation" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("does not mark dictation active when browser microphone setup fails", async () => {
+    voiceRoomMock.localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(
+      new DOMException("Microphone permission denied", "NotAllowedError"),
+    );
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Dictate to composer" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Microphone unavailable. Check browser permission and input device."),
+      ).toBeVisible();
+    });
+    expect(screen.getByRole("button", { name: "Dictate to composer" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.queryByTestId("dictation-elapsed")).not.toBeInTheDocument();
+  });
+
+  it("cancels an in-flight room start when voice is turned off", async () => {
+    let resolveTokenRequest!: (response: {
+      ok: boolean;
+      json: () => Promise<{ token: string }>;
+    }) => void;
+    const tokenRequest = new Promise<{
+      ok: boolean;
+      json: () => Promise<{ token: string }>;
+    }>((resolve) => {
+      resolveTokenRequest = resolve;
+    });
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/voice/token?")) return tokenRequest;
+      return { ok: true, json: async () => ({ messages: [] }) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith(
+        expect.stringContaining("/voice/token?"),
+        expect.objectContaining({ signal: expect.anything() }),
+      );
+    });
+    const tokenRequestCall = fetchWithAuthMock.mock.calls.find(([url]) =>
+      String(url).startsWith("/voice/token?"),
+    );
+    const tokenRequestSignal = (tokenRequestCall?.[1] as RequestInit | undefined)?.signal;
+
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    expect(tokenRequestSignal?.aborted).toBe(true);
+    expect(voiceRoomMock.disconnect).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Voice conversation" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await act(async () => {
+      resolveTokenRequest({ ok: true, json: async () => ({ token: "stale-token" }) });
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(voiceRoomMock.connect).not.toHaveBeenCalled();
+    expect(voiceRoomMock.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+    expect(voiceRoomMock.localParticipant.publishData).not.toHaveBeenCalled();
+  });
+
+  it("ignores LiveKit data arriving after its room has been disconnected", async () => {
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    await waitFor(() => expect(voiceRoomMock.localParticipant.publishData).toHaveBeenCalled());
+
+    const dataHandler = voiceRoomMock.handlers.get("dataReceived");
+    expect(dataHandler).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    act(() => {
+      dataHandler?.(
+        new TextEncoder().encode(JSON.stringify({ type: "user-command", text: "stale request" })),
+      );
+    });
+
+    expect(startMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Voice conversation" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("reuses a pending room when voice mode changes during connection", async () => {
+    let resolveTokenRequest!: (response: {
+      ok: boolean;
+      json: () => Promise<{ token: string }>;
+    }) => void;
+    const tokenRequest = new Promise<{
+      ok: boolean;
+      json: () => Promise<{ token: string }>;
+    }>((resolve) => {
+      resolveTokenRequest = resolve;
+    });
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/voice/token?")) return tokenRequest;
+      return { ok: true, json: async () => ({ messages: [] }) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    await waitFor(() => expect(voiceRoomMock.startAudio).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Dictate to composer" }));
+
+    await act(async () => {
+      resolveTokenRequest({ ok: true, json: async () => ({ token: "voice-token" }) });
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(voiceRoomMock.localParticipant.publishData).toHaveBeenCalled());
+    expect(voiceRoomMock.connect).toHaveBeenCalledTimes(1);
+    expect(voiceRoomMock.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1);
+    const modeMessages = voiceRoomMock.localParticipant.publishData.mock.calls
+      .map(([bytes]) => JSON.parse(new TextDecoder().decode(bytes)))
+      .filter((message) => message.type === "set-mode");
+    expect(modeMessages).toEqual([expect.objectContaining({ stt: true, tts: false })]);
   });
 
   it("submits voice turns to the selected DeepSpace chat and speaks only new visible output", async () => {
@@ -452,6 +755,10 @@ describe("DeepSpaceChatClient history sync", () => {
     });
 
     await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status", { name: "Voice mode is working" })).toHaveAttribute(
+      "data-voice-state",
+      "thinking",
+    );
     const request = startMock.mock.calls[0]?.[1] as {
       body: { message: string; conversation_id: string };
     };
@@ -460,6 +767,23 @@ describe("DeepSpaceChatClient history sync", () => {
       conversation_id: "conv-1",
     });
     expect(screen.getByLabelText("DeepSpace composer draft")).toHaveValue("hi");
+
+    const activeSpeakersHandler = voiceRoomMock.handlers.get("activeSpeakersChanged");
+    expect(activeSpeakersHandler).toBeDefined();
+    act(() => {
+      dataHandler?.(new TextEncoder().encode(JSON.stringify({ state: "speaking" })));
+      activeSpeakersHandler?.([{ identity: "agent-deepspace", audioLevel: 0.74 }]);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "Voice mode is speaking" })).toHaveAttribute(
+        "data-voice-state",
+        "speaking",
+      );
+    });
+    expect(screen.getByTestId("deepspace-voice-waveform")).toHaveAttribute(
+      "data-voice-level",
+      "0.74",
+    );
 
     const speechMessages = voiceRoomMock.localParticipant.publishData.mock.calls
       .map(([bytes]) => JSON.parse(new TextDecoder().decode(bytes)))
@@ -1628,5 +1952,89 @@ describe("DeepSpaceChatClient history sync", () => {
       ),
     ).toBe(true);
     expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("can edit and resubmit the same saved prompt repeatedly", async () => {
+    let savedPrompt = "Original prompt";
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "user-1",
+                role: "user",
+                content: savedPrompt,
+                created_at: new Date().toISOString(),
+                metadata_json: {},
+              },
+              {
+                id: "assistant-1",
+                role: "assistant",
+                content: `Saved answer for ${savedPrompt}`,
+                created_at: new Date().toISOString(),
+                metadata_json: {},
+              },
+            ],
+          }),
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/queue") {
+        return { ok: true, json: async () => [] };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    startMock.mockImplementation(
+      async (
+        options: {
+          onEvent: (event: Record<string, unknown>) => void;
+          onFinally?: () => void;
+        },
+        args: { endpoint: string; body: Record<string, unknown> },
+      ) => {
+        savedPrompt = String(args.body.content);
+        options.onEvent({
+          event: "start",
+          data: {
+            message_id: "assistant-1",
+            conversation_id: "conv-1",
+            started_at: new Date().toISOString(),
+            regenerating: true,
+          },
+        });
+        options.onEvent({ event: "delta", data: { text: `Fresh answer for ${savedPrompt}` } });
+        options.onEvent({ event: "done", data: { status: "completed" } });
+        options.onFinally?.();
+      },
+    );
+
+    renderChat({ activeConversationId: "conv-1" });
+    const thread = await screen.findByTestId("deepspace-thread");
+    await waitFor(() => expect(thread).toHaveTextContent("user:Original prompt"));
+
+    for (const [index, revision] of ["First revision", "Second revision"].entries()) {
+      fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+      const editor = await screen.findByRole("textbox", { name: "Edit prompt draft" });
+      fireEvent.change(editor, { target: { value: revision } });
+      fireEvent.click(screen.getByRole("button", { name: "Save edited prompt" }));
+
+      await waitFor(() => expect(startMock).toHaveBeenCalledTimes(index + 1));
+      expect(startMock.mock.calls[index]?.[1]).toMatchObject({
+        endpoint: "/deepspace/chats/conv-1/messages/user-1/edit-and-regenerate/stream",
+        body: expect.objectContaining({
+          content: revision,
+          thinking_enabled: false,
+        }),
+      });
+      await waitFor(() => expect(thread).toHaveTextContent(`user:${revision}`));
+    }
+
+    const requestIds = startMock.mock.calls.map(
+      ([, args]) => (args as { body: Record<string, unknown> }).body.client_request_id,
+    );
+    expect(requestIds[0]).toEqual(expect.any(String));
+    expect(requestIds[1]).toEqual(expect.any(String));
+    expect(requestIds[0]).not.toBe(requestIds[1]);
   });
 });

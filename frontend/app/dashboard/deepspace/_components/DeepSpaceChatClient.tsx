@@ -55,6 +55,7 @@ import type { ReasoningEffort } from "../_lib/reasoning-options";
 import type {
   DeepSpaceHistoryMessage,
   DeepSpaceHistoryVersion,
+  DeepSpaceMessageAttachment,
   DeepSpaceStreamEvent,
   StructuredBlock,
 } from "../_lib/deepspace-stream";
@@ -68,6 +69,12 @@ import DeepSpaceScrollTracker from "./DeepSpaceScrollTracker";
 import DeepSpaceOperationalSummary, {
   type OperationalSummary,
 } from "./DeepSpaceOperationalSummary";
+import type { DeepSpaceVoiceState } from "./DeepSpaceVoicePresence";
+import { buildDictationPartialDraft, commitDictationTranscript } from "../_lib/voice-dictation";
+
+function isDeepSpaceVoiceState(value: unknown): value is DeepSpaceVoiceState {
+  return value === "idle" || value === "listening" || value === "thinking" || value === "speaking";
+}
 
 function customProviderReasoningOptions(provider: ProviderConfig | undefined) {
   if (provider?.provider_type !== "custom") {
@@ -338,6 +345,9 @@ export default function DeepSpaceChatClient({
   const [query, setQuery] = useState("");
   const [queuedTurns, setQueuedTurns] = useState<QueuedTurn[]>([]);
   const [editingQueuedTurn, setEditingQueuedTurn] = useState<EditingQueuedTurn | null>(null);
+  const [promptEditSubmittingMessageId, setPromptEditSubmittingMessageId] = useState<string | null>(
+    null,
+  );
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [isStopping, setIsStopping] = useState(false);
   const [queueAction, setQueueAction] = useState<string | null>(null);
@@ -408,6 +418,8 @@ export default function DeepSpaceChatClient({
       reasoningCapabilitiesKnown?: boolean;
       reasoningToggleOnly?: boolean;
       reasoningAlwaysOn?: boolean;
+      defaultReasoningEffort?: string;
+      reasoningEffortValues?: Record<string, string>;
     }>
   >([]);
   const [selectedProviderOverride, setSelectedProviderOverride] = useState<string | null>(null);
@@ -444,6 +456,16 @@ export default function DeepSpaceChatClient({
       const efforts = Array.isArray(capabilities.supported_reasoning_efforts)
         ? capabilities.supported_reasoning_efforts.filter(isValidReasoningEffort)
         : [];
+      const rawEffortValues = capabilities.reasoning_effort_values;
+      const effortValues =
+        rawEffortValues && typeof rawEffortValues === "object" && !Array.isArray(rawEffortValues)
+          ? Object.fromEntries(
+              Object.entries(rawEffortValues).filter(
+                ([effort, nativeValue]) =>
+                  isValidReasoningEffort(effort) && isValidReasoningEffort(nativeValue),
+              ),
+            )
+          : undefined;
       return {
         providerId,
         providerName,
@@ -472,6 +494,10 @@ export default function DeepSpaceChatClient({
           capabilities.supports_thinking_toggle !== true &&
           (!Array.isArray(capabilities.request_controls_off) ||
             capabilities.request_controls_off.length === 0),
+        defaultReasoningEffort: isValidReasoningEffort(capabilities.default_reasoning_effort)
+          ? capabilities.default_reasoning_effort
+          : undefined,
+        reasoningEffortValues: effortValues,
       };
     },
     [],
@@ -479,13 +505,41 @@ export default function DeepSpaceChatClient({
 
   const [sttActive, setSttActive] = useState(false);
   const [ttsActive, setTtsActive] = useState(false);
-  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">(
-    "idle",
-  );
+  const [dictationSessionOpen, setDictationSessionOpen] = useState(false);
+  const [dictationControlPending, setDictationControlPending] = useState(false);
+  const [dictationElapsedSeconds, setDictationElapsedSeconds] = useState(0);
+  const [voiceState, setVoiceState] = useState<DeepSpaceVoiceState>("idle");
+  const [voiceActivityLevel, setVoiceActivityLevel] = useState(0);
   const [voiceLabel, setVoiceLabel] = useState<string>("");
   const roomRef = useRef<any>(null);
+  const voiceSessionRequestVersionRef = useRef(0);
+  const voiceRoomVersionRef = useRef(0);
+  const voiceRoomConnectPromiseRef = useRef<Promise<boolean> | null>(null);
+  const voiceTokenRequestControllerRef = useRef<AbortController | null>(null);
   const voiceConversationActiveRef = useRef(false);
   const voiceTurnActiveRef = useRef(false);
+  const voiceStateRef = useRef<DeepSpaceVoiceState>("idle");
+  const dictationSessionOpenRef = useRef(false);
+  const dictationBaseTextRef = useRef("");
+  const dictationSegmentRef = useRef<string | null>(null);
+  const dictationElapsedBaseRef = useRef(0);
+  const dictationStartedAtRef = useRef<number | null>(null);
+  const finishDictationInFlightRef = useRef(false);
+  const dictationControlPendingRef = useRef(false);
+  const dictationControlWaitersRef = useRef(
+    new Map<string, { resolve: (acknowledged: boolean) => void; timeout: number }>(),
+  );
+  const voiceModeWaitersRef = useRef(
+    new Map<
+      string,
+      {
+        resolve: (acknowledged: boolean) => void;
+        timeout: number;
+        stt: boolean;
+        tts: boolean;
+      }
+    >(),
+  );
   const voiceSpeechAccumulatorRef = useRef(createVoiceSpeechAccumulator());
   const lastVoiceSpeechAtRef = useRef(0);
   const queryRef = useRef(query);
@@ -493,6 +547,8 @@ export default function DeepSpaceChatClient({
   const typingQueueRef = useRef<string[]>([]);
   const typingIntervalRef = useRef<any>(null);
   const messagesRef = useRef(state.messages);
+  const visualSaveQueuesRef = useRef(new Map<string, Promise<StructuredBlock | false>>());
+  const visualRevisionRef = useRef(new Map<string, number>());
   const currentContentRef = useRef(currentContent);
   const activeConversationIdRef = useRef(activeConversationId);
   const notePreviewCallbackRef = useRef(onAgentNotePreview);
@@ -508,6 +564,15 @@ export default function DeepSpaceChatClient({
   const historyRequestVersionRef = useRef(0);
   const queueRequestVersionRef = useRef(0);
   const pendingHistorySyncRef = useRef(false);
+  const promptEditSubmissionInFlightRef = useRef(false);
+
+  const setVoicePresentationState = useCallback((nextState: DeepSpaceVoiceState) => {
+    voiceStateRef.current = nextState;
+    setVoiceState(nextState);
+    if (nextState === "idle" || nextState === "thinking") {
+      setVoiceActivityLevel(0);
+    }
+  }, []);
   const queueEditDraftRef = useRef<string | null>(null);
   const editingQueuedTurnRef = useRef<EditingQueuedTurn | null>(null);
   const queueEditSaveInProgressRef = useRef(false);
@@ -715,58 +780,140 @@ export default function DeepSpaceChatClient({
   const handleVisualBlockChange = useCallback(
     async (messageId: string, block: StructuredBlock) => {
       const conversationId = activeConversationId ?? state.currentConversationId;
-      if (!conversationId) return;
-      const expectedRevision =
-        typeof (block as StructuredBlock & { revision?: number }).revision === "number"
-          ? Math.max(0, Number((block as StructuredBlock & { revision?: number }).revision) - 1)
-          : undefined;
-      const response = (await fetchWithAuth(
-        `/deepspace/chats/${conversationId}/messages/${messageId}/visual-block`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            block_id: block.id,
-            block,
-            ...(expectedRevision === undefined ? {} : { expected_revision: expectedRevision }),
-          }),
-        },
-      )) as Response;
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        toast.error(String(payload?.detail?.message ?? "Visual edit could not be saved."));
-        return false;
-      }
-      const savedMessage = (await response.json()) as {
-        content?: string;
-        metadata_json?: {
-          visual_blocks?: Record<string, { block?: StructuredBlock }>;
+      if (!conversationId) return false;
+      const queueKey = JSON.stringify([conversationId, messageId, block.id]);
+      const previous = visualSaveQueuesRef.current.get(queueKey) ?? Promise.resolve(block);
+      const operation = previous.then(async (previousSaved): Promise<StructuredBlock | false> => {
+        if (previousSaved === false) return false;
+        const sourceRevision =
+          typeof (block as StructuredBlock & { revision?: number }).revision === "number"
+            ? Math.max(0, Number((block as StructuredBlock & { revision?: number }).revision) - 1)
+            : undefined;
+        const expectedRevision = visualRevisionRef.current.get(queueKey) ?? sourceRevision;
+        const submittedBlock =
+          expectedRevision === undefined
+            ? block
+            : ({ ...block, revision: expectedRevision + 1 } as StructuredBlock);
+        let response: Response;
+        try {
+          response = (await fetchWithAuth(
+            `/deepspace/chats/${conversationId}/messages/${messageId}/visual-block`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                block_id: block.id,
+                block: submittedBlock,
+                ...(expectedRevision === undefined ? {} : { expected_revision: expectedRevision }),
+              }),
+            },
+          )) as Response;
+        } catch {
+          toast.error("Visual edit could not be saved. Check your connection and retry.");
+          return false;
+        }
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            detail?: unknown;
+            error?: { message?: unknown };
+          } | null;
+          const detail = payload?.detail;
+          const detailRecord =
+            detail && typeof detail === "object" && !Array.isArray(detail)
+              ? (detail as Record<string, unknown>)
+              : null;
+          const conflictDetails = detailRecord?.details;
+          const conflictRevision =
+            conflictDetails && typeof conflictDetails === "object"
+              ? (conflictDetails as Record<string, unknown>).revision
+              : null;
+          if (
+            response.status === 409 &&
+            typeof conflictRevision === "number" &&
+            Number.isInteger(conflictRevision) &&
+            conflictRevision >= 0
+          ) {
+            visualRevisionRef.current.set(queueKey, conflictRevision);
+          }
+          const validationMessages = Array.isArray(detail)
+            ? detail
+                .map((item) =>
+                  item && typeof item === "object"
+                    ? (item as Record<string, unknown>).msg
+                    : null,
+                )
+                .filter((message): message is string => typeof message === "string")
+                .join("; ")
+            : null;
+          const message =
+            (detailRecord?.message as string | undefined) ??
+            (typeof detail === "string" ? detail : null) ??
+            validationMessages ??
+            (typeof payload?.error?.message === "string" ? payload.error.message : null) ??
+            (response.status === 409
+              ? "This visual changed in another session. The current revision was refreshed; retry your edit."
+              : `Visual edit could not be saved (HTTP ${response.status}).`);
+          toast.error(message);
+          return false;
+        }
+        const savedMessage = (await response.json()) as {
+          content?: string;
+          metadata_json?: {
+            visual_blocks?: Record<string, { revision?: number; block?: StructuredBlock }>;
+          };
         };
-      };
-      const persistedBlock = savedMessage.metadata_json?.visual_blocks?.[block.id]?.block ?? block;
-      const current = messagesRef.current.find((message) => message.id === messageId);
-      const nextBlocks = (current?.blocks ?? []).map((item) =>
-        item.id === block.id ? persistedBlock : item,
-      );
-      dispatch({
-        type: "update_message",
-        messageId,
-        data: {
-          blocks: nextBlocks,
-          ...(typeof savedMessage.content === "string"
-            ? { content: savedMessage.content, rawContent: savedMessage.content }
-            : {}),
-        },
-      });
-      try {
-        await onVisualBlockChange?.(messageId, persistedBlock);
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "The visual edit could not be saved to the note.",
+        const savedRecord = savedMessage.metadata_json?.visual_blocks?.[block.id];
+        const persistedBlock = savedRecord?.block ?? submittedBlock;
+        const persistedRevision =
+          typeof savedRecord?.revision === "number"
+            ? savedRecord.revision
+            : typeof (persistedBlock as StructuredBlock & { revision?: number }).revision ===
+                "number"
+              ? Number((persistedBlock as StructuredBlock & { revision?: number }).revision)
+              : expectedRevision === undefined
+                ? undefined
+                : expectedRevision + 1;
+        if (persistedRevision !== undefined) {
+          visualRevisionRef.current.set(queueKey, persistedRevision);
+        }
+        const current = messagesRef.current.find((message) => message.id === messageId);
+        const nextBlocks = (current?.blocks ?? []).map((item) =>
+          item.id === block.id ? persistedBlock : item,
         );
-      }
-      return true;
+        dispatch({
+          type: "update_message",
+          messageId,
+          data: {
+            blocks: nextBlocks,
+            ...(typeof savedMessage.content === "string"
+              ? { content: savedMessage.content, rawContent: savedMessage.content }
+              : {}),
+          },
+        });
+        try {
+          await onVisualBlockChange?.(messageId, persistedBlock);
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "The visual edit could not be saved to the note.",
+          );
+        }
+        return persistedBlock;
+      });
+      visualSaveQueuesRef.current.set(queueKey, operation);
+      void operation.then(
+        () => {
+          if (visualSaveQueuesRef.current.get(queueKey) === operation) {
+            visualSaveQueuesRef.current.delete(queueKey);
+          }
+        },
+        () => {
+          if (visualSaveQueuesRef.current.get(queueKey) === operation) {
+            visualSaveQueuesRef.current.delete(queueKey);
+          }
+        },
+      );
+      return operation;
     },
     [activeConversationId, onVisualBlockChange, state.currentConversationId],
   );
@@ -910,11 +1057,27 @@ export default function DeepSpaceChatClient({
   );
 
   useEffect(() => {
+    const dictationControlWaiters = dictationControlWaitersRef.current;
+    const voiceModeWaiters = voiceModeWaitersRef.current;
     return () => {
-      if (roomRef.current) {
-        roomRef.current.disconnect();
-        roomRef.current = null;
+      voiceSessionRequestVersionRef.current += 1;
+      voiceRoomVersionRef.current += 1;
+      voiceRoomConnectPromiseRef.current = null;
+      voiceTokenRequestControllerRef.current?.abort();
+      voiceTokenRequestControllerRef.current = null;
+      for (const waiter of dictationControlWaiters.values()) {
+        window.clearTimeout(waiter.timeout);
+        waiter.resolve(false);
       }
+      dictationControlWaiters.clear();
+      for (const waiter of voiceModeWaiters.values()) {
+        window.clearTimeout(waiter.timeout);
+        waiter.resolve(false);
+      }
+      voiceModeWaiters.clear();
+      const room = roomRef.current;
+      roomRef.current = null;
+      room?.disconnect();
     };
   }, []);
 
@@ -946,6 +1109,8 @@ export default function DeepSpaceChatClient({
           reasoningCapabilitiesKnown?: boolean;
           reasoningToggleOnly?: boolean;
           reasoningAlwaysOn?: boolean;
+          defaultReasoningEffort?: string;
+          reasoningEffortValues?: Record<string, string>;
         }> = [];
 
         await Promise.all(
@@ -1301,6 +1466,7 @@ export default function DeepSpaceChatClient({
         voiceTurnActiveRef.current = voiceConversationActiveRef.current;
         voiceSpeechAccumulatorRef.current = createVoiceSpeechAccumulator();
         lastVoiceSpeechAtRef.current = 0;
+        if (voiceTurnActiveRef.current) setVoicePresentationState("thinking");
         return;
       }
       if (!voiceTurnActiveRef.current) return;
@@ -1313,6 +1479,7 @@ export default function DeepSpaceChatClient({
       }
 
       if (event.event === "tool_start") {
+        setVoicePresentationState("thinking");
         const result = appendVoiceSpeechText(voiceSpeechAccumulatorRef.current, "", true);
         voiceSpeechAccumulatorRef.current = result.accumulator;
         result.chunks.forEach(publishVoiceSpeech);
@@ -1332,7 +1499,7 @@ export default function DeepSpaceChatClient({
         voiceTurnActiveRef.current = false;
       }
     },
-    [publishVoiceSpeech],
+    [publishVoiceSpeech, setVoicePresentationState],
   );
 
   const consumeNoteEvents = useCallback(
@@ -2399,7 +2566,10 @@ export default function DeepSpaceChatClient({
       nextQuery?: string,
       resumeUserQuestion?: { messageId: string; questionId: string },
       attachmentFileIds: string[] = [],
-      options?: { preserveComposerDraft?: boolean },
+      options?: {
+        preserveComposerDraft?: boolean;
+        attachments?: DeepSpaceMessageAttachment[];
+      },
     ) => {
       const conversationId = selectedConversationIdRef.current;
       if (conversationId && currentConversationIdRef.current !== conversationId) return;
@@ -2454,6 +2624,7 @@ export default function DeepSpaceChatClient({
             type: "submit_query",
             query: effectiveQuery || "Attached Library file(s)",
             clientRequestId: requestId,
+            attachments: options?.attachments,
           });
         }
         pendingHistorySyncRef.current = true;
@@ -2564,7 +2735,9 @@ export default function DeepSpaceChatClient({
 
   const syncVoiceSession = useCallback(
     async (nextStt: boolean, nextTts: boolean) => {
-      setSttActive(nextStt);
+      const requestVersion = ++voiceSessionRequestVersionRef.current;
+      const isCurrentRequest = () => voiceSessionRequestVersionRef.current === requestVersion;
+      setSttActive(false);
       setTtsActive(nextTts);
       voiceConversationActiveRef.current = nextStt && nextTts;
       if (!voiceConversationActiveRef.current) {
@@ -2573,10 +2746,13 @@ export default function DeepSpaceChatClient({
       }
 
       if (!nextStt && !nextTts) {
-        if (roomRef.current) {
-          roomRef.current.disconnect();
-          roomRef.current = null;
-        }
+        voiceRoomVersionRef.current += 1;
+        voiceRoomConnectPromiseRef.current = null;
+        voiceTokenRequestControllerRef.current?.abort();
+        voiceTokenRequestControllerRef.current = null;
+        const room = roomRef.current;
+        roomRef.current = null;
+        room?.disconnect();
         if (typingIntervalRef.current) {
           clearInterval(typingIntervalRef.current);
           typingIntervalRef.current = null;
@@ -2586,142 +2762,271 @@ export default function DeepSpaceChatClient({
           setQuery((prev) => prev + remaining);
           typingQueueRef.current = [];
         }
-        setVoiceState("idle");
+        setVoicePresentationState("idle");
         setVoiceLabel("");
         return;
       }
 
-      setVoiceState("listening");
+      setVoicePresentationState("listening");
       setVoiceLabel("Connecting voice room...");
+      let room: any = null;
+      let microphoneSetupFailed = false;
+      let voiceModeSetupFailed = false;
+      const identity = user?.id ? `user-${user.id}` : "";
 
       try {
         const { Room, RoomEvent } = await import("livekit-client");
+        if (!isCurrentRequest()) return;
 
-        let room = roomRef.current;
+        room = roomRef.current;
         if (!room) {
           room = new Room();
           roomRef.current = room;
+          const roomVersion = ++voiceRoomVersionRef.current;
+          const isCurrentRoom = () =>
+            voiceRoomVersionRef.current === roomVersion && roomRef.current === room;
 
-          try {
-            await room.startAudio();
-            console.log("LiveKit audio context resumed.");
-          } catch (e) {
-            console.warn("Failed to resume audio context", e);
+          if (nextTts) {
+            void room.startAudio().catch((error: unknown) => {
+              console.warn("LiveKit audio playback could not be unlocked yet", error);
+            });
           }
 
-          const uniqueRoom = `deepspace-room-${Math.random().toString(36).slice(2, 8)}`;
-          const identity = user?.id ? `user-${user.id}` : "";
-          const tokenRes = await fetchWithAuth(
-            `/voice/token?room=${encodeURIComponent(uniqueRoom)}&identity=${encodeURIComponent(identity)}`,
-          );
-          if (!tokenRes.ok) {
-            throw new Error(`Voice token request failed (${tokenRes.status})`);
-          }
-          const { token } = await tokenRes.json();
-
-          room.on(RoomEvent.DataReceived, (payload: Uint8Array) => {
+          const connectionPromise = (async () => {
+            const uniqueRoom = `deepspace-room-${Math.random().toString(36).slice(2, 8)}`;
+            const tokenController = new AbortController();
+            voiceTokenRequestControllerRef.current = tokenController;
             try {
-              const data = JSON.parse(new TextDecoder().decode(payload));
-              if (data.state) {
-                setVoiceState(data.state);
-                if (data.state === "listening") {
-                  setVoiceLabel(
-                    data.text
-                      ? voiceConversationActiveRef.current
-                        ? `Hearing: ${data.text}`
-                        : `Transcript: "${data.text}"`
-                      : "Speak now...",
-                  );
-                  if (data.text === "...") {
-                    if (typingIntervalRef.current) {
-                      clearInterval(typingIntervalRef.current);
-                      typingIntervalRef.current = null;
+              const tokenRes = await fetchWithAuth(
+                `/voice/token?room=${encodeURIComponent(uniqueRoom)}&identity=${encodeURIComponent(identity)}`,
+                { signal: tokenController.signal },
+              );
+              if (!isCurrentRoom()) {
+                room.disconnect();
+                return false;
+              }
+              if (!tokenRes.ok) {
+                throw new Error(`Voice token request failed (${tokenRes.status})`);
+              }
+              const { token } = await tokenRes.json();
+              if (!isCurrentRoom()) {
+                room.disconnect();
+                return false;
+              }
+
+              room.on(RoomEvent.DataReceived, (payload: Uint8Array) => {
+                if (roomRef.current !== room) return;
+                try {
+                  const data = JSON.parse(new TextDecoder().decode(payload));
+                  if (
+                    data.type === "dictation-control-result" &&
+                    typeof data.request_id === "string"
+                  ) {
+                    const waiter = dictationControlWaitersRef.current.get(data.request_id);
+                    if (waiter) {
+                      window.clearTimeout(waiter.timeout);
+                      dictationControlWaitersRef.current.delete(data.request_id);
+                      waiter.resolve(true);
                     }
-                    typingQueueRef.current = [];
-                    baseQueryRef.current = voiceConversationActiveRef.current
-                      ? ""
-                      : queryRef.current;
-                  } else if (data.text && !voiceConversationActiveRef.current) {
-                    const base = baseQueryRef.current;
-                    queueText(base ? `${base} ${data.text}` : data.text);
                   }
-                } else if (data.state === "thinking") {
-                  setVoiceLabel(data.text ? `You said: "${data.text}"` : "Processing...");
-                } else if (data.state === "speaking") {
-                  setVoiceLabel(data.text ? `Speaking: ${data.text}` : "Speaking...");
+                  if (data.type === "voice-mode-result" && typeof data.request_id === "string") {
+                    const waiter = voiceModeWaitersRef.current.get(data.request_id);
+                    if (waiter) {
+                      window.clearTimeout(waiter.timeout);
+                      voiceModeWaitersRef.current.delete(data.request_id);
+                      waiter.resolve(data.stt === waiter.stt && data.tts === waiter.tts);
+                    }
+                  }
+                  if (isDeepSpaceVoiceState(data.state)) {
+                    setVoicePresentationState(data.state);
+                    if (data.state === "listening") {
+                      const isVoiceConversation = voiceConversationActiveRef.current;
+                      setVoiceLabel(
+                        isVoiceConversation && data.text ? `Hearing: ${data.text}` : "Listening…",
+                      );
+                      const incomingSegmentId =
+                        data.segment_id === undefined ? null : String(data.segment_id);
+                      if (data.text === "..." && isVoiceConversation) {
+                        if (typingIntervalRef.current) {
+                          clearInterval(typingIntervalRef.current);
+                          typingIntervalRef.current = null;
+                        }
+                        typingQueueRef.current = [];
+                        baseQueryRef.current = "";
+                      } else if (data.text === "..." && dictationSessionOpenRef.current) {
+                        dictationSegmentRef.current = incomingSegmentId;
+                        queryRef.current = dictationBaseTextRef.current;
+                        setQuery(dictationBaseTextRef.current);
+                      } else if (data.text && isVoiceConversation) {
+                        const base = baseQueryRef.current;
+                        queueText(base ? `${base} ${data.text}` : data.text);
+                      } else if (
+                        data.text &&
+                        dictationSessionOpenRef.current &&
+                        incomingSegmentId !== null &&
+                        incomingSegmentId === dictationSegmentRef.current
+                      ) {
+                        const draft = buildDictationPartialDraft(
+                          dictationBaseTextRef.current,
+                          dictationSegmentRef.current,
+                          incomingSegmentId,
+                          data.text,
+                        );
+                        if (draft !== null) {
+                          queryRef.current = draft;
+                          setQuery(draft);
+                        }
+                      }
+                    } else if (data.state === "thinking") {
+                      setVoiceLabel(
+                        voiceConversationActiveRef.current
+                          ? "Processing your request…"
+                          : "Finishing speech…",
+                      );
+                    } else if (data.state === "speaking") {
+                      setVoiceLabel("Speaking…");
+                    }
+                  }
+                  if (data.type === "dictation-result" && data.text) {
+                    if (voiceConversationActiveRef.current) {
+                      baseQueryRef.current = "";
+                      setVoicePresentationState("thinking");
+                      setVoiceLabel("Sending your request to DeepSpace...");
+                      void submitQuery(data.text, undefined, [], { preserveComposerDraft: true });
+                    } else if (
+                      dictationSessionOpenRef.current &&
+                      String(data.segment_id ?? "") === dictationSegmentRef.current
+                    ) {
+                      const committed = commitDictationTranscript(
+                        dictationBaseTextRef.current,
+                        dictationSegmentRef.current,
+                        String(data.segment_id),
+                        data.text,
+                      );
+                      if (committed !== null) {
+                        dictationBaseTextRef.current = committed;
+                        dictationSegmentRef.current = null;
+                        queryRef.current = committed;
+                        setQuery(committed);
+                      }
+                    }
+                  } else if (data.type === "user-command" && data.text) {
+                    void submitQuery(data.text);
+                  }
+                } catch (err) {
+                  console.error("Failed to parse LiveKit data message", err);
                 }
-              }
-              if (data.type === "dictation-result" && data.text) {
-                if (voiceConversationActiveRef.current) {
-                  baseQueryRef.current = "";
-                  setVoiceLabel("Sending your request to DeepSpace...");
-                  void submitQuery(data.text, undefined, [], { preserveComposerDraft: true });
-                } else {
-                  const base = baseQueryRef.current;
-                  const targetText = base ? `${base} ${data.text}` : data.text;
-                  queueText(targetText);
-                  baseQueryRef.current = targetText;
-                }
-              } else if (data.type === "user-command" && data.text) {
-                void submitQuery(data.text);
-              }
-            } catch (err) {
-              console.error("Failed to parse LiveKit data message", err);
-            }
-          });
-
-          room.on(RoomEvent.TrackSubscribed, (track: any) => {
-            if (track.kind === "audio") {
-              const element = track.attach();
-              element.autoplay = true;
-              element.play().catch((err: any) => {
-                console.error("Autoplay blocked for track:", track.sid, err);
               });
-              document.body.appendChild(element);
+
+              room.on(
+                RoomEvent.ActiveSpeakersChanged,
+                (speakers: Array<{ identity?: unknown; audioLevel?: unknown }>) => {
+                  if (roomRef.current !== room) return;
+                  const currentState = voiceStateRef.current;
+                  if (currentState === "idle" || currentState === "thinking") {
+                    setVoiceActivityLevel(0);
+                    return;
+                  }
+
+                  const expectedParticipant =
+                    currentState === "speaking"
+                      ? (participant: { identity?: unknown }) =>
+                          String(participant.identity ?? "").startsWith("agent-")
+                      : (participant: { identity?: unknown }) => participant.identity === identity;
+                  const level = speakers
+                    .filter(expectedParticipant)
+                    .reduce((highest, participant) => {
+                      const candidate = Number(participant.audioLevel);
+                      return Number.isFinite(candidate) ? Math.max(highest, candidate) : highest;
+                    }, 0);
+                  setVoiceActivityLevel(Math.min(1, Math.max(0, level)));
+                },
+              );
+
+              room.on(RoomEvent.TrackSubscribed, (track: any) => {
+                if (roomRef.current !== room) return;
+                if (track.kind === "audio") {
+                  const element = track.attach();
+                  element.autoplay = true;
+                  element.play().catch((err: any) => {
+                    console.error("Autoplay blocked for track:", track.sid, err);
+                  });
+                  document.body.appendChild(element);
+                }
+              });
+
+              room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
+                track.detach().forEach((el: any) => el.remove());
+              });
+
+              const livekitUrl =
+                process.env.NEXT_PUBLIC_LIVEKIT_URL ||
+                (window.location.protocol === "https:"
+                  ? `wss://${window.location.host}/livekit`
+                  : `ws://${window.location.hostname}:7880`);
+              await room.connect(livekitUrl, token);
+              const connected = isCurrentRoom();
+              if (!connected) room.disconnect();
+              return connected;
+            } finally {
+              if (voiceTokenRequestControllerRef.current === tokenController) {
+                voiceTokenRequestControllerRef.current = null;
+              }
             }
-          });
-
-          room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
-            track.detach().forEach((el: any) => el.remove());
-          });
-
-          const livekitUrl =
-            process.env.NEXT_PUBLIC_LIVEKIT_URL ||
-            (window.location.protocol === "https:"
-              ? `wss://${window.location.host}/livekit`
-              : `ws://${window.location.hostname}:7880`);
-          await room.connect(livekitUrl, token);
+          })();
+          voiceRoomConnectPromiseRef.current = connectionPromise;
+          let connected = false;
+          try {
+            connected = await connectionPromise;
+          } finally {
+            if (voiceRoomConnectPromiseRef.current === connectionPromise) {
+              voiceRoomConnectPromiseRef.current = null;
+            }
+          }
+          if (!connected || !isCurrentRequest() || !isCurrentRoom()) return;
+        } else if (voiceRoomConnectPromiseRef.current) {
+          const connected = await voiceRoomConnectPromiseRef.current;
+          if (!connected || !isCurrentRequest() || roomRef.current !== room) return;
         }
 
-        const microphoneOperation = room.localParticipant.setMicrophoneEnabled(nextStt, {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        });
-        void microphoneOperation.catch((error: unknown) => {
-          console.error("Voice microphone setup failed", error);
-          if (nextStt && roomRef.current === room) {
-            voiceConversationActiveRef.current = false;
-            voiceTurnActiveRef.current = false;
-            voiceSpeechAccumulatorRef.current = createVoiceSpeechAccumulator();
-            setSttActive(false);
-            setTtsActive(false);
-            setVoiceState("idle");
-            setVoiceLabel("Microphone unavailable.");
-            room.disconnect();
-            roomRef.current = null;
-          }
-        });
+        if (!isCurrentRequest() || roomRef.current !== room) return;
 
+        try {
+          await room.localParticipant.setMicrophoneEnabled(nextStt, {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          });
+        } catch (error) {
+          microphoneSetupFailed = true;
+          throw error;
+        }
+        if (!isCurrentRequest() || roomRef.current !== room) return;
+
+        const requestId = crypto.randomUUID();
         const initialPrompt = buildInitialPrompt(messagesRef.current, currentContentRef.current);
         const modePayload = JSON.stringify({
           type: "set-mode",
           stt: nextStt,
           tts: nextTts,
           initial_prompt: initialPrompt,
+          request_id: requestId,
         });
         const encodedModePayload = new TextEncoder().encode(modePayload);
+        const modeAcknowledgement = new Promise<boolean>((resolve) => {
+          const timeout = window.setTimeout(() => {
+            voiceModeWaitersRef.current.delete(requestId);
+            resolve(false);
+          }, 10_000);
+          voiceModeWaitersRef.current.set(requestId, {
+            resolve,
+            timeout,
+            stt: nextStt,
+            tts: nextTts,
+          });
+        });
         const publishVoiceMode = () => {
+          if (!isCurrentRequest() || roomRef.current !== room) return;
           void room.localParticipant
             .publishData(encodedModePayload, {
               reliable: true,
@@ -2744,6 +3049,7 @@ export default function DeepSpaceChatClient({
         );
         if (!agentAlreadyConnected) {
           const onAgentConnected = (participant: any) => {
+            if (!isCurrentRequest() || roomRef.current !== room) return;
             if (!String(participant.identity).startsWith("agent-")) return;
             room.off(RoomEvent.ParticipantConnected, onAgentConnected);
             publishVoiceMode();
@@ -2751,6 +3057,14 @@ export default function DeepSpaceChatClient({
           room.on(RoomEvent.ParticipantConnected, onAgentConnected);
         }
 
+        const modeAcknowledged = await modeAcknowledgement;
+        if (!modeAcknowledged) {
+          voiceModeSetupFailed = true;
+          throw new Error("Voice agent did not confirm the requested mode.");
+        }
+        if (!isCurrentRequest() || roomRef.current !== room) return;
+        setSttActive(nextStt);
+        setTtsActive(nextTts);
         if (nextStt && nextTts) {
           setVoiceLabel("Voice conversation active");
         } else if (nextStt) {
@@ -2759,33 +3073,204 @@ export default function DeepSpaceChatClient({
           setVoiceLabel("Voice output active");
         }
       } catch (err) {
+        if (!isCurrentRequest()) return;
         console.error("Voice connection failed", err);
         voiceConversationActiveRef.current = false;
         voiceTurnActiveRef.current = false;
         voiceSpeechAccumulatorRef.current = createVoiceSpeechAccumulator();
-        roomRef.current?.disconnect();
-        roomRef.current = null;
+        if (roomRef.current === room) {
+          voiceRoomVersionRef.current += 1;
+          voiceRoomConnectPromiseRef.current = null;
+          voiceTokenRequestControllerRef.current?.abort();
+          voiceTokenRequestControllerRef.current = null;
+          roomRef.current = null;
+          room?.disconnect();
+        }
         setSttActive(false);
         setTtsActive(false);
-        setVoiceState("idle");
-        setVoiceLabel("Voice server unreachable.");
+        if (dictationSessionOpenRef.current && dictationElapsedBaseRef.current === 0) {
+          dictationSessionOpenRef.current = false;
+          setDictationSessionOpen(false);
+        }
+        setVoicePresentationState("idle");
+        setVoiceLabel(
+          microphoneSetupFailed
+            ? "Microphone unavailable. Check browser permission and input device."
+            : voiceModeSetupFailed
+              ? "Voice agent did not confirm dictation. Try again."
+              : "Voice server unreachable.",
+        );
       }
     },
-    [submitQuery, queueText, user],
+    [submitQuery, queueText, setVoicePresentationState, user],
   );
 
-  const handleSttToggle = useCallback(() => {
-    if (sttActive && !ttsActive) {
-      void syncVoiceSession(false, false);
-    } else {
-      void syncVoiceSession(true, false);
+  const requestDictationControl = useCallback(async (action: "pause" | "finish") => {
+    const room = roomRef.current;
+    if (!room) return false;
+
+    const requestId = crypto.randomUUID();
+    const acknowledgement = new Promise<boolean>((resolve) => {
+      const timeout = window.setTimeout(() => {
+        dictationControlWaitersRef.current.delete(requestId);
+        resolve(false);
+      }, 30_000);
+      dictationControlWaitersRef.current.set(requestId, {
+        timeout,
+        resolve,
+      });
+    });
+
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(
+          JSON.stringify({ type: "dictation-control", action, request_id: requestId }),
+        ),
+        { reliable: true, topic: "voice-control" },
+      );
+      await room.localParticipant.setMicrophoneEnabled(false, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
+      return await acknowledgement;
+    } catch (error) {
+      const waiter = dictationControlWaitersRef.current.get(requestId);
+      if (waiter) {
+        window.clearTimeout(waiter.timeout);
+        dictationControlWaitersRef.current.delete(requestId);
+      }
+      console.error("Dictation control failed", error);
+      return false;
     }
-  }, [sttActive, ttsActive, syncVoiceSession]);
+  }, []);
+
+  const markDictationPaused = useCallback(() => {
+    const startedAt = dictationStartedAtRef.current;
+    if (startedAt !== null) {
+      dictationElapsedBaseRef.current += Math.floor((Date.now() - startedAt) / 1000);
+      dictationStartedAtRef.current = null;
+    }
+    setDictationElapsedSeconds(Math.min(600, dictationElapsedBaseRef.current));
+    setSttActive(false);
+  }, []);
+
+  const handleDictationPause = useCallback(async () => {
+    if (
+      !dictationSessionOpenRef.current ||
+      !sttActive ||
+      ttsActive ||
+      dictationControlPendingRef.current
+    )
+      return;
+    dictationControlPendingRef.current = true;
+    setDictationControlPending(true);
+    markDictationPaused();
+    setVoicePresentationState("thinking");
+    setVoiceLabel("Finishing this phrase…");
+    const acknowledged = await requestDictationControl("pause");
+    dictationControlPendingRef.current = false;
+    setDictationControlPending(false);
+    setVoicePresentationState("idle");
+    setVoiceLabel(
+      acknowledged
+        ? "Dictation paused · ready to resume"
+        : "Paused · current transcript is kept in the composer",
+    );
+  }, [
+    markDictationPaused,
+    requestDictationControl,
+    setVoicePresentationState,
+    sttActive,
+    ttsActive,
+  ]);
+
+  const handleDictationFinish = useCallback(async () => {
+    if (
+      !dictationSessionOpenRef.current ||
+      finishDictationInFlightRef.current ||
+      dictationControlPendingRef.current
+    )
+      return false;
+    finishDictationInFlightRef.current = true;
+    dictationControlPendingRef.current = true;
+    setDictationControlPending(true);
+    markDictationPaused();
+    setVoicePresentationState("thinking");
+    setVoiceLabel("Finishing dictation…");
+    const acknowledged = await requestDictationControl("finish");
+    dictationControlPendingRef.current = false;
+    setDictationControlPending(false);
+
+    if (acknowledged || !roomRef.current) {
+      dictationSessionOpenRef.current = false;
+      dictationSegmentRef.current = null;
+      setDictationSessionOpen(false);
+      setVoiceLabel("");
+      await syncVoiceSession(false, false);
+      dictationBaseTextRef.current = queryRef.current;
+      finishDictationInFlightRef.current = false;
+      return true;
+    }
+
+    setVoicePresentationState("idle");
+    setVoiceLabel("Final check timed out · draft kept in the composer; retry Finish");
+    finishDictationInFlightRef.current = false;
+    return false;
+  }, [markDictationPaused, requestDictationControl, setVoicePresentationState, syncVoiceSession]);
+
+  const handleSttToggle = useCallback(() => {
+    if (dictationSessionOpenRef.current) {
+      if (sttActive && !ttsActive) {
+        void handleDictationFinish();
+      } else if (!ttsActive) {
+        dictationStartedAtRef.current = Date.now();
+        setVoiceLabel("Reconnecting microphone…");
+        void syncVoiceSession(true, false);
+      }
+      return;
+    }
+
+    dictationBaseTextRef.current = queryRef.current;
+    dictationSegmentRef.current = null;
+    dictationSessionOpenRef.current = true;
+    dictationElapsedBaseRef.current = 0;
+    dictationStartedAtRef.current = Date.now();
+    setDictationElapsedSeconds(0);
+    setDictationSessionOpen(true);
+    void syncVoiceSession(true, false);
+  }, [handleDictationFinish, sttActive, syncVoiceSession, ttsActive]);
 
   const handleTtsToggle = useCallback(() => {
-    if (ttsActive) void syncVoiceSession(false, false);
-    else void syncVoiceSession(true, true);
-  }, [ttsActive, syncVoiceSession]);
+    if (ttsActive) {
+      void syncVoiceSession(false, false);
+      return;
+    }
+    if (dictationSessionOpenRef.current) {
+      void (async () => {
+        const finalized = await handleDictationFinish();
+        if (finalized) await syncVoiceSession(true, true);
+      })();
+      return;
+    }
+    void syncVoiceSession(true, true);
+  }, [handleDictationFinish, syncVoiceSession, ttsActive]);
+
+  useEffect(() => {
+    if (!dictationSessionOpen || !sttActive || ttsActive) return;
+    const updateElapsed = () => {
+      const startedAt = dictationStartedAtRef.current;
+      const elapsed =
+        dictationElapsedBaseRef.current +
+        (startedAt === null ? 0 : Math.floor((Date.now() - startedAt) / 1000));
+      const bounded = Math.min(600, elapsed);
+      setDictationElapsedSeconds(bounded);
+      if (bounded >= 600) void handleDictationFinish();
+    };
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(interval);
+  }, [dictationSessionOpen, handleDictationFinish, sttActive, ttsActive]);
 
   const handleRegenerate = useCallback(
     async (messageId: string) => {
@@ -2818,7 +3303,33 @@ export default function DeepSpaceChatClient({
   const handleSaveEdit = useCallback(
     async (messageId: string, content: string) => {
       const conversationId = getReadyConversationId();
-      if (state.isStreaming || !conversationId) return;
+      const trimmedContent = content.trim();
+      const latestEditablePairIndex = state.messages.findLastIndex(
+        (message, index) =>
+          message.role === "user" && state.messages[index + 1]?.role === "assistant",
+      );
+      const hasPendingQueueTurn = queuedTurns.some((turn) =>
+        ["queued", "running", "cancelling", "awaiting_user", "awaiting_approval"].includes(
+          turn.status,
+        ),
+      );
+      if (
+        !trimmedContent ||
+        state.isStreaming ||
+        promptEditSubmissionInFlightRef.current ||
+        hasPendingQueueTurn ||
+        queueState.activeRequestId ||
+        queueAction ||
+        findPendingUserQuestion(state.messages) ||
+        latestEditablePairIndex < 0 ||
+        state.messages[latestEditablePairIndex]?.id !== messageId ||
+        !conversationId
+      ) {
+        return;
+      }
+
+      promptEditSubmissionInFlightRef.current = true;
+      setPromptEditSubmittingMessageId(messageId);
 
       dispatch({ type: "cancel_edit", messageId });
       // Keep the edited prompt in its original timeline position immediately.
@@ -2829,26 +3340,35 @@ export default function DeepSpaceChatClient({
         type: "update_message",
         messageId,
         data: {
-          content,
-          rawContent: content,
+          content: trimmedContent,
+          rawContent: trimmedContent,
           draftContent: null,
           isEditing: false,
         },
       });
       pendingHistorySyncRef.current = true;
 
-      await startScopedStream({
-        endpoint: `/deepspace/chats/${conversationId}/messages/${messageId}/edit-and-regenerate/stream`,
-        body: {
-          client_request_id: crypto.randomUUID(),
-          content,
-          thinking_enabled: thinkingEnabled,
-          reasoning_effort: activeReasoningEffort,
-        },
-      });
+      try {
+        await startScopedStream({
+          endpoint: `/deepspace/chats/${conversationId}/messages/${messageId}/edit-and-regenerate/stream`,
+          body: {
+            client_request_id: crypto.randomUUID(),
+            content: trimmedContent,
+            thinking_enabled: thinkingEnabled,
+            reasoning_effort: activeReasoningEffort,
+          },
+        });
+      } finally {
+        promptEditSubmissionInFlightRef.current = false;
+        setPromptEditSubmittingMessageId(null);
+      }
     },
     [
       getReadyConversationId,
+      queueAction,
+      queueState.activeRequestId,
+      queuedTurns,
+      state.messages,
       state.isStreaming,
       startScopedStream,
       thinkingEnabled,
@@ -2929,7 +3449,7 @@ export default function DeepSpaceChatClient({
             if (block.type === "table") {
               return null;
             }
-            if (block.type === "chart" || block.type === "card") {
+            if (block.type === "chart" || block.type === "card" || block.type === "infographic") {
               const payload = Object.fromEntries(
                 Object.entries(block).filter(([key]) => key !== "type"),
               );
@@ -3308,6 +3828,22 @@ export default function DeepSpaceChatClient({
                 retryableRequestIds={retryableFailedRequestIds}
                 retryingRequestId={retryingFailedRequestId}
                 retryActionDisabled={queueAction !== null}
+                promptEditDisabled={
+                  state.isStreaming ||
+                  queueAction !== null ||
+                  Boolean(queueState.activeRequestId) ||
+                  queuedTurns.some((turn) =>
+                    [
+                      "queued",
+                      "running",
+                      "cancelling",
+                      "awaiting_user",
+                      "awaiting_approval",
+                    ].includes(turn.status),
+                  ) ||
+                  Boolean(findPendingUserQuestion(state.messages))
+                }
+                promptEditSubmittingMessageId={promptEditSubmittingMessageId}
                 scrollMetrics={threadScrollMetrics}
                 onPromptSelect={handlePromptSelect}
                 onInsertLatestAnswer={() => {
@@ -3355,8 +3891,13 @@ export default function DeepSpaceChatClient({
               onEditQueuedTurn={startQueuedTurnEdit}
               onCancelQueueEdit={cancelQueuedTurnEdit}
               onSaveQueueEdit={saveQueuedTurnEdit}
-              onSubmit={(attachmentFileIds) =>
-                void submitQuery(undefined, undefined, attachmentFileIds)
+              onSubmit={(attachments = []) =>
+                void submitQuery(
+                  undefined,
+                  undefined,
+                  attachments.map((attachment) => attachment.id),
+                  { attachments },
+                )
               }
               onStop={stopStreaming}
               stopping={isStopping}
@@ -3420,10 +3961,16 @@ export default function DeepSpaceChatClient({
               providerTurnUsage={providerTurnUsage}
               tokenCategorySource={tokenCategorySource}
               sttActive={sttActive}
+              dictationSessionOpen={dictationSessionOpen}
+              dictationControlPending={dictationControlPending}
+              dictationElapsedSeconds={dictationElapsedSeconds}
               ttsActive={ttsActive}
               onSttToggle={handleSttToggle}
+              onDictationPause={handleDictationPause}
+              onDictationFinish={handleDictationFinish}
               onTtsToggle={handleTtsToggle}
               voiceLabel={voiceLabel}
+              voiceActivityLevel={voiceActivityLevel}
               runtimePhase={runtimeActivity.phase}
               activeToolName={runtimeActivity.activeToolName}
               hasRuntimeError={runtimeActivity.hasError}

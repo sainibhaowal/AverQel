@@ -35,6 +35,14 @@ export default function GroundedQueryDocsPage() {
           whole file at once. If a visual renderer is unavailable, Query reports that and keeps the
           available format preview accessible.
         </p>
+        <p>
+          Answers render Markdown headings, lists, tables, and recognizable Mermaid diagrams. If a
+          Mermaid block has a shortened closing fence, Query repairs it so the following answer
+          continues as Markdown. Tables show a copy button and an <strong>Export</strong> menu above
+          the table when you hover it or focus the controls with the keyboard. Export offers CSV and
+          XLSX in a floating menu below the Export button. It overlays content without moving table
+          rows.
+        </p>
       </DocsSection>
       <DocsSection title="Ask exact questions about CSV and TSV files">
         <p>

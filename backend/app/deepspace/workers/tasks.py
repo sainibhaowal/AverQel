@@ -184,7 +184,9 @@ def run_deepspace_task(
     lock_acquired = False
     finalize_queue = False
     resolved_conversation_id = parsed_conversation_id
-    terminal_status = "completed"
+    terminal_status: str | None = None
+    terminal_run_status: str | None = None
+    terminal_frame_seen = False
     terminal_error: str | None = None
     resolved_run_id: uuid.UUID | None = None
 
@@ -234,6 +236,7 @@ def run_deepspace_task(
         update_schedule_run("running")
         if lock.get(cancellation_key(parsed_tenant_id, parsed_user_id, request_id)):
             terminal_status = "cancelled"
+            terminal_run_status = "cancelled"
             terminal_error = "user_cancelled"
             if resolved_conversation_id is not None:
                 append_event(
@@ -284,7 +287,7 @@ def run_deepspace_task(
 
         async def execute() -> None:
             nonlocal event_fanout, resolved_conversation_id, resolved_run_id, terminal_error
-            nonlocal terminal_status
+            nonlocal terminal_frame_seen, terminal_run_status, terminal_status
             try:
                 async for frame in service.stream_turn(
                     auth=auth,
@@ -340,17 +343,23 @@ def run_deepspace_task(
                         # Redis network I/O happen in the fan-out tasks.
                         await event_fanout.submit(frame=frame, run_id=resolved_run_id)
                     if "event: done" in frame:
+                        terminal_frame_seen = True
                         try:
-                            terminal_status = str(
-                                json.loads(data_line).get("status") or "completed"
+                            reported_status = str(json.loads(data_line).get("status") or "ready")
+                            terminal_run_status = (
+                                "ready" if reported_status == "completed" else reported_status
                             )
+                            terminal_status = reported_status
                         except (TypeError, ValueError, json.JSONDecodeError):
+                            terminal_run_status = "ready"
                             terminal_status = "completed"
                     elif "event: error" in frame:
+                        terminal_frame_seen = True
                         # A worker must not report a failed provider stream as a
                         # completed queue turn merely because no `done` frame
                         # was emitted. The queue can then advance with truthful state.
                         terminal_status = "failed"
+                        terminal_run_status = "failed"
                         try:
                             terminal_error = str(
                                 json.loads(data_line).get("message")
@@ -363,6 +372,30 @@ def run_deepspace_task(
                     await event_fanout.close()
 
         asyncio.run(execute())
+        if not terminal_frame_seen:
+            # A stream that vanishes without a terminal frame is interrupted,
+            # not successful. Close both the durable run and the browser event
+            # stream so the UI cannot leave its activity indicator live.
+            terminal_status = "failed"
+            terminal_run_status = "failed"
+            terminal_error = "DeepSpace stream ended without a terminal event."
+            if resolved_conversation_id is not None:
+                _publish_failure(
+                    db=session,
+                    settings=settings,
+                    tenant_id=parsed_tenant_id,
+                    user_id=parsed_user_id,
+                    conversation_id=resolved_conversation_id,
+                    client_request_id=request_id,
+                    message=(
+                        "DeepSpace stopped before finishing this response. "
+                        "The saved prompt is available to retry."
+                    ),
+                    run_id=resolved_run_id,
+                )
+        if terminal_status is None:
+            terminal_status = "failed"
+            terminal_run_status = terminal_run_status or "failed"
         # A clarification or approval is deliberately non-terminal.  Its
         # queue record remains active until the same turn is resumed or
         # cancelled, so a later queued prompt cannot overtake it.
@@ -378,6 +411,7 @@ def run_deepspace_task(
         return terminal_status
     except Exception:  # noqa: BLE001
         terminal_status = "failed"
+        terminal_run_status = "failed"
         terminal_error = "DeepSpace run failed"
         logger.exception("Detached DeepSpace run failed", extra={"request_id": request_id})
         try:
@@ -400,6 +434,23 @@ def run_deepspace_task(
         raise
     finally:
         if lock_acquired and finalize_queue and resolved_conversation_id is not None:
+            final_queue_status = terminal_status or "failed"
+            if terminal_run_status is not None:
+                try:
+                    DeepSpaceRuntimeStore(session).finish_for_request(
+                        tenant_id=parsed_tenant_id,
+                        user_id=parsed_user_id,
+                        conversation_id=resolved_conversation_id,
+                        client_request_id=request_id,
+                        status=terminal_run_status,
+                        error=terminal_error,
+                    )
+                except Exception:  # noqa: BLE001 - queue finalization must still proceed
+                    session.rollback()
+                    logger.exception(
+                        "Failed to finalize the DeepSpace runtime row",
+                        extra={"request_id": request_id},
+                    )
             try:
                 queue_store = DeepSpaceTurnQueueStore(session)
                 queue_store.finish(
@@ -407,11 +458,11 @@ def run_deepspace_task(
                     user_id=parsed_user_id,
                     conversation_id=resolved_conversation_id,
                     client_request_id=request_id,
-                    status=terminal_status,
+                    status=final_queue_status,
                     error=terminal_error,
                 )
                 if (
-                    terminal_status not in {"awaiting_user", "awaiting_approval"}
+                    final_queue_status not in {"awaiting_user", "awaiting_approval"}
                     and not queue_store.state(
                         tenant_id=parsed_tenant_id,
                         user_id=parsed_user_id,

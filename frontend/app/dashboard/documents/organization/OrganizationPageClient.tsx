@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
-import { hasAdminRole, normalizeRole } from "@/lib/roles";
+import { hasAdminRole, hasDocumentOrganizationAdvancedAccess } from "@/lib/roles";
 import { averqelConfirm, averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
 import toast from "react-hot-toast";
 import SavedViewsPanel from "./SavedViewsPanel";
@@ -174,7 +174,7 @@ export default function OrganizationPageClient({ kind }: { kind: PageKind }) {
   const { user, loading } = useAuth();
   const roles = user?.roles ?? [];
   const admin = hasAdminRole(roles);
-  const editor = admin || roles.some((role) => normalizeRole(role) === "editor");
+  const editor = hasDocumentOrganizationAdvancedAccess(roles);
   const meta = pageMeta[kind];
   const allowed = (!meta.admin && !meta.editor) || (meta.admin ? admin : editor);
   const [items, setItems] = useState<Item[]>([]);

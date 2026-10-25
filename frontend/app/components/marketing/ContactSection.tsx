@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   CheckCircle2,
@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import styles from "./ContactSection.module.css";
-import { useLandingReducedMotion } from "./landingMotion";
 
 type ContactFields = {
   name: string;
@@ -40,7 +39,7 @@ const MESSAGE_LIMIT = 8_000;
 
 export default function ContactSection() {
   const id = useId();
-  const reduceMotion = useLandingReducedMotion();
+  const reduceMotion = useReducedMotion();
   const fieldToFocus = useRef<ContactFieldName | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [fields, setFields] = useState<ContactFields>(EMPTY_FIELDS);

@@ -10,7 +10,7 @@ export default function VoiceDocsPage() {
         items={[
           {
             title: "Dictate to composer",
-            body: "Speech is transcribed into the composer. Review or edit the text, then send it when you are ready.",
+            body: "Live speech appears as an editable draft in the composer. Pause and resume, or finish to keep the text for review. Dictation never sends the message for you and stops after ten minutes of active listening.",
           },
           {
             title: "Voice conversation",
@@ -23,6 +23,10 @@ export default function VoiceDocsPage() {
           {
             title: "Browser permissions",
             body: "Microphone access requires a secure browser context and explicit permission. You can revoke that permission in browser settings.",
+          },
+          {
+            title: "Voice activity display",
+            body: "The animated waveform sits beside the voice buttons in the composer. It shows green activity while listening, flowing colored lines while processing, and a moving blue-violet wave while speaking. Listening waves follow available microphone activity.",
           },
         ]}
       />
@@ -47,6 +51,20 @@ export default function VoiceDocsPage() {
           only model that answers your request or calls its tools.
         </p>
       </DocsSection>
+      <DocsSection title="Dictation controls">
+        <p>
+          Choose Dictate to composer to start live transcription. Interim words update in place as
+          recognition revises them; a finished phrase is committed once. Pause stops the microphone
+          after asking the voice agent to finish the current phrase. Resume continues the same
+          draft, and Finish closes the voice session while leaving the draft ready to edit and send.
+          The ten-minute limit counts active listening time, not paused time.
+        </p>
+        <p>
+          Dictation uses the configured local Faster-Whisper model. Recognition quality still
+          depends on microphone placement, background noise, accent, and available CPU; review the
+          transcript before sending.
+        </p>
+      </DocsSection>
       <DocsSection title="Deployment requirements">
         <p>
           Operators need to deploy and configure the realtime transport (such as LiveKit) and voice
@@ -61,6 +79,17 @@ export default function VoiceDocsPage() {
           information for the deployment and any external voice provider before use. Local UI code
           or a simulated test does not establish physical-device, network, or hosted-production
           readiness.
+        </p>
+        <p>
+          If DeepSpace cannot request a voice token or reach the voice service, it turns the voice
+          controls back off and shows “Voice server unreachable.” Text chat remains available.
+        </p>
+        <p>
+          Dictation is shown as active only after the browser enables the microphone and the voice
+          agent confirms the mode. If the browser blocks microphone access, the controls reset and
+          ask you to check permission and the selected input device. If dictation does not connect,
+          check that the voice agent is running. If it connects but no words appear, check that the
+          operating system and browser are receiving sound from the selected device.
         </p>
       </DocsSection>
     </DocsShell>

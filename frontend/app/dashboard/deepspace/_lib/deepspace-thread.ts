@@ -2175,7 +2175,12 @@ export interface DeepSpaceThreadState {
 export type DeepSpaceThreadAction =
   | { type: "load_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
   | { type: "reset_thread" }
-  | { type: "submit_query"; query: string; clientRequestId?: string }
+  | {
+      type: "submit_query";
+      query: string;
+      clientRequestId?: string;
+      attachments?: DeepSpaceMessage["attachments"];
+    }
   | { type: "stream_interrupted" }
   | { type: "stream_finished" }
   | {
@@ -2938,6 +2943,7 @@ function reduceDeepSpaceThread(
             role: "user",
             content: action.query,
             rawContent: action.query,
+            ...(action.attachments?.length ? { attachments: action.attachments } : {}),
             createdAt: new Date().toISOString(),
             status: "ready",
             blocks: [],

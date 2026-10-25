@@ -28,6 +28,13 @@ const openAi = {
   is_local: false,
 };
 
+const larprouter = {
+  ...openAi,
+  provider_type: "larprouter",
+  display_name: "LarpRouter",
+  supports_embeddings: false,
+};
+
 afterEach(() => {
   mocks.listSupportedProviderTypes.mockReset();
   mocks.previewProviderModels.mockReset();
@@ -36,6 +43,70 @@ afterEach(() => {
 });
 
 describe("QuickProviderSetup", () => {
+  it("sets up LarpRouter with its OpenAI-compatible URL and discovered chat model", async () => {
+    mocks.listSupportedProviderTypes.mockResolvedValue([openAi, larprouter]);
+    mocks.previewProviderModels.mockResolvedValue([
+      {
+        id: null,
+        provider_config_id: null,
+        model_name: "claude-opus-4-7-1m",
+        model_kind: "chat",
+        display_name: "Claude Opus 4.7",
+        context_window: null,
+        capabilities_json: {},
+        is_available: true,
+        last_seen_at: null,
+      },
+    ]);
+    mocks.createProvider.mockResolvedValue({
+      display_name: "LarpRouter",
+      default_chat_model: "claude-opus-4-7-1m",
+    });
+    const onConfigured = vi.fn();
+
+    render(
+      <QuickProviderSetup
+        onConfigured={onConfigured}
+        onOpenSettings={vi.fn()}
+        onBusyChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /provider.*openai api/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "LarpRouter" }));
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "lrsk-test-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find chat models" }));
+
+    await screen.findByRole("option", { name: "Claude Opus 4.7" });
+    expect(mocks.previewProviderModels).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider_type: "larprouter",
+        api_base_url: "https://larprouter.com/v1",
+        supports_chat: true,
+        supports_embeddings: false,
+        supports_model_listing: true,
+        api_key: "lrsk-test-key",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+
+    await waitFor(() => expect(mocks.createProvider).toHaveBeenCalledOnce());
+    expect(mocks.createProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider_type: "larprouter",
+        display_name: "LarpRouter",
+        api_base_url: "https://larprouter.com/v1",
+        supports_chat: true,
+        supports_embeddings: false,
+        supports_model_listing: true,
+        default_chat_model: "claude-opus-4-7-1m",
+        api_key: "lrsk-test-key",
+      }),
+    );
+    expect(onConfigured).toHaveBeenCalledWith("LarpRouter");
+  });
+
   it("discovers a model and saves a named provider with that default model", async () => {
     mocks.listSupportedProviderTypes.mockResolvedValue([openAi]);
     mocks.previewProviderModels.mockResolvedValue([

@@ -17,7 +17,6 @@ from app.query.services.answer_service import (
     NonRetryableLlmError,
     RetryableLlmError,
 )
-from app.query.services.prompt_templates import PromptTemplates
 from app.query.services.query_classifier import QueryType
 from app.query.services.retrieval_service import RetrievedChunk
 
@@ -56,17 +55,9 @@ def test_synthesize_clamps_confidence_and_snippet_helpers() -> None:
     assert SnippetService.clean("  a   b ", 10) == "a b"
 
 
-def test_build_llm_messages_preserves_prompt_json_and_context_braces(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_llm_messages_preserves_prompt_json_and_context_braces() -> None:
     service = AnswerService("no-result")
     context = 'Document data includes {"key": "value"} and {literal} braces.'
-    template = 'Template JSON: {"title":"literal"}\nContext: {context}'
-    monkeypatch.setattr(
-        PromptTemplates,
-        "get_template",
-        classmethod(lambda _cls, _query_type: template),
-    )
 
     for query_type in QueryType:
         messages = service._build_llm_messages(
@@ -78,7 +69,8 @@ def test_build_llm_messages_preserves_prompt_json_and_context_braces(
 
         system_prompt = messages[0]["content"]
         assert context in system_prompt
-        assert 'Template JSON: {"title":"literal"}' in system_prompt
+        assert 'Evaluation payload shape: {"title":"API evaluation"' in system_prompt
+        assert 'Referral payload shape: {"title":"Referral"' in system_prompt
 
 
 def test_llm_generation_enabled_guards(monkeypatch: pytest.MonkeyPatch) -> None:

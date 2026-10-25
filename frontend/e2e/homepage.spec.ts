@@ -21,12 +21,11 @@ test("homepage renders the visual workspace hero without hydration failures", as
   await expect(page.getByText("AI grounded in your sources")).toBeVisible();
   await expect(page.getByRole("link", { name: "Create your workspace" })).toBeVisible();
 
-  const navBrand = page.getByRole("navigation", { name: "Main navigation" }).locator('a[href="/"]');
-  const mark = navBrand.locator(".averqel-logo__mark-image");
-  await expect(mark).toHaveAttribute("alt", "AverQel");
+  const lockup = page.locator("[data-brand-lockup]:visible").first();
+  const mark = lockup.locator("img").first();
   await expect(mark).toHaveAttribute("width", "92");
   await expect(mark).toHaveAttribute("height", "46");
-  await expect(navBrand.locator(".averqel-logo__wordmark")).toHaveCount(0);
+  await expect(lockup.locator(".averqel-wordmark__svg")).toHaveCount(0);
 
   const footerLockup = page.locator("[data-brand-lockup].averqel-logo--footer:visible").first();
   await expect(footerLockup).toBeVisible();

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 from collections import deque
@@ -21,7 +22,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-agent")
 
 # Paths to local models
-STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
+DEFAULT_STT_MODEL_PATH = "/app/models/stt/faster-whisper-small.en"
+STT_MODEL_PATH = os.getenv("AVERQEL_STT_MODEL_PATH", DEFAULT_STT_MODEL_PATH)
+FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
 TTS_MODEL_PATH = "/app/models/tts/kokoro-v1.0.onnx"
 VOICES_PATH = "/app/models/tts/voices-v1.0.bin"
 
@@ -34,6 +37,8 @@ session_speaking = {}  # room_name -> bool
 initial_prompts = {}  # room_name -> initial_prompt string bias
 speech_queues: dict[str, deque[tuple[str, str | None]]] = {}
 speech_worker_tasks: dict[str, asyncio.Task] = {}
+dictation_control_queues: dict[str, asyncio.Queue[dict[str, str]]] = {}
+transcription_locks: dict[str, asyncio.Lock] = {}
 
 # Multiple wake names/variations for high robustness under various phonetic spelling differences
 WAKE_WORDS = [
@@ -101,8 +106,25 @@ TTS_VOICE = "am_michael"
 def get_stt() -> WhisperModel:
     global _stt_model
     if _stt_model is None:
+        model_path = STT_MODEL_PATH
+        if (
+            model_path == DEFAULT_STT_MODEL_PATH
+            and not os.path.isdir(model_path)
+            and os.path.isdir(FALLBACK_STT_MODEL_PATH)
+        ):
+            logger.warning(
+                "Higher-accuracy STT model is missing; falling back to %s. Provision %s to enable the default model.",
+                FALLBACK_STT_MODEL_PATH,
+                DEFAULT_STT_MODEL_PATH,
+            )
+            model_path = FALLBACK_STT_MODEL_PATH
         logger.info("Loading Faster-Whisper STT model...")
-        _stt_model = WhisperModel(STT_MODEL_PATH, device="cpu", compute_type="float32")
+        _stt_model = WhisperModel(
+            model_path,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=4,
+        )
         logger.info("Faster-Whisper loaded.")
     return _stt_model
 
@@ -121,6 +143,7 @@ async def broadcast_state(
     state: str,
     node_id: str | None = None,
     text: str | None = None,
+    segment_id: int | None = None,
 ) -> None:
     """Push state update to the frontend via WebRTC data channel."""
     import json
@@ -128,6 +151,8 @@ async def broadcast_state(
     payload_dict = {"state": state, "node_id": node_id}
     if text is not None:
         payload_dict["text"] = text
+    if segment_id is not None:
+        payload_dict["segment_id"] = segment_id
     payload = json.dumps(payload_dict).encode()
     try:
         await room.local_participant.publish_data(payload)
@@ -257,6 +282,7 @@ async def entrypoint(ctx: JobContext) -> None:
     session_stt[ctx.room.name] = False
     session_tts[ctx.room.name] = False
     session_speaking[ctx.room.name] = False
+    dictation_control_queues[ctx.room.name] = asyncio.Queue()
 
     # Warm up models immediately on room connect
     try:
@@ -322,8 +348,20 @@ async def entrypoint(ctx: JobContext) -> None:
                     stt_active,
                     tts_active,
                 )
+                request_id = data.get("request_id")
+                if isinstance(request_id, str):
+                    asyncio.create_task(
+                        _publish_voice_mode_result(ctx.room, stt_active, tts_active, request_id)
+                    )
                 if prev_tts and not tts_active:
                     interrupt_speech(ctx.room)
+            elif data.get("type") == "dictation-control":
+                action = data.get("action")
+                request_id = data.get("request_id")
+                if action in {"pause", "finish"} and isinstance(request_id, str):
+                    dictation_control_queues.setdefault(ctx.room.name, asyncio.Queue()).put_nowait(
+                        {"action": action, "request_id": request_id}
+                    )
             elif data.get("type") == "speak-text":
                 text_to_speak = data.get("text")
                 if isinstance(text_to_speak, str) and len(text_to_speak) <= 320:
@@ -365,6 +403,7 @@ def run_transcribe(
         language="en",
         vad_filter=True,
         word_timestamps=False,
+        condition_on_previous_text=False,
         initial_prompt=initial_prompt,
     )
 
@@ -392,55 +431,121 @@ def run_transcribe(
             )
             continue
 
-        # 2. Filter out known static boilerplate sentences
+        # 2. Keep valid short answers; VAD and Whisper confidence scores handle noise.
         cleaned = re.sub(r"[^\w\s]", "", text.lower()).strip()
-        if (
-            cleaned
-            in (
-                "thank you for watching",
-                "thank you",
-                "thank you very much",
-                "go next",
-                "you",
-                "transcribing",
-                "watching",
-                "subscribe",
-                "he",
-                "she",
-                "it",
-                "they",
-                "we",
-                "i",
-                "you got it",
-                "hospital",
-            )
-            or not cleaned
-        ):
-            logger.info("Ignoring known static transcription (%d characters)", len(text))
+        if not cleaned:
+            logger.info("Ignoring empty transcription segment")
             continue
 
-        valid_texts.append(s.text)
+        valid_texts.append(text)
 
     return " ".join(valid_texts).strip()
 
 
-async def _transcribe_partial(samples: list[float], room: rtc.Room) -> None:
+async def _transcribe_samples(samples: list[float], room: rtc.Room, beam_size: int) -> str:
+    lock = transcription_locks.setdefault(room.name, asyncio.Lock())
+    async with lock:
+        model = get_stt()
+        initial_prompt = initial_prompts.get(room.name)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            run_transcribe,
+            model,
+            np.asarray(samples, dtype=np.float32),
+            beam_size,
+            initial_prompt,
+        )
+
+
+async def _transcribe_partial(samples: list[float], room: rtc.Room, segment_id: int) -> None:
     try:
         arr = np.array(samples, dtype=np.float32)
         max_amp = np.max(np.abs(arr)) * 32768.0 if len(arr) > 0 else 0
         if max_amp < 1200:
             return  # skip partial transcription for static/noise
 
-        model = get_stt()
-        initial_prompt = initial_prompts.get(room.name)
-        loop = asyncio.get_running_loop()
-        transcript = await loop.run_in_executor(None, run_transcribe, model, arr, 1, initial_prompt)
+        transcript = await _transcribe_samples(arr.tolist(), room, beam_size=1)
 
-        if transcript:
+        if transcript and session_stt.get(room.name, False):
             logger.info("Partial transcription ready (%d characters)", len(transcript))
-            await broadcast_state(room, "listening", text=transcript)
+            await broadcast_state(room, "listening", text=transcript, segment_id=segment_id)
     except Exception as exc:
         logger.error("Error in _transcribe_partial: %s", exc)
+
+
+async def _flush_dictation_buffer(samples: list[float], room: rtc.Room, segment_id: int) -> str:
+    if not samples:
+        return ""
+    await broadcast_state(room, "thinking", segment_id=segment_id)
+    transcript = await _transcribe_audio_segment(list(samples), room, segment_id)
+    samples.clear()
+    return transcript
+
+
+async def _publish_dictation_control_result(room: rtc.Room, action: str, request_id: str) -> None:
+    import json
+
+    response = json.dumps(
+        {
+            "type": "dictation-control-result",
+            "action": action,
+            "request_id": request_id,
+        }
+    ).encode()
+    await room.local_participant.publish_data(response, reliable=True, topic="voice-control")
+
+
+async def _publish_voice_mode_result(
+    room: rtc.Room, stt_active: bool, tts_active: bool, request_id: str
+) -> None:
+    import json
+
+    response = json.dumps(
+        {
+            "type": "voice-mode-result",
+            "stt": stt_active,
+            "tts": tts_active,
+            "request_id": request_id,
+        }
+    ).encode()
+    try:
+        await room.local_participant.publish_data(response, reliable=True, topic="voice-control")
+    except Exception:
+        logger.warning("Failed to acknowledge voice mode for room %s", room.name, exc_info=True)
+
+
+def _append_audio_frames(frames, resampler, speech_samples: list[float], flush: bool = False):
+    def append_resampled(resampled_frames) -> None:
+        for resampled_frame in resampled_frames:
+            samples = (
+                np.frombuffer(resampled_frame.data, dtype=np.int16).astype(np.float32) / 32768.0
+            )
+            speech_samples.extend(samples.tolist())
+
+    for frame in frames:
+        if frame.sample_rate != 48000:
+            resampler = rtc.AudioResampler(frame.sample_rate, 16000, num_channels=1)
+        append_resampled(resampler.push(frame))
+    if flush:
+        append_resampled(resampler.flush())
+        resampler = rtc.AudioResampler(48000, 16000, num_channels=1)
+    return resampler
+
+
+def _collect_vad_event_audio(ev, vad_event_type, resampler, speech_samples: list[float]):
+    """Collect each VAD audio frame once, preserving the start-of-speech prefix."""
+    if ev.type == vad_event_type.START_OF_SPEECH:
+        speech_samples.clear()
+        return _append_audio_frames(ev.frames, resampler, speech_samples)
+    if ev.type == vad_event_type.INFERENCE_DONE and ev.speaking and ev.frames:
+        return _append_audio_frames(ev.frames, resampler, speech_samples)
+    if ev.type == vad_event_type.END_OF_SPEECH:
+        # Silero's end event contains the whole buffered utterance. The audio
+        # frames were already collected incrementally, so only drain resampler
+        # latency here instead of appending the aggregate a second time.
+        return _append_audio_frames((), resampler, speech_samples, flush=True)
+    return resampler
 
 
 async def _process_incoming_audio(
@@ -452,78 +557,110 @@ async def _process_incoming_audio(
     audio_stream = rtc.AudioStream(track)
     vad_stream = vad.stream()
 
-    # Start a background task to pull VAD events from the stream
+    # Consume speech and pause/finish commands in one task so a manual pause
+    # can flush the current utterance without waiting for another VAD event.
     async def vad_worker():
         from livekit.agents.vad import VADEventType
 
         speech_samples = []
         last_transcribe_time = 0.0
+        segment_id = 0
+        partial_task: asyncio.Task | None = None
         resampler = rtc.AudioResampler(48000, 16000, num_channels=1)
+        control_queue = dictation_control_queues.setdefault(room.name, asyncio.Queue())
+        event_task = asyncio.create_task(vad_stream.__anext__())
+        control_task = asyncio.create_task(control_queue.get())
 
-        async for ev in vad_stream:
-            # Ignore user speech if STT (mic) is not active
+        async def append_frames(frames, flush: bool = False) -> None:
+            nonlocal resampler
+            resampler = _append_audio_frames(frames, resampler, speech_samples, flush)
+
+        async def process_vad_event(ev) -> None:
+            nonlocal last_transcribe_time, segment_id, partial_task, resampler
+
             if not session_stt.get(room.name, False):
                 speech_samples.clear()
-                continue
-            # Handle user barge-in first
+                return
             if ev.type == VADEventType.START_OF_SPEECH:
-                speech_samples.clear()
-                last_transcribe_time = asyncio.get_event_loop().time()
-                await broadcast_state(room, "listening", text="...")
+                resampler = _collect_vad_event_audio(ev, VADEventType, resampler, speech_samples)
+                segment_id += 1
+                last_transcribe_time = asyncio.get_running_loop().time()
+                await broadcast_state(room, "listening", text="...", segment_id=segment_id)
                 logger.info("Speech detected.")
 
                 if session_speaking.get(room.name, False):
                     logger.info("User barge-in detected. Cancelling active speech task.")
                     interrupt_speech(room)
-                continue
+                return
 
             if session_speaking.get(room.name, False):
                 speech_samples.clear()
-                continue
+                return
 
             if ev.type != VADEventType.INFERENCE_DONE:
                 logger.info("VAD Event: type=%s", ev.type)
 
-            # Accumulate audio when speech is ongoing for partial transcription
             if getattr(ev, "speaking", False) and getattr(ev, "frames", None):
-                for frame in ev.frames:
-                    if frame.sample_rate != 48000:
-                        resampler = rtc.AudioResampler(frame.sample_rate, 16000, num_channels=1)
-                    resampled_frames = resampler.push(frame)
-                    for r_frame in resampled_frames:
-                        s = np.frombuffer(r_frame.data, dtype=np.int16).astype(np.float32) / 32768.0
-                        speech_samples.extend(s.tolist())
-
-                # Partial transcription every ~0.8 seconds
-                current_time = asyncio.get_event_loop().time()
-                if len(speech_samples) > 16000 * 0.5 and (
-                    current_time - last_transcribe_time > 0.8
-                ):
+                resampler = _collect_vad_event_audio(ev, VADEventType, resampler, speech_samples)
+                current_time = asyncio.get_running_loop().time()
+                if len(speech_samples) > 16000 * 0.5 and current_time - last_transcribe_time > 1.0:
                     last_transcribe_time = current_time
-                    asyncio.create_task(_transcribe_partial(list(speech_samples), room))
-
+                    if partial_task is None or partial_task.done():
+                        partial_task = asyncio.create_task(
+                            _transcribe_partial(list(speech_samples), room, segment_id)
+                        )
+                if not session_tts.get(room.name, False) and len(speech_samples) >= 16000 * 24:
+                    if partial_task is not None:
+                        await partial_task
+                        partial_task = None
+                    await _flush_dictation_buffer(speech_samples, room, segment_id)
+                    segment_id += 1
+                    await broadcast_state(room, "listening", text="...", segment_id=segment_id)
             elif ev.type == VADEventType.END_OF_SPEECH:
-                # Add the remaining end of speech frames
-                if getattr(ev, "frames", None):
-                    for frame in ev.frames:
-                        if frame.sample_rate != 48000:
-                            resampler = rtc.AudioResampler(frame.sample_rate, 16000, num_channels=1)
-                        resampled_frames = resampler.push(frame) + resampler.flush()
-                        for r_frame in resampled_frames:
-                            s = (
-                                np.frombuffer(r_frame.data, dtype=np.int16).astype(np.float32)
-                                / 32768.0
-                            )
-                            speech_samples.extend(s.tolist())
-
+                resampler = _collect_vad_event_audio(ev, VADEventType, resampler, speech_samples)
                 if speech_samples:
                     logger.info("Speech ended. Buffer size: %d samples", len(speech_samples))
-                    await broadcast_state(room, "thinking")
-                    asyncio.create_task(_transcribe_audio_segment(list(speech_samples), room))
-                    speech_samples.clear()
+                    if partial_task is not None:
+                        await partial_task
+                        partial_task = None
+                    await _flush_dictation_buffer(speech_samples, room, segment_id)
                 else:
                     logger.info("Speech ended but no samples accumulated.")
                     await broadcast_state(room, "listening")
+
+        try:
+            while True:
+                done, _ = await asyncio.wait(
+                    {event_task, control_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Include already-buffered VAD frames before honoring a control
+                # command so pause/finish retains the last spoken syllables.
+                if event_task in done:
+                    try:
+                        ev = event_task.result()
+                    except StopAsyncIteration:
+                        break
+                    event_task = asyncio.create_task(vad_stream.__anext__())
+                    await process_vad_event(ev)
+
+                if control_task in done:
+                    command = control_task.result()
+                    control_task = asyncio.create_task(control_queue.get())
+                    action = command["action"]
+                    session_stt[room.name] = False
+                    if partial_task is not None:
+                        await partial_task
+                        partial_task = None
+                    await append_frames((), flush=True)
+                    await _flush_dictation_buffer(speech_samples, room, segment_id)
+                    await _publish_dictation_control_result(room, action, command["request_id"])
+                    await broadcast_state(room, "idle")
+        finally:
+            for pending in (event_task, control_task):
+                if not pending.done():
+                    pending.cancel()
+            await asyncio.gather(event_task, control_task, return_exceptions=True)
 
     worker_task = asyncio.create_task(vad_worker())
 
@@ -555,11 +692,12 @@ async def _process_incoming_audio(
 
             vad_stream.push_frame(audio_frame)
     finally:
-        await vad_stream.aclose()
         worker_task.cancel()
+        await asyncio.gather(worker_task, return_exceptions=True)
+        await vad_stream.aclose()
 
 
-async def _transcribe_audio_segment(samples: list[float], room: rtc.Room) -> None:
+async def _transcribe_audio_segment(samples: list[float], room: rtc.Room, segment_id: int) -> str:
     try:
         arr = np.array(samples, dtype=np.float32)
         max_amp = np.max(np.abs(arr)) * 32768.0 if len(arr) > 0 else 0
@@ -571,31 +709,30 @@ async def _transcribe_audio_segment(samples: list[float], room: rtc.Room) -> Non
                 max_amp,
             )
             await broadcast_state(room, "listening")
-            return
+            return ""
 
-        model = get_stt()
-        initial_prompt = initial_prompts.get(room.name)
-
-        loop = asyncio.get_running_loop()
-        transcript = await loop.run_in_executor(None, run_transcribe, model, arr, 5, initial_prompt)
+        transcript = await _transcribe_samples(arr.tolist(), room, beam_size=5)
         logger.info("Transcription completed (%d characters)", len(transcript))
 
         if not transcript:
             await broadcast_state(room, "listening")
-            return
+            return ""
 
         # Broadcast final transcript as dictation-result and reset listening state
         import json
 
         logger.info("Sending a transcription result to the DeepSpace client")
-        await broadcast_state(room, "listening")
-        payload = json.dumps({"type": "dictation-result", "text": transcript}).encode()
-        await room.local_participant.publish_data(payload)
-        return
+        payload = json.dumps(
+            {"type": "dictation-result", "text": transcript, "segment_id": segment_id}
+        ).encode()
+        await room.local_participant.publish_data(payload, reliable=True, topic="voice-control")
+        await broadcast_state(room, "listening", segment_id=segment_id)
+        return transcript
 
     except Exception as exc:
         logger.error("Error in transcribe/respond: %s", exc)
         await broadcast_state(room, "listening")
+        return ""
 
 
 if __name__ == "__main__":

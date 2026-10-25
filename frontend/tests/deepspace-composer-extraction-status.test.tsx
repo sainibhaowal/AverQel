@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { fetchWithAuthMock } = vi.hoisted(() => ({ fetchWithAuthMock: vi.fn() }));
@@ -106,6 +106,111 @@ describe("DeepSpaceComposer file extraction status", () => {
       "/deepspace/library/conversation-1/uploads",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("keeps pasted files distinct and submits their metadata in attachment order", async () => {
+    let uploadNumber = 0;
+    const uploadNames = new Map<string, string>();
+    fetchWithAuthMock.mockImplementation(
+      async (path: string, options?: { method?: string; body?: string }) => {
+        const method = options?.method ?? "GET";
+        if (method === "POST" && path.endsWith("/uploads")) {
+          uploadNumber += 1;
+          const uploadId = `upload-${uploadNumber}`;
+          const name = uploadNumber === 1 ? "screenshot.png" : "screenshot (2).png";
+          uploadNames.set(uploadId, name);
+          return {
+            ok: true,
+            json: async () => ({
+              id: uploadId,
+              name,
+              chunk_size: 1024,
+              total_chunks: 1,
+              received_chunks: [],
+              status: "pending",
+            }),
+          };
+        }
+        if (method === "PUT") {
+          const uploadId = path.includes("upload-1") ? "upload-1" : "upload-2";
+          return {
+            ok: true,
+            json: async () => ({
+              id: uploadId,
+              name: uploadNames.get(uploadId),
+              chunk_size: 1024,
+              total_chunks: 1,
+              received_chunks: [0],
+              status: "uploading",
+            }),
+          };
+        }
+        if (method === "POST" && path.endsWith("/complete")) {
+          const uploadId = path.includes("upload-1") ? "upload-1" : "upload-2";
+          const index = uploadId === "upload-1" ? 1 : 2;
+          return {
+            ok: true,
+            json: async () => ({
+              id: uploadId,
+              name: uploadNames.get(uploadId),
+              status: "completed",
+              file_id: `file-${index}`,
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      },
+    );
+    const onSubmit = vi.fn();
+
+    render(
+      <DeepSpaceComposer
+        conversationId="conversation-1"
+        query=""
+        isStreaming={false}
+        onQueryChange={vi.fn()}
+        onSubmit={onSubmit}
+        onStop={vi.fn()}
+      />,
+    );
+
+    fireEvent.paste(screen.getByPlaceholderText("Message DeepSpace..."), {
+      clipboardData: {
+        files: [
+          new File(["first image"], "screenshot.png", { type: "image/png" }),
+          new File(["second image"], "screenshot.png", { type: "image/png" }),
+        ],
+      },
+    });
+
+    await waitFor(() => expect(screen.getByTitle("Preview screenshot.png")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTitle("Preview screenshot (2).png")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(onSubmit).toHaveBeenCalledWith([
+      {
+        id: "file-1",
+        name: "screenshot.png",
+        content_type: "image/png",
+        size_bytes: 11,
+      },
+      {
+        id: "file-2",
+        name: "screenshot (2).png",
+        content_type: "image/png",
+        size_bytes: 12,
+      },
+    ]);
+    const createCalls = fetchWithAuthMock.mock.calls.filter(
+      ([path, options]) =>
+        path === "/deepspace/library/conversation-1/uploads" && options?.method === "POST",
+    );
+    expect(createCalls).toHaveLength(2);
+    expect(
+      createCalls.map(([, options]) => JSON.parse(options!.body as string).rename_on_conflict),
+    ).toEqual([true, true]);
   });
 
   it("keeps saved extraction status when attaching an existing Library file", async () => {

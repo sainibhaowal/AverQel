@@ -129,6 +129,7 @@ describe("ProductDomains", () => {
       collections.getByRole("heading", { name: /member security and alerts/i }),
     ).toBeInTheDocument();
     expect(providers.getByRole("heading", { name: /provider configuration/i })).toBeInTheDocument();
+    expect(providers.getByText("LarpRouter")).toBeInTheDocument();
     expect(
       providers.getByText(/Query and DeepSpace use assigned provider roles/i),
     ).toBeInTheDocument();

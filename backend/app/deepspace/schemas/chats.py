@@ -164,6 +164,15 @@ class RegenerateRequest(BaseModel):
         return normalized
 
 
+class EditAndRegenerateRequest(RegenerateRequest):
+    content: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def normalize_content(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
 class QueueTurnRequest(BaseModel):
     message: str = Field(default="", max_length=4000)
     client_request_id: str | None = Field(default=None, max_length=255)

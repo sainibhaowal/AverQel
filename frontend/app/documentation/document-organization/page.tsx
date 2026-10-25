@@ -15,6 +15,11 @@ export default function DocumentOrganizationDocsPage() {
           document library.
         </p>
         <p>
+          Editors and administrators can view classification history for documents they are allowed
+          to access. Other users do not see that panel, and the API checks the role and document
+          access independently.
+        </p>
+        <p>
           Saved views apply filters to documents the current user is allowed to access. Smart
           collections evaluate configured conditions against eligible documents; they do not copy
           files or expand access. Classification rules and schedules run through authorized

@@ -6,8 +6,10 @@ export function isValidReasoningEffort(value: unknown): value is ReasoningEffort
   return typeof value === "string" && SAFE_REASONING_EFFORT.test(value);
 }
 
-export function formatReasoningEffortLabel(effort: ReasoningEffort): string {
+export function formatReasoningEffortLabel(effort: ReasoningEffort, nativeValue?: string): string {
   if (!isValidReasoningEffort(effort)) return "Provider option";
+  if (nativeValue === "max") return "Max";
+  if (nativeValue === "xhigh") return "Very High";
   if (effort === "on") return "On";
   if (effort === "off") return "Off";
   return effort
@@ -23,6 +25,7 @@ export type ModelReasoningOptions = {
   reasoningCapabilitiesKnown?: boolean;
   reasoningToggleOnly?: boolean;
   reasoningAlwaysOn?: boolean;
+  defaultReasoningEffort?: string;
 };
 
 const MODEL_METADATA_REFRESH_TTL_MS = 15 * 60 * 1000;
@@ -54,16 +57,16 @@ export function normalizeReasoningEffortForModel(
 ): ReasoningEffort | null {
   if (!model?.reasoningCapabilitiesKnown) return null;
   if (effort !== null && !isValidReasoningEffort(effort)) return null;
+  const supported = (model.supportedReasoningEfforts ?? []).filter(isValidReasoningEffort);
+  const defaultEffort =
+    model.defaultReasoningEffort && supported.includes(model.defaultReasoningEffort)
+      ? model.defaultReasoningEffort
+      : null;
   if (model.reasoningAlwaysOn) {
-    const supported = (model.supportedReasoningEfforts ?? []).filter(isValidReasoningEffort);
     if (effort && supported.includes(effort)) return effort;
-    return (supported[0] as ReasoningEffort | undefined) ?? "medium";
+    return defaultEffort ?? (supported[0] as ReasoningEffort | undefined) ?? "medium";
   }
   if (effort === null) return null;
   if (model.reasoningToggleOnly) return "medium";
-  return model.supportedReasoningEfforts?.some(
-    (candidate) => isValidReasoningEffort(candidate) && candidate === effort,
-  )
-    ? effort
-    : null;
+  return supported.includes(effort) ? effort : defaultEffort;
 }

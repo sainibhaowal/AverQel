@@ -86,6 +86,8 @@ export default function GalleryBlock({
   const onChangeRef = useRef(onChange);
   const onImportAssetRef = useRef(onImportAsset);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [artifactSaving, setArtifactSaving] = useState(false);
+  const [artifactSaved, setArtifactSaved] = useState(false);
   const item = items[Math.min(index, items.length - 1)] ?? { src: "", alt: "Gallery image" };
   const src = safeExternalHref(item.src);
   const open = safeExternalHref(item.href ?? item.src);
@@ -314,7 +316,7 @@ export default function GalleryBlock({
       setSaveError(error instanceof Error ? error.message : "The image could not be saved.");
     }
   };
-  const commit = async () => {
+  const commit = async (): Promise<GalleryPayload | null> => {
     const next = {
       ...draft,
       id: draft.id ?? payload.id,
@@ -335,8 +337,28 @@ export default function GalleryBlock({
     try {
       await onChange?.(next);
       setEditing(false);
+      return next;
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "The gallery could not be saved.");
+      return null;
+    }
+  };
+  const saveArtifact = async () => {
+    if (!onSaveArtifact || artifactSaving) return;
+    setArtifactSaving(true);
+    setArtifactSaved(false);
+    setSaveError(null);
+    try {
+      const artifact = editing ? await commit() : payload;
+      if (!artifact) return;
+      await onSaveArtifact(artifact);
+      setArtifactSaved(true);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "The gallery could not be saved to Library.",
+      );
+    } finally {
+      setArtifactSaving(false);
     }
   };
   const updateItem = (itemIndex: number, key: keyof GalleryItem, value: string) =>
@@ -376,10 +398,13 @@ export default function GalleryBlock({
               onClick={() => {
                 if (editing) void commit();
                 else {
+                  setSaveError(null);
+                  setArtifactSaved(false);
                   setDraft(payload);
                   setEditing(true);
                 }
               }}
+              disabled={artifactSaving}
               className="theme-chip inline-flex items-center gap-1 rounded-full px-2.5 py-2 text-[11px]"
               aria-label={editing ? "Save gallery" : "Edit gallery"}
             >
@@ -389,10 +414,13 @@ export default function GalleryBlock({
           {onSaveArtifact ? (
             <button
               type="button"
-              onClick={() => void onSaveArtifact(payload)}
-              className="theme-chip rounded-full px-2.5 py-2 text-[11px]"
+              onClick={() => void saveArtifact()}
+              disabled={artifactSaving}
+              aria-busy={artifactSaving}
+              aria-label="Save gallery to Library"
+              className="theme-chip rounded-full px-2.5 py-2 text-[11px] disabled:opacity-50"
             >
-              Save
+              {artifactSaving ? "Saving…" : artifactSaved ? "Saved" : "Save"}
             </button>
           ) : null}
           <button
@@ -494,6 +522,15 @@ export default function GalleryBlock({
       {saveError ? (
         <p className="mb-2 text-xs text-rose-400" role="alert">
           {saveError}
+        </p>
+      ) : null}
+      {artifactSaved ? (
+        <p
+          className="mb-2 text-xs text-emerald-700 dark:text-emerald-300"
+          role="status"
+          aria-live="polite"
+        >
+          Saved to Library.
         </p>
       ) : null}
       <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-black/10 dark:border-white/8">

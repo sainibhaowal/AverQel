@@ -725,6 +725,86 @@ class DeepSpaceRuntimeStore:
             except SQLAlchemyError:
                 self.db.rollback()
 
+    def finish_for_request(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        client_request_id: str,
+        status: str,
+        error: str | None = None,
+    ) -> bool:
+        """Close an active run from its worker's terminal stream outcome.
+
+        The worker may observe a terminal SSE frame before the frame contains
+        the run id, or the stream may end before it emits one. Resolve the run
+        through its tenant-owned assistant message so neither case can leave
+        an active run row behind.
+        """
+        if status not in {"ready", "completed", "failed", "cancelled", "blocked"}:
+            return False
+
+        run = self.db.execute(
+            select(DeepSpaceAgentRun)
+            .join(Message, Message.id == DeepSpaceAgentRun.assistant_message_id)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                Message.conversation_id == conversation_id,
+                Message.metadata_json["client_request_id"].astext == client_request_id,
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+            .limit(1)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if run is None:
+            return False
+
+        target_status = "ready" if status == "completed" else status
+        if run.status in ACTIVE_RUN_STATUSES:
+            run.status = target_status
+            run.updated_at = datetime.now(UTC)
+            run.heartbeat_at = None
+            if error:
+                run.last_error = error[:2000]
+            StorageLifecycleService(self.db).record_activity(
+                tenant_id=tenant_id,
+                owner_user_id=user_id,
+                category="activity_and_runs",
+                source_type="conversation",
+                source_id=str(conversation_id),
+                activity_kind="run_finished",
+                size_bytes=StorageQuotaService.estimate_bytes(error),
+            )
+
+        assistant = self.db.execute(
+            select(Message).where(
+                Message.id == run.assistant_message_id,
+                Message.conversation_id == conversation_id,
+                Message.role == "assistant",
+            )
+        ).scalar_one_or_none()
+        if assistant is not None:
+            metadata = dict(assistant.metadata_json or {})
+            metadata["runtime_active"] = False
+            if metadata.get("status") == "streaming":
+                if target_status == "failed":
+                    metadata["status"] = "error"
+                elif target_status == "blocked":
+                    metadata["status"] = "blocked"
+                else:
+                    metadata["status"] = "ready"
+            if target_status == "failed" and metadata.get("status") == "error":
+                metadata.setdefault("error_code", "DEEPSPACE_WORKER_FAILED")
+                if error:
+                    metadata.setdefault("error_message", error[:2000])
+            assistant.metadata_json = metadata
+
+        self.db.commit()
+        return True
+
     @staticmethod
     def _bounded_json(value: dict[str, object] | None) -> dict[str, object]:
         if not isinstance(value, dict):

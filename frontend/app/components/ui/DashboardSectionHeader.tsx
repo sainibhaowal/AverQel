@@ -14,6 +14,7 @@ interface DashboardSectionHeaderProps {
   backHref?: string;
   backLabel?: string;
   actions?: React.ReactNode;
+  actionsLayout?: "inline" | "below";
 }
 
 const LIGHT_ACCENT_COLORS: Record<string, string> = {
@@ -42,11 +43,20 @@ export default function DashboardSectionHeader({
   backHref,
   backLabel,
   actions,
+  actionsLayout = "inline",
 }: DashboardSectionHeaderProps) {
   const accentColor = accentClassName.split(" ")[0].replace("bg-", "");
+  const headerLayoutClassName =
+    actionsLayout === "below"
+      ? "flex flex-col gap-5"
+      : "flex flex-col gap-5 md:flex-row md:items-end md:justify-between";
+  const actionsClassName =
+    actionsLayout === "below"
+      ? "flex w-full flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3"
+      : "flex max-w-full flex-wrap items-center gap-2 sm:gap-3";
 
   return (
-    <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+    <div className={headerLayoutClassName}>
       <div className="min-w-0">
         {backHref && backLabel ? (
           <Link
@@ -95,9 +105,7 @@ export default function DashboardSectionHeader({
           </div>
         </div>
       </div>
-      {actions ? (
-        <div className="flex max-w-full flex-wrap items-center gap-2 sm:gap-3">{actions}</div>
-      ) : null}
+      {actions ? <div className={actionsClassName}>{actions}</div> : null}
     </div>
   );
 }

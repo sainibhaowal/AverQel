@@ -98,6 +98,69 @@ describe("DeepSpace markdown streaming", () => {
     await waitFor(() => expect(onSaveVisualArtifact).toHaveBeenCalledWith(diagram));
   });
 
+  it("keeps card edits open and reports a rejected revision save", async () => {
+    const onVisualBlockChange = vi.fn().mockResolvedValue(false);
+    const card: StructuredBlock = {
+      id: "conflicted-card",
+      type: "card",
+      title: "Original title",
+      content: "Card content.",
+    };
+    render(
+      <DeepSpaceRichContent
+        blocks={[card]}
+        messageId="card-message"
+        onVisualBlockChange={onVisualBlockChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit card" }));
+    const editor = screen.getByRole("textbox", { name: "Edit card fields as JSON" });
+    fireEvent.change(editor, {
+      target: { value: JSON.stringify({ ...card, title: "Updated title" }, null, 2) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This card changed in another session.",
+    );
+    expect(screen.getByRole("textbox", { name: "Edit card fields as JSON" })).toBeInTheDocument();
+    expect(onVisualBlockChange).toHaveBeenCalledWith(
+      "card-message",
+      expect.objectContaining({ title: "Updated title", revision: 1 }),
+    );
+  });
+
+  it("shows Library save failures on the card and does not claim success", async () => {
+    const onSaveVisualArtifact = vi
+      .fn()
+      .mockRejectedValue(new Error("The Library rejected this visual."));
+    const card: StructuredBlock = {
+      id: "library-failed-card",
+      type: "card",
+      title: "Library card",
+      content: "Card content.",
+    };
+    render(<DeepSpaceRichContent blocks={[card]} onSaveVisualArtifact={onSaveVisualArtifact} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save card to Library" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Library rejected this visual.");
+    expect(screen.queryByText("Saved to Library.")).not.toBeInTheDocument();
+  });
+
+  it("does not offer a Library save action when no save handler exists", () => {
+    const card: StructuredBlock = {
+      id: "card-without-library-handler",
+      type: "card",
+      title: "Card without Library access",
+      content: "Card content.",
+    };
+    render(<DeepSpaceRichContent blocks={[card]} />);
+
+    expect(screen.queryByRole("button", { name: "Save card to Library" })).not.toBeInTheDocument();
+  });
+
   it("renders streamed table rows instead of waiting for completion", () => {
     render(
       <DeepSpaceMarkdownRenderer
@@ -293,6 +356,30 @@ describe("DeepSpace markdown streaming", () => {
     expect(view.container.querySelector('[data-axis-label="y"]')).toHaveTextContent("y");
   });
 
+  it("shows rejected chart Library saves beside the chart controls", async () => {
+    const onSaveVisualArtifact = vi.fn().mockRejectedValue(new Error("Library is unavailable."));
+    const fence = String.fromCharCode(96).repeat(3);
+    render(
+      <DeepSpaceMarkdownRenderer
+        onSaveVisualArtifact={onSaveVisualArtifact}
+        content={`${fence}chart\n${JSON.stringify({
+          id: "chart-library-error",
+          title: "Revenue",
+          chart_type: "line",
+          series: [
+            { label: "Q1", value: 10 },
+            { label: "Q2", value: 12 },
+          ],
+        })}\n${fence}`}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save chart artifact" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Library is unavailable.");
+    expect(screen.queryByText("Saved to Library.")).not.toBeInTheDocument();
+  });
+
   it("keeps recalculated chart values in sync through save and visual re-render", async () => {
     const savedBlocks: StructuredBlock[] = [];
     const onVisualBlockChange = vi.fn((_messageId: string, block: StructuredBlock) => {
@@ -450,13 +537,82 @@ ${fence}`}
     expect(screen.getByText("+8.2% MoM")).toBeInTheDocument();
     expect(screen.getByText("Trend: up 8.2% — improving.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Revenue" }).closest("article")).toHaveClass(
-      "bg-emerald-400/[0.07]",
+      "border-glass-border",
+      "bg-surface-0",
+      "dark:bg-surface-1",
     );
     expect(
       screen.getByRole("heading", { name: "Quota Attainment" }).closest("article"),
-    ).toHaveClass("bg-amber-400/[0.07]");
+    ).toHaveClass("border-glass-border", "bg-surface-0", "dark:bg-surface-1");
     expect(screen.queryByText(/"title":"Revenue"/)).not.toBeInTheDocument();
     expect(view.container.querySelector("pre")).toBeNull();
+  });
+
+  it("uses high-contrast card accents and label-based detail icons without sky-blue styling", () => {
+    const fence = String.fromCharCode(96).repeat(3);
+    const { container } = render(
+      <DeepSpaceMarkdownRenderer
+        content={`${fence}card
+{"title":"Visitor details","tone":"info","content":"Visitor information.","details":[{"label":"Address","value":"Berlin"},{"label":"Hours","value":"8:00–20:00"},{"label":"Email","value":"hello@example.com"}]}
+${fence}`}
+      />,
+    );
+
+    const card = container.querySelector('[data-card-layout="standard"]');
+    expect(card).toHaveClass(
+      "border-glass-border",
+      "bg-surface-0",
+      "dark:bg-surface-1",
+    );
+    expect(card?.className).not.toMatch(/violet|emerald|amber|rose|orange|slate|cyan|sky/);
+    const detailBadges = container.querySelectorAll<HTMLElement>("[data-card-detail-icon]");
+    expect(detailBadges).toHaveLength(3);
+    expect(Array.from(detailBadges).every((badge) => badge.querySelector("svg"))).toBe(true);
+    expect(detailBadges[0]).toHaveClass("border-glass-border", "bg-surface-1", "text-foreground");
+    expect(detailBadges[1]).toHaveClass("dark:bg-surface-2", "rounded-xl");
+    expect(detailBadges[2]).toHaveClass("border-glass-border", "dark:bg-surface-2");
+    expect(Array.from(detailBadges).every((badge) =>
+      !/violet|emerald|amber|rose|orange|slate|cyan|sky/.test(badge.className),
+    )).toBe(true);
+  });
+
+  it("renders evaluation and referral card fences as their specialized layouts", async () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const fence = String.fromCharCode(96).repeat(3);
+      render(
+        <DeepSpaceMarkdownRenderer
+          content={`${fence}card
+{"title":"LarpRouter API evaluation","subtitle":"Tests from August 17 to September 21, 2026","layout":"evaluation","score":{"value":51,"max":100,"tone":"error"},"metrics":[{"label":"Valid scored tests","value":15},{"label":"Claude signature checks passed","value":"0/10"}],"content":"Source: Veridrop's publicly reported testing results.","sources":[{"title":"Veridrop","url":"https://example.com/veridrop"}]}
+${fence}
+
+${fence}card
+{"title":"LarpRouter referral","layout":"referral","code":"81D9-627A-11","primary_metric":{"label":"Gift tokens advertised","value":"10,000,000"},"details":[{"label":"Free cash","value":"No"},{"label":"Credit card required initially","value":"No, according to site"},{"label":"Inviter's commission","value":"5% first top-up, 2% later"},{"label":"Gift-token restrictions","value":"Three specified models"}],"content":"These terms are published by LarpRouter, not independently verified benefits.","sources":[{"title":"LarpRouter","url":"https://example.com/referral"}]}
+${fence}`}
+        />,
+      );
+
+      expect(
+        screen.getByRole("progressbar", { name: "LarpRouter API evaluation score" }),
+      ).toHaveAttribute("aria-valuenow", "51");
+      expect(screen.getByText("10,000,000")).toBeInTheDocument();
+      expect(screen.getAllByTestId("referral-card-detail")).toHaveLength(4);
+      expect(screen.getByText(/not independently verified benefits/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Copy referral code" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("81D9-627A-11"));
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("promotes generic JSON visual payloads and persisted rich-content fences", () => {

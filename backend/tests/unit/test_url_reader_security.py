@@ -3,6 +3,8 @@ import pytest
 from app.deepspace.services import url_reader
 from app.providers.services.base import ProviderRequestError
 
+pytestmark = pytest.mark.unit_no_db
+
 
 def test_validate_public_url_enforces_scheme_allowlist_and_dns(monkeypatch) -> None:
     monkeypatch.setattr(
@@ -43,18 +45,32 @@ def test_validate_public_url_blocks_private_and_unresolvable_hosts(monkeypatch) 
 
 def test_read_url_parses_html_and_read_image_rejects_non_image(monkeypatch) -> None:
     monkeypatch.setattr(
+        url_reader.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(None, None, None, None, ("93.184.216.34", 0))],
+    )
+    monkeypatch.setattr(
         url_reader,
         "_fetch",
         lambda *_args, **_kwargs: (
             "https://example.com/page",
             "text/html",
-            b"<html><title>Title</title><a href='/next'>Next</a><p>Hello world</p></html>",
+            b"<html><head><title>Title</title><meta property='og:image' content='/photos/place.jpg'></head><a href='/next'>Next</a><p>Hello world</p></html>",
         ),
     )
     result = url_reader.read_url("https://example.com/page")
     assert result.title == "Title"
     assert result.text == "Title Next Hello world"
     assert result.links == ["https://example.com/next"]
+    assert result.image_urls == ["https://example.com/photos/place.jpg"]
+
+    monkeypatch.setattr(
+        url_reader.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(None, None, None, None, ("127.0.0.1", 0))],
+    )
+    unsafe_image_result = url_reader.read_url("https://example.com/page")
+    assert unsafe_image_result.image_urls == []
 
     monkeypatch.setattr(
         url_reader,

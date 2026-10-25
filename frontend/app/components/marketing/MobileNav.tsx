@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -17,7 +17,6 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AverQelLogo from "../ui/AverQelLogo";
-import { useLandingReducedMotion } from "./landingMotion";
 import { QEL_CONNECT_NAME } from "@/lib/brand";
 
 const navLinks = [
@@ -33,7 +32,7 @@ const navLinks = [
 
 export default function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
-  const reduceMotion = useLandingReducedMotion();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!isOpen) {

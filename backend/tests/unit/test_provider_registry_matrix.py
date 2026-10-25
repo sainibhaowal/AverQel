@@ -22,6 +22,7 @@ CHAT_PROVIDER_TYPES = tuple(
             "ollama",
             "opencode-zen",
             "openrouter",
+            "larprouter",
         }
     )
 )

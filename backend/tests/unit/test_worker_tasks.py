@@ -669,6 +669,117 @@ def test_duplicate_deepspace_worker_does_not_finalize_the_original_queue_turn(
     assert finished_turns == []
 
 
+@pytest.mark.unit_no_db
+def test_deepspace_worker_fails_stream_without_terminal_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Lock:
+        value: str | None = None
+
+        def set(self, _key, value, **_kwargs):  # type: ignore[no-untyped-def]
+            self.value = value
+            return True
+
+        def get(self, key):  # type: ignore[no-untyped-def]
+            return self.value if str(key).startswith("deepspace:worker-lock:") else None
+
+        def delete(self, _key):  # type: ignore[no-untyped-def]
+            self.value = None
+
+        def close(self) -> None:
+            return None
+
+    class _QueryResult:
+        def scalar_one_or_none(self):  # type: ignore[no-untyped-def]
+            return None
+
+    class _Session(_FakeSession):
+        def execute(self, statement, params=None):  # type: ignore[no-untyped-def]
+            _ = params
+            if hasattr(statement, "selected_columns"):
+                return _QueryResult()
+            return None
+
+    class _Queue:
+        def finish(self, **kwargs):  # type: ignore[no-untyped-def]
+            finished_turns.append(kwargs)
+
+        def state(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return SimpleNamespace(paused=False)
+
+    class _EventFanout:
+        def __init__(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return None
+
+        async def start(self) -> None:
+            return None
+
+        async def submit(self, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    conversation_id = uuid.uuid4()
+    session = _Session()
+    finished_turns: list[dict[str, object]] = []
+    finished_runs: list[dict[str, object]] = []
+    failures: list[dict[str, object]] = []
+    lock = _Lock()
+
+    class _Service:
+        def __init__(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return None
+
+        async def stream_turn(self, **_kwargs):  # type: ignore[no-untyped-def]
+            yield f'event: start\ndata: {{"conversation_id":"{conversation_id}"}}\n\n'
+
+    monkeypatch.setattr(
+        tasks_deepspace,
+        "get_settings",
+        lambda: SimpleNamespace(redis_url="redis://isolated-test"),
+    )
+    monkeypatch.setattr(tasks_deepspace, "get_session_factory", lambda: lambda: session)
+    monkeypatch.setattr(tasks_deepspace.redis.Redis, "from_url", lambda *_a, **_k: lock)
+    monkeypatch.setattr(tasks_deepspace, "set_db_tenant_context", lambda *_a, **_k: None)
+    monkeypatch.setattr(tasks_deepspace, "DeepSpaceChatService", _Service)
+    monkeypatch.setattr(tasks_deepspace, "AsyncRunEventFanout", _EventFanout)
+    monkeypatch.setattr(tasks_deepspace, "latest_sequence", lambda *_a, **_k: 0)
+    monkeypatch.setattr(tasks_deepspace, "DeepSpaceTurnQueueStore", lambda _db: _Queue())
+    monkeypatch.setattr(
+        tasks_deepspace.DeepSpaceRuntimeStore,
+        "finish_for_request",
+        lambda _self, **kwargs: finished_runs.append(kwargs),
+    )
+    monkeypatch.setattr(
+        tasks_deepspace,
+        "_publish_failure",
+        lambda **kwargs: failures.append(kwargs),
+    )
+    monkeypatch.setattr(
+        tasks_deepspace.dispatch_deepspace_turn_queue,
+        "apply_async",
+        lambda **_kwargs: None,
+    )
+
+    result = tasks_deepspace.run_deepspace_task.run(
+        tenant_id=str(uuid.uuid4()),
+        user_id=str(uuid.uuid4()),
+        roles=["user"],
+        permissions=["queries:run"],
+        conversation_id=str(conversation_id),
+        prompt="A response that exits early",
+        client_request_id="missing-terminal-frame",
+        thinking_enabled=False,
+    )
+
+    assert result == "failed"
+    assert finished_turns[0]["status"] == "failed"
+    assert finished_runs[0]["status"] == "failed"
+    assert failures[0]["client_request_id"] == "missing-terminal-frame"
+    assert "stopped before finishing" in failures[0]["message"]
+
+
 def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_maintenance, "CursorResult", _FakeCursorResult)

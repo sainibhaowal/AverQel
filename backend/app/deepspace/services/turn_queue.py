@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -474,8 +474,8 @@ class DeepSpaceTurnQueueStore:
             reasoning_effort=reasoning_effort,
             roles_json=sorted({str(role) for role in roles}),
             permissions_json=sorted({str(permission) for permission in permissions}),
-            attachment_file_ids_json=sorted(
-                {str(file_id) for file_id in (attachment_file_ids or [])}
+            attachment_file_ids_json=list(
+                dict.fromkeys(str(file_id) for file_id in (attachment_file_ids or []))
             ),
             status="queued",
         )
@@ -991,6 +991,12 @@ class DeepSpaceTurnQueueStore:
         and close its stream rather than leaving the browser in a running state.
         """
         cutoff = datetime.now(UTC) - stale_after
+        recovered_terminal_runs = self._recover_stale_runs_for_terminal_turns(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            cutoff=cutoff,
+        )
         turns = list(
             self.db.execute(
                 select(DeepSpaceQueuedTurn)
@@ -1008,7 +1014,7 @@ class DeepSpaceTurnQueueStore:
             .all()
         )
         if not turns:
-            return 0
+            return recovered_terminal_runs
 
         active_run = (
             self.db.execute(
@@ -1023,7 +1029,7 @@ class DeepSpaceTurnQueueStore:
             .first()
         )
         if active_run is not None:
-            return 0
+            return recovered_terminal_runs
 
         expired_runs: list[tuple[DeepSpaceQueuedTurn, DeepSpaceAgentRun]] = []
         for turn in turns:
@@ -1070,7 +1076,172 @@ class DeepSpaceTurnQueueStore:
         self._publish_queue_event(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
-        return len(turns)
+        return len(turns) + recovered_terminal_runs
+
+    def _recover_stale_runs_for_terminal_turns(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        cutoff: datetime,
+    ) -> int:
+        """Reconcile old active runs whose queue turn has already ended."""
+        runs = list(
+            self.db.execute(
+                select(DeepSpaceAgentRun)
+                .where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id == conversation_id,
+                    DeepSpaceAgentRun.status.in_({"running", "cancelling"}),
+                    or_(
+                        DeepSpaceAgentRun.heartbeat_at.is_(None),
+                        DeepSpaceAgentRun.heartbeat_at < cutoff,
+                    ),
+                )
+                .with_for_update(skip_locked=True)
+            )
+            .scalars()
+            .all()
+        )
+        changed = 0
+        interrupted: list[tuple[DeepSpaceQueuedTurn, DeepSpaceAgentRun]] = []
+        now = datetime.now(UTC)
+
+        for run in runs:
+            if run.assistant_message_id is None:
+                continue
+            assistant = self.db.execute(
+                select(Message).where(
+                    Message.id == run.assistant_message_id,
+                    Message.conversation_id == conversation_id,
+                    Message.role == "assistant",
+                )
+            ).scalar_one_or_none()
+            if assistant is None:
+                continue
+            metadata = dict(assistant.metadata_json or {})
+            request_id = str(metadata.get("client_request_id") or "").strip()
+            if not request_id:
+                continue
+            turn = self.db.execute(
+                select(DeepSpaceQueuedTurn)
+                .where(
+                    DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                    DeepSpaceQueuedTurn.user_id == user_id,
+                    DeepSpaceQueuedTurn.conversation_id == conversation_id,
+                    DeepSpaceQueuedTurn.client_request_id == request_id,
+                    DeepSpaceQueuedTurn.status.in_(TERMINAL_QUEUE_STATUSES),
+                    DeepSpaceQueuedTurn.completed_at.is_not(None),
+                    DeepSpaceQueuedTurn.completed_at < cutoff,
+                )
+                .with_for_update(skip_locked=True)
+            ).scalar_one_or_none()
+            if turn is None:
+                continue
+
+            terminal_event = self.db.execute(
+                select(DeepSpaceRunEvent)
+                .where(
+                    DeepSpaceRunEvent.tenant_id == tenant_id,
+                    DeepSpaceRunEvent.user_id == user_id,
+                    DeepSpaceRunEvent.conversation_id == conversation_id,
+                    DeepSpaceRunEvent.client_request_id == request_id,
+                    DeepSpaceRunEvent.event_name.in_({"done", "error"}),
+                )
+                .order_by(DeepSpaceRunEvent.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+            if terminal_event is None:
+                cancelled = run.cancel_requested or turn.status == "cancelled"
+                run.status = "cancelled" if cancelled else "failed"
+                run.last_error = (
+                    "cancelled_after_worker_lease_expired" if cancelled else "worker_lease_expired"
+                )
+                if cancelled:
+                    turn.status = "cancelled"
+                    turn.error = None
+                else:
+                    turn.status = "failed"
+                    turn.error = (
+                        "DeepSpace stopped before this response finished. "
+                        "The saved prompt is available to retry."
+                    )
+                turn.completed_at = now
+                interrupted.append((turn, run))
+            elif terminal_event.event_name == "error":
+                run.status = "failed"
+                run.last_error = run.last_error or "terminal_error_event_persisted"
+                turn.status = "failed"
+                turn.error = turn.error or "DeepSpace could not complete this response."
+                turn.completed_at = now
+                if metadata.get("status") == "streaming":
+                    metadata["status"] = "error"
+                    metadata["error_code"] = "DEEPSPACE_WORKER_FAILED"
+                    metadata["error_message"] = turn.error
+                metadata["runtime_active"] = False
+                assistant.metadata_json = metadata
+            else:
+                try:
+                    frame_data = terminal_event.frame.split("data:", 1)[1].strip()
+                    reported_status = str(json.loads(frame_data).get("status") or "ready")
+                except (IndexError, TypeError, ValueError, json.JSONDecodeError):
+                    reported_status = "ready"
+                run.status = "ready" if reported_status == "completed" else reported_status
+                if run.status not in {
+                    "ready",
+                    "cancelled",
+                    "failed",
+                    "blocked",
+                    "awaiting_user",
+                    "awaiting_approval",
+                }:
+                    run.status = "ready"
+                if run.status == "cancelled":
+                    turn.status = "cancelled"
+                elif run.status in {"failed", "blocked"}:
+                    turn.status = "failed"
+                elif run.status == "awaiting_user":
+                    turn.status = "awaiting_user"
+                    turn.completed_at = None
+                elif run.status == "awaiting_approval":
+                    turn.status = "awaiting_approval"
+                    turn.completed_at = None
+                else:
+                    turn.status = "completed"
+                if turn.status in TERMINAL_QUEUE_STATUSES:
+                    turn.completed_at = now
+                if metadata.get("status") == "streaming":
+                    if run.status == "failed":
+                        metadata["status"] = "error"
+                    elif run.status == "blocked":
+                        metadata["status"] = "blocked"
+                    else:
+                        metadata["status"] = "ready"
+                metadata["runtime_active"] = run.status in {
+                    "awaiting_user",
+                    "awaiting_approval",
+                }
+                assistant.metadata_json = metadata
+
+            run.updated_at = now
+            run.heartbeat_at = None
+            changed += 1
+
+        if not changed:
+            return 0
+
+        self.db.commit()
+        for turn, run in interrupted:
+            self._close_expired_worker_stream(turn=turn, run=run)
+        self._publish_queue_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        return changed
 
     def resume_paused(
         self,

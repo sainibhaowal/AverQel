@@ -132,6 +132,7 @@ _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES = {
     "groq",
     "groqopenaicompatible",
     "lmstudio",
+    "larprouter",
     "ollama",
     "mistral",
     "opencodezen",

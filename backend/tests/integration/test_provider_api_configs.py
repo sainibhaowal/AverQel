@@ -218,6 +218,12 @@ def test_provider_supported_types_catalog_is_exposed(
     items = response.json()["items"]
     assert any(item["provider_type"] == "openai" for item in items)
     assert any(item["provider_type"] == "ollama" for item in items)
+    larprouter = next(item for item in items if item["provider_type"] == "larprouter")
+    assert larprouter["display_name"] == "LarpRouter"
+    assert larprouter["auth_modes"] == ["api_key"]
+    assert larprouter["supports_chat"] is True
+    assert larprouter["supports_embeddings"] is False
+    assert larprouter["supports_model_listing"] is True
 
 
 def test_user_role_can_manage_provider_configs(

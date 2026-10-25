@@ -8,6 +8,7 @@ import html
 import io
 import ipaddress
 import json
+import logging
 import posixpath
 import re
 import socket
@@ -45,9 +46,15 @@ from app.deepspace.services.library_storage import (
     safe_archive_entries,
     safe_extraction_status,
 )
+from app.deepspace.services.library_uploads import unique_library_filename
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
 from app.deepspace.services.temporary_assets import temporary_asset_expiration
-from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
+from app.deepspace.workers.library_uploads import (
+    extract_library_file,
+    finalize_library_upload,
+    profile_library_dataset,
+)
+from app.ingestion.services.conversion_service import ConversionService
 from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
 from app.query.schemas.visual_document import VisualDocument
@@ -61,6 +68,7 @@ from app.system.services.storage_quota import (
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
+logger = logging.getLogger(__name__)
 # Keep names safe for object-storage keys while allowing normal Unicode names.
 # Path separators and control characters remain rejected to prevent traversal.
 _SAFE_FILE_NAME = re.compile(r"[^\x00-\x1f\x7f/\\]{1,255}")
@@ -73,6 +81,27 @@ _MAX_LIBRARY_INLINE_PREVIEW_CHARS = 512 * 1024
 _MAX_LIBRARY_EXPORT_FILES = 100
 _MAX_LIBRARY_EXPORT_BYTES = 250 * 1024 * 1024
 _MAX_EDITABLE_OFFICE_CHARS = 8_000_000
+_MAX_LIBRARY_VISUAL_PREVIEW_BYTES = 100 * 1024 * 1024
+_MAX_LIBRARY_IMAGE_PREVIEW_PIXELS = 40_000_000
+_LIBRARY_RASTER_PREVIEW_EXTENSIONS = {
+    "bmp",
+    "gif",
+    "jpg",
+    "jpeg",
+    "png",
+    "tif",
+    "tiff",
+    "webp",
+}
+_LIBRARY_RASTER_PREVIEW_TYPES = {
+    "image/bmp",
+    "image/gif",
+    "image/jpg",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+    "image/webp",
+}
 _LIBRARY_CONTENT_TYPES = {
     "text/css",
     "text/csv",
@@ -465,6 +494,7 @@ class LibraryUploadCreate(BaseModel):
     size_bytes: int = Field(gt=0)
     content_type: str = Field(default="application/octet-stream", max_length=127)
     parent_folder_id: str | None = None
+    rename_on_conflict: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -747,6 +777,143 @@ def _file_metadata_with_extraction_status(
     return metadata
 
 
+def _queue_missing_library_extraction(
+    *, db: Session, file: DeepSpaceWorkspaceFile, auth: AuthContext
+) -> None:
+    """Queue one legacy extraction without doing OCR or document parsing in a request."""
+    if (
+        not file.is_binary
+        or file.content_type not in _EXTRACTABLE_LIBRARY_TYPES
+        or not file.storage_bucket
+        or not file.storage_key
+        or file.extracted_text
+    ):
+        return
+
+    current = db.execute(
+        select(DeepSpaceWorkspaceFile)
+        .where(
+            DeepSpaceWorkspaceFile.id == file.id,
+            DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+            DeepSpaceWorkspaceFile.user_id == auth.user_id,
+            DeepSpaceWorkspaceFile.conversation_id == file.conversation_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if current is None or current.extracted_text:
+        return
+
+    metadata = dict(current.metadata_json or {})
+    existing_status = metadata.get("extraction_status")
+    state = (
+        safe_extraction_status(existing_status, attempted=False)["state"]
+        if isinstance(existing_status, dict)
+        else "not_attempted"
+    )
+    if state != "not_attempted":
+        return
+
+    metadata["extraction_status"] = safe_extraction_status(
+        {"state": "processing", "text_available": False}, attempted=False
+    )
+    current.metadata_json = metadata
+    db.commit()
+    try:
+        extract_library_file.delay(file_id=str(current.id), tenant_id=str(auth.tenant_id))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Legacy Library extraction could not be queued",
+            extra={"file_id": str(current.id)},
+        )
+        metadata["extraction_status"] = safe_extraction_status(
+            {
+                "state": "unavailable",
+                "text_available": False,
+                "error_code": "EXTRACTION_QUEUE_UNAVAILABLE",
+            }
+        )
+        current.metadata_json = metadata
+        db.commit()
+
+
+def _render_library_visual_preview(
+    *, filename: str, content_type: str, payload: bytes, settings: Settings
+) -> tuple[bytes, str, str]:
+    """Return a browser-ready PDF/image preview for an authorized Library file."""
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    normalized_type = content_type.lower().split(";", 1)[0]
+    safe_filename = posixpath.basename(filename)
+
+    if normalized_type == "application/pdf" or extension == "pdf":
+        return payload, "application/pdf", safe_filename
+
+    conversion = ConversionService(settings)
+    if conversion.can_render_pdf(safe_filename):
+        pdf_payload = conversion.convert_to_pdf(filename=safe_filename, payload=payload)
+        pdf_name = f"{posixpath.splitext(safe_filename)[0] or 'preview'}.pdf"
+        return pdf_payload, "application/pdf", pdf_name
+
+    if normalized_type == "image/svg+xml" or extension == "svg":
+        return payload, "image/svg+xml", safe_filename
+
+    if normalized_type == "image/avif" or extension == "avif":
+        # AVIF is not OCR-covered and Pillow support varies by deployment.
+        # Chromium/Electron can display AVIF directly.
+        return payload, "image/avif", safe_filename
+
+    if (
+        normalized_type not in _LIBRARY_RASTER_PREVIEW_TYPES
+        and extension not in _LIBRARY_RASTER_PREVIEW_EXTENSIONS
+    ):
+        raise ApiError(
+            code="PREVIEW_UNSUPPORTED",
+            message="Visual preview is not available for this file type.",
+            status_code=415,
+        )
+
+    try:
+        import warnings
+
+        from PIL import Image, ImageOps, UnidentifiedImageError
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            image = Image.open(io.BytesIO(payload))
+            image.seek(0)  # GIF and multi-page TIFF previews show their first frame.
+            if image.width * image.height > _MAX_LIBRARY_IMAGE_PREVIEW_PIXELS:
+                raise ApiError(
+                    code="PAYLOAD_TOO_LARGE",
+                    message="This image is too large to render safely in the Library preview.",
+                    status_code=413,
+                )
+            oriented = ImageOps.exif_transpose(image)
+            oriented.thumbnail((2560, 2560), Image.Resampling.LANCZOS)
+            has_alpha = "A" in oriented.getbands() or "transparency" in oriented.info
+            output = io.BytesIO()
+            if has_alpha or extension == "png" or normalized_type == "image/png":
+                oriented.convert("RGBA" if has_alpha else "RGB").save(output, format="PNG")
+                preview_type = "image/png"
+            else:
+                oriented.convert("RGB").save(output, format="JPEG", quality=90, progressive=True)
+                preview_type = "image/jpeg"
+            return output.getvalue(), preview_type, safe_filename
+    except ApiError:
+        raise
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ) as exc:
+        raise ApiError(
+            code="PREVIEW_RENDER_FAILED",
+            message="The image could not be decoded for preview.",
+            status_code=422,
+        ) from exc
+
+
 def _folder_schema(folder: DeepSpaceWorkspaceFolder) -> WorkspaceFolderSchema:
     return WorkspaceFolderSchema(
         id=str(folder.id),
@@ -758,16 +925,22 @@ def _folder_schema(folder: DeepSpaceWorkspaceFolder) -> WorkspaceFolderSchema:
 
 
 def _owned_file(
-    *, db: Session, auth: AuthContext, conversation_id: uuid.UUID, file_id: uuid.UUID
+    *,
+    db: Session,
+    auth: AuthContext,
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    for_update: bool = False,
 ) -> DeepSpaceWorkspaceFile:
-    file = db.execute(
-        select(DeepSpaceWorkspaceFile).where(
-            DeepSpaceWorkspaceFile.id == file_id,
-            DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
-            DeepSpaceWorkspaceFile.user_id == auth.user_id,
-            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
-        )
-    ).scalar_one_or_none()
+    statement = select(DeepSpaceWorkspaceFile).where(
+        DeepSpaceWorkspaceFile.id == file_id,
+        DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+        DeepSpaceWorkspaceFile.user_id == auth.user_id,
+        DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    file = db.execute(statement).scalar_one_or_none()
     if file is None:
         raise ApiError(code="NOT_FOUND", message="DeepSpace file not found", status_code=404)
     return file
@@ -934,6 +1107,18 @@ async def create_library_upload(
     settings: Settings = Depends(get_settings),
 ) -> LibraryUploadSchema:
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    # Serialize upload-name reservations in this conversation so two composer
+    # uploads with the same clipboard filename cannot both reserve it.
+    db.execute(
+        select(Conversation.id)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == auth.tenant_id,
+            Conversation.user_id == auth.user_id,
+            Conversation.kind == "deepspace",
+        )
+        .with_for_update()
+    ).scalar_one()
     if payload.size_bytes > settings.upload_max_bytes:
         raise ApiError(
             code="DOC_TOO_LARGE",
@@ -943,18 +1128,33 @@ async def create_library_upload(
     parent_id = _parse_optional_uuid(payload.parent_folder_id, "parent_folder_id")
     if parent_id:
         _owned_folder(db=db, auth=auth, conversation_id=conversation_id, folder_id=parent_id)
-    duplicate_query = select(DeepSpaceWorkspaceFile.id).where(
+    file_name_query = select(DeepSpaceWorkspaceFile.name).where(
         DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
         DeepSpaceWorkspaceFile.user_id == auth.user_id,
         DeepSpaceWorkspaceFile.conversation_id == conversation_id,
-        DeepSpaceWorkspaceFile.name == payload.name,
     )
-    duplicate_query = duplicate_query.where(
+    file_name_query = file_name_query.where(
         DeepSpaceWorkspaceFile.parent_folder_id.is_(None)
         if parent_id is None
         else DeepSpaceWorkspaceFile.parent_folder_id == parent_id
     )
-    if db.execute(duplicate_query).scalar_one_or_none() is not None:
+    reserved_names = set(db.execute(file_name_query).scalars().all())
+    active_upload_name_query = select(DeepSpaceLibraryUpload.filename).where(
+        DeepSpaceLibraryUpload.tenant_id == auth.tenant_id,
+        DeepSpaceLibraryUpload.user_id == auth.user_id,
+        DeepSpaceLibraryUpload.conversation_id == conversation_id,
+        DeepSpaceLibraryUpload.status.in_(("pending", "uploading", "queued", "processing")),
+    )
+    active_upload_name_query = active_upload_name_query.where(
+        DeepSpaceLibraryUpload.parent_folder_id.is_(None)
+        if parent_id is None
+        else DeepSpaceLibraryUpload.parent_folder_id == parent_id
+    )
+    reserved_names.update(db.execute(active_upload_name_query).scalars().all())
+    filename = payload.name
+    if payload.rename_on_conflict:
+        filename = unique_library_filename(filename, reserved_names)
+    elif filename in reserved_names:
         raise ApiError(
             code="IDEMPOTENCY_CONFLICT",
             message="A file with that name already exists in this workspace.",
@@ -1008,7 +1208,7 @@ async def create_library_upload(
         user_id=auth.user_id,
         conversation_id=conversation_id,
         parent_folder_id=parent_id,
-        filename=payload.name,
+        filename=filename,
         content_type=content_type,
         expected_size=payload.size_bytes,
         chunk_size=_LIBRARY_UPLOAD_CHUNK_SIZE,
@@ -1016,6 +1216,7 @@ async def create_library_upload(
         received_chunks=[],
         bytes_received=0,
         status="pending",
+        metadata_json=({"rename_on_conflict": True} if payload.rename_on_conflict else {}),
     )
     db.add(upload)
     StorageQuotaService(db).release_capacity(
@@ -1266,7 +1467,7 @@ async def list_workspace_files(
     "/{conversation_id}/entries",
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def list_workspace_entries(
+def list_workspace_entries(
     conversation_id: uuid.UUID,
     parent_folder_id: str | None = Query(default=None),
     auth: AuthContext = Depends(get_auth_context),
@@ -1582,12 +1783,15 @@ async def export_workspace_files(
     return StreamingResponse(iter([payload_bytes]), media_type="application/zip", headers=headers)
 
 
+# Preview routes perform synchronous database, object-storage, extraction, or
+# file-parsing work. Keep them synchronous so FastAPI runs that work in its
+# worker pool instead of blocking the event loop and unrelated Library calls.
 @router.get(
     "/{conversation_id}/files/{file_id}",
     response_model=WorkspaceFileSchema,
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def get_workspace_file(
+def get_workspace_file(
     conversation_id: uuid.UUID,
     file_id: uuid.UUID,
     auth: AuthContext = Depends(get_auth_context),
@@ -1599,33 +1803,11 @@ async def get_workspace_file(
     archive_entries: list[dict[str, Any]] | None = None
     if file.is_binary and file.storage_bucket and file.storage_key:
         try:
-            storage = StorageService(settings)
-            payload: bytes | None = None
-            if file.extracted_text is None and file.content_type in _EXTRACTABLE_LIBRARY_TYPES:
-                # Older uploads could be stored successfully when optional
-                # extraction failed. Reprocess once on first open so the
-                # preview and document tools recover without requiring a
-                # re-upload.
-                payload = storage.get_bytes(bucket=file.storage_bucket, object_key=file.storage_key)
-                extraction = LibraryStorageService(settings).extract(
-                    filename=file.name,
-                    content_type=file.content_type,
-                    payload=payload,
-                    tenant_id=auth.tenant_id,
-                )
-                if extraction.get("text"):
-                    file.extracted_text = str(extraction["text"])
-                file.metadata_json = _file_metadata_with_extraction_status(
-                    file.metadata_json,
-                    extraction,
-                    attempted=True,
-                )
-                db.commit()
+            _queue_missing_library_extraction(db=db, file=file, auth=auth)
             if file.content_type == "application/zip":
-                if payload is None:
-                    payload = storage.get_bytes(
-                        bucket=file.storage_bucket, object_key=file.storage_key
-                    )
+                payload = StorageService(settings).get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
                 archive_entries = safe_archive_entries(payload)
         except StorageServiceError as exc:
             raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
@@ -1633,6 +1815,56 @@ async def get_workspace_file(
     if archive_entries is not None:
         result.archive_entries = archive_entries
     return result
+
+
+@router.get(
+    "/{conversation_id}/files/{file_id}/preview",
+    response_model=None,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def render_workspace_file_preview(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Render bounded, authenticated image/PDF previews, converting Office via LibreOffice."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    if not file.is_binary:
+        raise ApiError(
+            code="PREVIEW_UNSUPPORTED",
+            message="Visual preview is not available for this file type.",
+            status_code=415,
+        )
+    if file.size_bytes > _MAX_LIBRARY_VISUAL_PREVIEW_BYTES:
+        raise ApiError(
+            code="PAYLOAD_TOO_LARGE",
+            message="This file is too large for an in-app visual preview.",
+            status_code=413,
+        )
+
+    payload = _library_file_payload(file=file, settings=settings)
+    if len(payload) > _MAX_LIBRARY_VISUAL_PREVIEW_BYTES:
+        raise ApiError(
+            code="PAYLOAD_TOO_LARGE",
+            message="This file is too large for an in-app visual preview.",
+            status_code=413,
+        )
+    preview_payload, preview_type, preview_name = _render_library_visual_preview(
+        filename=file.name,
+        content_type=file.content_type,
+        payload=payload,
+        settings=settings,
+    )
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+        "Content-Length": str(len(preview_payload)),
+        "Content-Disposition": _content_disposition(disposition="inline", filename=preview_name),
+    }
+    return Response(content=preview_payload, media_type=preview_type, headers=headers)
 
 
 @router.get(
@@ -1841,20 +2073,23 @@ async def save_visual_artifact(
         validate_visual_block_payload(payload.block)
     except ValueError as exc:
         raise ApiError(code="INVALID_REQUEST", message=str(exc), status_code=422) from exc
-    visual_payload = cast(dict[str, Any], payload.block)
+    visual_payload = cast(dict[str, Any], dict(payload.block))
+    block_history = visual_payload.get("history")
+    if isinstance(block_history, list):
+        visual_payload["history"] = block_history[-100:]
     filename = WorkspaceFileCreate.safe_name(payload.filename or f"{payload.block_id}.visual.json")
     document = VisualDocument.model_validate(
         {
             "block_id": payload.block_id,
             "schema_version": int(visual_payload.get("schema_version") or 1),
             "revision": int(visual_payload.get("revision") or 0),
-            "kind": str(payload.block.get("type") or payload.block.get("kind") or "visual"),
-            "data": payload.block,
-            "source_markdown": payload.block.get("source_markdown"),
-            "source_mermaid": payload.block.get("source_mermaid"),
-            "assets": payload.block.get("assets") or [],
-            "history": payload.block.get("history") or [],
-            "undo": payload.block.get("undo") or {},
+            "kind": str(visual_payload.get("type") or visual_payload.get("kind") or "visual"),
+            "data": visual_payload,
+            "source_markdown": visual_payload.get("source_markdown"),
+            "source_mermaid": visual_payload.get("source_mermaid"),
+            "assets": visual_payload.get("assets") or [],
+            "history": visual_payload.get("history") or [],
+            "undo": visual_payload.get("undo") or {},
         }
     )
     content = json.dumps(
@@ -1863,12 +2098,14 @@ async def save_visual_artifact(
         indent=2,
     )
     file = db.execute(
-        select(DeepSpaceWorkspaceFile).where(
+        select(DeepSpaceWorkspaceFile)
+        .where(
             DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
             DeepSpaceWorkspaceFile.user_id == auth.user_id,
             DeepSpaceWorkspaceFile.conversation_id == conversation_id,
             DeepSpaceWorkspaceFile.name == filename,
         )
+        .with_for_update()
     ).scalar_one_or_none()
     if file is not None:
         if payload.expected_version is not None and payload.expected_version != file.version:
@@ -1877,6 +2114,8 @@ async def save_visual_artifact(
                 message="The visual artifact changed elsewhere. Reload before saving.",
                 status_code=409,
             )
+        if file.content == content:
+            return _serialize_file(file, include_content=True)
         old_size = file.size_bytes
         _ensure_storage_capacity(
             db=db,
@@ -2105,7 +2344,13 @@ async def retain_temporary_asset(
 ) -> WorkspaceFileSchema:
     """Keep a temporary chat image in the visible Library without re-downloading it."""
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
-    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    file = _owned_file(
+        db=db,
+        auth=auth,
+        conversation_id=conversation_id,
+        file_id=file_id,
+        for_update=True,
+    )
     if file.source == "temporary_asset":
         metadata = dict(file.metadata_json or {})
         metadata.pop("expires_at", None)
@@ -2135,7 +2380,13 @@ async def update_workspace_file(
     settings: Settings = Depends(get_settings),
 ) -> WorkspaceFileSchema:
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
-    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    file = _owned_file(
+        db=db,
+        auth=auth,
+        conversation_id=conversation_id,
+        file_id=file_id,
+        for_update=True,
+    )
     if payload.expected_version is not None and payload.expected_version != file.version:
         raise ApiError(
             code="IDEMPOTENCY_CONFLICT",
@@ -2538,7 +2789,7 @@ async def restore_workspace_file_version(
     response_model=None,
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def stream_workspace_file_content(
+def stream_workspace_file_content(
     conversation_id: uuid.UUID,
     file_id: uuid.UUID,
     download: bool = Query(default=False),
@@ -2570,7 +2821,7 @@ async def stream_workspace_file_content(
     response_model=WorkspaceCsvPageSchema,
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def read_workspace_csv_page(
+def read_workspace_csv_page(
     conversation_id: uuid.UUID,
     file_id: uuid.UUID,
     offset: int = Query(default=0, ge=0, le=10_000_000),
@@ -2824,7 +3075,7 @@ async def join_workspace_datasets(
     response_model=None,
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def read_workspace_archive_entry(
+def read_workspace_archive_entry(
     conversation_id: uuid.UUID,
     file_id: uuid.UUID,
     entry_name: str,

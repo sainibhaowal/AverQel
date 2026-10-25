@@ -25,6 +25,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchWithAuth, uploadWithAuthProgress } from "@/lib/api";
+import {
+  libraryFileNeedsServerVisualPreview,
+  LIBRARY_MAX_BROWSER_PREVIEW_BYTES,
+} from "./DeepSpaceLibraryFormats";
 
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
 import {
@@ -55,6 +59,7 @@ type LibraryFile = {
   archive_entries?:
     | { name: string; directory: boolean; compressedSize: number; size: number }[]
     | null;
+  extraction_status?: { state: string; text_available: boolean } | null;
 };
 
 type LibraryFolder = { id: string; name: string; parent_folder_id?: string | null };
@@ -96,8 +101,32 @@ type DeepSpaceLibraryDrawerProps = {
 // thin 44px strip after the layout has changed. Collapsing remains available
 // through the panel control, but the safe default is always the full panel.
 const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed.v2";
-const MAX_BINARY_BROWSER_PREVIEW_BYTES = 5 * 1024 * 1024;
 const MAX_LIBRARY_EDITABLE_BYTES = 512 * 1024;
+
+function readApiErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const detail = record.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const message = (detail as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        item && typeof item === "object" ? (item as Record<string, unknown>).msg : null,
+      )
+      .filter((message): message is string => typeof message === "string" && Boolean(message.trim()));
+    if (messages.length) return messages.join("; ");
+  }
+  const error = record.error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return null;
+}
 
 function UploadCancelButton({
   item,
@@ -130,12 +159,23 @@ export default function DeepSpaceLibraryDrawer({
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderStack, setFolderStack] = useState<string[]>([]);
   const [selected, setSelected] = useState<LibraryFile | null>(null);
+  const [selectedFileTargetId, setSelectedFileTargetId] = useState<string | null>(null);
   const selectedFileIdRef = useRef<string | null>(null);
-  const selectFileRef = useRef<(file: LibraryFile) => Promise<void>>(async () => {});
+  const selectFileRef = useRef<(file: LibraryFile | string) => Promise<void>>(async () => {});
+  const refreshRequestRef = useRef<{
+    key: string;
+    controller: AbortController;
+  } | null>(null);
+  const selectedFileRequestRef = useRef<AbortController | null>(null);
+  const selectedFileRequestIdRef = useRef(0);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [selectedFileLoading, setSelectedFileLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [selectedFileError, setSelectedFileError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState("");
+  const [previewContentType, setPreviewContentType] = useState<string | null>(null);
   const [drawerWidth, setDrawerWidth] = useState(320);
   const [isFilesCollapsed, setIsFilesCollapsed] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -190,12 +230,21 @@ export default function DeepSpaceLibraryDrawer({
   }, [embedded]);
 
   useEffect(() => {
+    refreshRequestRef.current?.controller.abort();
+    selectedFileRequestRef.current?.abort();
+    selectedFileRequestRef.current = null;
+    selectedFileRequestIdRef.current += 1;
+    selectedFileIdRef.current = null;
     queueMicrotask(() => {
       setCurrentFolderId(null);
       setFolderStack([]);
       setSelected(null);
+      setSelectedFileTargetId(null);
       setSelectedFileIds(new Set());
       setDraft("");
+      setSelectedFileLoading(false);
+      setLibraryError(null);
+      setSelectedFileError(null);
     });
   }, [conversationId]);
 
@@ -213,6 +262,14 @@ export default function DeepSpaceLibraryDrawer({
 
   const refresh = useCallback(async () => {
     if (!conversationId) return;
+    const key = `${conversationId}:${currentFolderId ?? "root"}`;
+    const activeRequest = refreshRequestRef.current;
+    if (activeRequest?.key === key && !activeRequest.controller.signal.aborted) return;
+    activeRequest?.controller.abort();
+
+    const controller = new AbortController();
+    const request = { key, controller };
+    refreshRequestRef.current = request;
     setLoading(true);
     try {
       const query = currentFolderId
@@ -221,31 +278,59 @@ export default function DeepSpaceLibraryDrawer({
       const response = (await fetchWithAuth(
         `/deepspace/library/${conversationId}/entries${query}`,
         {
-          timeoutMs: 8_000,
+          timeoutMs: 30_000,
+          silentTimeout: true,
+          signal: controller.signal,
         },
       )) as Response;
-      if (!response.ok) return;
+      if (controller.signal.aborted || refreshRequestRef.current !== request) return;
+      if (!response.ok) {
+        setLibraryError(
+          response.status === 404
+            ? "The Library could not be found. Refresh and try again."
+            : "Library files could not be loaded. Check the connection and retry.",
+        );
+        return;
+      }
       const entries = (await response.json()) as { files: LibraryFile[]; folders: LibraryFolder[] };
+      if (controller.signal.aborted || refreshRequestRef.current !== request) return;
       const nextFiles = entries.files ?? [];
       setFolders(entries.folders ?? []);
       setFiles(nextFiles);
+      setLibraryError(null);
       setSelectedFileIds((current) => {
         const visibleIds = new Set(nextFiles.map((file) => file.id));
         return new Set([...current].filter((id) => visibleIds.has(id)));
       });
       const selectedFileId = selectedFileIdRef.current;
       const retained = selectedFileId && nextFiles.some((file) => file.id === selectedFileId);
-      if (!retained) {
+      if (!retained && selectedFileId) {
+        selectedFileRequestRef.current?.abort();
+        selectedFileRequestRef.current = null;
+        selectedFileRequestIdRef.current += 1;
+        selectedFileIdRef.current = null;
+        setSelectedFileTargetId(null);
         setDraft("");
         setArchiveSelection(null);
         setPreviewUrl(null);
-        setSelected(nextFiles[0] ?? null);
+        setPreviewContentType(null);
+        setSelected(null);
+        setSelectedFileLoading(false);
+      } else if (!selectedFileId && !selectedFileRequestRef.current) {
+        setSelected(null);
       }
       // List refreshes intentionally omit content and extracted_text. Keep the
       // fully loaded selected record while it remains in the folder; replacing
       // it with the list item every reconciliation erased CSV/table previews.
+    } catch {
+      if (!controller.signal.aborted && refreshRequestRef.current === request) {
+        setLibraryError("Library files could not be loaded. Check the connection and retry.");
+      }
     } finally {
-      setLoading(false);
+      if (refreshRequestRef.current === request) {
+        refreshRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, [conversationId, currentFolderId]);
 
@@ -283,7 +368,7 @@ export default function DeepSpaceLibraryDrawer({
     const reconcile = () => {
       if (document.visibilityState === "visible") void refresh();
     };
-    const interval = window.setInterval(reconcile, 2_000);
+    const interval = window.setInterval(reconcile, 10_000);
     document.addEventListener("visibilitychange", reconcile);
     return () => {
       window.clearInterval(interval);
@@ -291,43 +376,129 @@ export default function DeepSpaceLibraryDrawer({
     };
   }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectFile = async (file: LibraryFile) => {
-    setSelected(file);
+  useEffect(
+    () => () => {
+      refreshRequestRef.current?.controller.abort();
+      selectedFileRequestRef.current?.abort();
+    },
+    [],
+  );
+
+  const selectFile = async (file: LibraryFile | string) => {
+    const fileId = typeof file === "string" ? file : file.id;
+    const summary = typeof file === "string" ? files.find((item) => item.id === fileId) : file;
+    const preservePreview =
+      Boolean(summary) && selectedFileIdRef.current === fileId && archiveSelection === null;
+    selectedFileRequestRef.current?.abort();
+    const controller = new AbortController();
+    selectedFileRequestRef.current = controller;
+    const requestId = ++selectedFileRequestIdRef.current;
+    const isCurrentRequest = () =>
+      selectedFileRequestIdRef.current === requestId && !controller.signal.aborted;
+
+    if (summary) {
+      selectedFileIdRef.current = summary.id;
+      setSelected(summary);
+    } else {
+      selectedFileIdRef.current = null;
+      setSelected(null);
+      setDraft("");
+    }
+    setSelectedFileTargetId(fileId);
+    setSelectedFileLoading(true);
+    setSelectedFileError(null);
+    setArchiveSelection(null);
+    if (!preservePreview) {
+      setDraft("");
+      setPreviewUrl(null);
+      setPreviewContentType(null);
+    }
     if (!conversationId) {
       setDraft("");
+      setSelectedFileLoading(false);
       return;
     }
-    setLoading(true);
     try {
       const response = (await fetchWithAuth(
-        `/deepspace/library/${conversationId}/files/${file.id}`,
-        { timeoutMs: 8_000 },
+        `/deepspace/library/${conversationId}/files/${encodeURIComponent(fileId)}`,
+        {
+          timeoutMs: 30_000,
+          silentTimeout: true,
+          signal: controller.signal,
+        },
       )) as Response;
-      if (!response.ok) return;
+      if (!isCurrentRequest()) return;
+      if (!response.ok) {
+        setSelectedFileError(
+          response.status === 404
+            ? "This file is no longer available in the Library. Refresh the list and select another file."
+            : "The file could not be loaded. Check the connection and retry.",
+        );
+        if (response.status === 404) void refresh();
+        return;
+      }
       const detail = (await response.json()) as LibraryFile;
+      if (!isCurrentRequest()) return;
+      selectedFileIdRef.current = detail.id;
       setSelected(detail);
       // Binary files keep `content` empty and store their searchable text in
       // `extracted_text`; prefer the latter so Office/PDF previews remain
       // useful even when the browser cannot render the original format.
       setDraft(detail.content || detail.extracted_text || "");
-      setArchiveSelection(null);
-      setPreviewUrl(null);
-      // Do not transfer a large original back into the browser solely to make
-      // a preview.  The worker has already produced a bounded searchable
-      // preview; the original remains available through authenticated
-      // download and sandbox analysis.
-      if (detail.is_binary && detail.size_bytes <= MAX_BINARY_BROWSER_PREVIEW_BYTES) {
+      // Visual formats use the bounded authenticated preview endpoint; raw
+      // originals are fetched only for small browser-native previews.
+      if (detail.is_binary) {
+        const needsServerPreview = libraryFileNeedsServerVisualPreview(
+          detail.name,
+          detail.content_type,
+          detail.size_bytes,
+        );
+        const canFetchOriginal = detail.size_bytes <= LIBRARY_MAX_BROWSER_PREVIEW_BYTES;
+        if (!needsServerPreview && !canFetchOriginal) return;
         const contentResponse = (await fetchWithAuth(
-          `/deepspace/library/${conversationId}/files/${file.id}/content`,
-          { timeoutMs: 30_000 },
+          `/deepspace/library/${conversationId}/files/${encodeURIComponent(fileId)}/${needsServerPreview ? "preview" : "content"}`,
+          {
+            timeoutMs: needsServerPreview ? 75_000 : 30_000,
+            silentTimeout: true,
+            signal: controller.signal,
+          },
         )) as Response;
+        if (!isCurrentRequest()) return;
         if (contentResponse.ok) {
           const blob = await contentResponse.blob();
-          setPreviewUrl(URL.createObjectURL(blob));
+          if (isCurrentRequest()) {
+            setPreviewUrl(URL.createObjectURL(blob));
+            setPreviewContentType(
+              contentResponse.headers.get("content-type")?.split(";", 1)[0] ||
+                blob.type ||
+                detail.content_type,
+            );
+          }
+        } else {
+          setSelectedFileError(
+            contentResponse.status === 404
+              ? "The original file content is unavailable for preview. You can still use any extracted text shown below."
+              : contentResponse.status === 413
+                ? "This file exceeds the safe in-app preview limit. Download the original to view it."
+                : contentResponse.status === 415
+                  ? "This file format has no visual preview. Extracted text is shown when available."
+                  : contentResponse.status === 422
+                    ? "This file could not be decoded for preview. You can still download the original."
+                    : contentResponse.status === 503
+                      ? "The visual preview service is unavailable. Extracted text is shown when available."
+                      : "The file preview could not be loaded. Retry to try again.",
+          );
         }
       }
+    } catch {
+      if (isCurrentRequest()) {
+        setSelectedFileError("The file could not be loaded. Check the connection and retry.");
+      }
     } finally {
-      setLoading(false);
+      if (selectedFileRequestIdRef.current === requestId) {
+        selectedFileRequestRef.current = null;
+        setSelectedFileLoading(false);
+      }
     }
   };
 
@@ -339,14 +510,7 @@ export default function DeepSpaceLibraryDrawer({
     const openRequestedFile = (event: Event) => {
       const fileId = (event as CustomEvent<{ fileId?: string }>).detail?.fileId;
       if (!fileId || !conversationId) return;
-      void (async () => {
-        const response = (await fetchWithAuth(
-          `/deepspace/library/${conversationId}/files/${encodeURIComponent(fileId)}`,
-          { timeoutMs: 8_000 },
-        )) as Response;
-        if (!response.ok) return;
-        await selectFileRef.current((await response.json()) as LibraryFile);
-      })();
+      void selectFileRef.current(fileId);
     };
     window.addEventListener("deepspace-library-open", openRequestedFile);
     return () => window.removeEventListener("deepspace-library-open", openRequestedFile);
@@ -398,11 +562,13 @@ export default function DeepSpaceLibraryDrawer({
       textExtensions.has(extension)
     ) {
       setPreviewUrl(null);
+      setPreviewContentType(null);
       setDraft(await response.text());
     } else {
       const blob = await response.blob();
       setDraft("");
       setPreviewUrl(URL.createObjectURL(blob));
+      setPreviewContentType(contentType);
     }
   };
 
@@ -532,7 +698,7 @@ export default function DeepSpaceLibraryDrawer({
     await refresh();
   };
 
-  const saveFileContent = async (content: string): Promise<boolean> => {
+  const saveFileContent = async (content: string, propagateError = false): Promise<boolean> => {
     if (!conversationId || !selected) return false;
     const editableBinaryTypes = new Set([
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -550,17 +716,29 @@ export default function DeepSpaceLibraryDrawer({
         },
       )) as Response;
       if (!response.ok) {
-        setActionError(
-          response.status === 409
+        const payload = await response.json().catch(() => null);
+        const message =
+          readApiErrorMessage(payload) ??
+          (response.status === 409
             ? "This artifact changed in another session. Reload it before saving."
-            : "The file could not be saved.",
-        );
+            : `The file could not be saved (HTTP ${response.status}).`);
+        setActionError(message);
+        if (propagateError) {
+          throw new Error(message);
+        }
         return false;
       }
       const file = (await response.json()) as LibraryFile;
       setSelected(file);
       await refresh();
       return true;
+    } catch (error) {
+      if (propagateError) {
+        const message = error instanceof Error ? error.message : "The file could not be saved.";
+        setActionError(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+      throw error;
     } finally {
       setSaving(false);
     }
@@ -571,9 +749,7 @@ export default function DeepSpaceLibraryDrawer({
   };
 
   const handleVisualArtifactChange = async (block: StructuredBlock) => {
-    // The visual workspace updates its draft before this callback. Persist its
-    // editable canonical JSON first, then fan the same stable block id out to
-    // the originating chat and note through the page-level synchronizer.
+    // Persist the canonical document before synchronizing the block to chat and notes.
     const nextDraft = JSON.stringify(
       (() => {
         try {
@@ -597,7 +773,7 @@ export default function DeepSpaceLibraryDrawer({
       2,
     );
     setDraft(nextDraft);
-    const persisted = await saveFileContent(nextDraft);
+    const persisted = await saveFileContent(nextDraft, true);
     if (persisted) await onVisualArtifactChange?.(block);
   };
 
@@ -1090,8 +1266,18 @@ export default function DeepSpaceLibraryDrawer({
                 next.pop();
                 setFolderStack(next);
                 setCurrentFolderId(next.length ? next[next.length - 1] : null);
+                selectedFileRequestRef.current?.abort();
+                selectedFileRequestRef.current = null;
+                selectedFileRequestIdRef.current += 1;
+                selectedFileIdRef.current = null;
+                setSelectedFileTargetId(null);
+                setSelectedFileLoading(false);
+                setSelectedFileError(null);
                 setSelected(null);
                 setDraft("");
+                setArchiveSelection(null);
+                setPreviewUrl(null);
+                setPreviewContentType(null);
               }}
               aria-label="Back to parent folder"
               className="text-foreground/55 hover:bg-surface-2 hover:text-primary absolute mt-1 ml-1 rounded-md p-1.5 transition"
@@ -1317,8 +1503,18 @@ export default function DeepSpaceLibraryDrawer({
                 onClick={() => {
                   setFolderStack((stack) => [...stack, folder.id]);
                   setCurrentFolderId(folder.id);
+                  selectedFileRequestRef.current?.abort();
+                  selectedFileRequestRef.current = null;
+                  selectedFileRequestIdRef.current += 1;
+                  selectedFileIdRef.current = null;
+                  setSelectedFileTargetId(null);
+                  setSelectedFileLoading(false);
+                  setSelectedFileError(null);
                   setSelected(null);
                   setDraft("");
+                  setArchiveSelection(null);
+                  setPreviewUrl(null);
+                  setPreviewContentType(null);
                 }}
                 draggable
                 onDragStart={(event) => {
@@ -1549,9 +1745,18 @@ export default function DeepSpaceLibraryDrawer({
             <button
               type="button"
               onClick={() => {
+                selectedFileRequestRef.current?.abort();
+                selectedFileRequestRef.current = null;
+                selectedFileRequestIdRef.current += 1;
+                selectedFileIdRef.current = null;
+                setSelectedFileTargetId(null);
+                setSelectedFileLoading(false);
+                setSelectedFileError(null);
                 setSelected(null);
                 setDraft("");
                 setArchiveSelection(null);
+                setPreviewUrl(null);
+                setPreviewContentType(null);
               }}
               aria-label="Back to files"
               className="text-foreground/60 hover:bg-surface-2 hover:text-primary rounded-md p-1"
@@ -1626,6 +1831,21 @@ export default function DeepSpaceLibraryDrawer({
           </button>
         </div>
       </header>
+      {libraryError ? (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 border-b border-rose-300/20 bg-rose-300/[0.06] px-3 py-2 text-[10px] leading-4 text-rose-100"
+        >
+          <span>{libraryError}</span>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="shrink-0 font-semibold underline underline-offset-2"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       {embedded ? (
         <div className="flex min-h-0 flex-1">
           <aside
@@ -1697,48 +1917,95 @@ export default function DeepSpaceLibraryDrawer({
           </aside>
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (
-              isVisualArtifactDocument(draft) ? (
-                <DeepSpaceVisualArtifactWorkspace
-                  key={`${selected.id}:visual`}
-                  value={draft}
-                  onChange={setDraft}
-                  onBlockChange={handleVisualArtifactChange}
-                />
-              ) : (
-                <DeepSpaceLibraryFileWorkspace
-                  key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
-                  name={archiveSelection?.name ?? selected.name}
-                  contentType={archiveSelection?.contentType ?? selected.content_type}
-                  value={draft}
-                  onChange={setDraft}
-                  previewUrl={previewUrl}
-                  archiveEntries={archiveSelection ? null : selected.archive_entries}
-                  onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
-                  archiveEntryName={archiveSelection?.name}
-                  onArchiveBack={
-                    archiveSelection
-                      ? () => {
-                          setArchiveSelection(null);
-                          setPreviewUrl(null);
-                          setDraft(selected.extracted_text ?? "");
-                        }
-                      : undefined
+              <>
+                {selectedFileLoading ? (
+                  <p role="status" className="text-foreground/55 mb-2 text-[10px]">
+                    Loading file preview…
+                  </p>
+                ) : null}
+                {selectedFileError ? (
+                  <div
+                    role="alert"
+                    className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-rose-300/20 bg-rose-300/[0.06] px-2 py-2 text-[10px] leading-4 text-rose-100"
+                  >
+                    <span>{selectedFileError}</span>
+                    <button
+                      type="button"
+                      onClick={() => void selectFile(selected.id)}
+                      className="shrink-0 font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : null}
+                {isVisualArtifactDocument(draft) ? (
+                  <DeepSpaceVisualArtifactWorkspace
+                    key={`${selected.id}:visual`}
+                    value={draft}
+                    onChange={setDraft}
+                    onBlockChange={handleVisualArtifactChange}
+                  />
+                ) : (
+                  <DeepSpaceLibraryFileWorkspace
+                    key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
+                    name={archiveSelection?.name ?? selected.name}
+                    contentType={archiveSelection?.contentType ?? selected.content_type}
+                    value={draft}
+                    onChange={setDraft}
+                    previewUrl={previewUrl}
+                    previewContentType={previewContentType}
+                    archiveEntries={archiveSelection ? null : selected.archive_entries}
+                    onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
+                    archiveEntryName={archiveSelection?.name}
+                    onArchiveBack={
+                      archiveSelection
+                        ? () => {
+                            setArchiveSelection(null);
+                            setPreviewUrl(null);
+                            setPreviewContentType(null);
+                            setDraft(selected.extracted_text ?? "");
+                          }
+                        : undefined
+                    }
+                    readOnly={Boolean(
+                      selected.content_truncated ||
+                      (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+                    )}
+                    contentTruncated={Boolean(selected.content_truncated)}
+                    sizeBytes={selected.size_bytes}
+                    csvPageUrl={
+                      selected.content_type === "text/csv" ||
+                      selected.content_type === "text/x-csv" ||
+                      selected.content_type === "text/tab-separated-values"
+                        ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
+                        : null
+                    }
+                  />
+                )}
+              </>
+            ) : selectedFileLoading ? (
+              <div
+                role="status"
+                className="text-foreground/55 flex min-h-0 flex-1 items-center justify-center text-xs"
+              >
+                Loading file preview…
+              </div>
+            ) : selectedFileError ? (
+              <div
+                role="alert"
+                className="m-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-rose-300/20 bg-rose-300/[0.06] px-3 py-2 text-[11px] leading-5 text-rose-100"
+              >
+                <span>{selectedFileError}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectedFileTargetId ? void selectFile(selectedFileTargetId) : void refresh()
                   }
-                  readOnly={Boolean(
-                    selected.content_truncated ||
-                    (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
-                  )}
-                  contentTruncated={Boolean(selected.content_truncated)}
-                  sizeBytes={selected.size_bytes}
-                  csvPageUrl={
-                    selected.content_type === "text/csv" ||
-                    selected.content_type === "text/x-csv" ||
-                    selected.content_type === "text/tab-separated-values"
-                      ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
-                      : null
-                  }
-                />
-              )
+                  className="shrink-0 font-semibold underline underline-offset-2"
+                >
+                  Retry
+                </button>
+              </div>
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
                 Select a file to edit and preview it here.
@@ -1748,6 +2015,26 @@ export default function DeepSpaceLibraryDrawer({
         </div>
       ) : selected ? (
         <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+          {selectedFileLoading ? (
+            <p role="status" className="text-foreground/55 mb-2 text-[10px]">
+              Loading file preview…
+            </p>
+          ) : null}
+          {selectedFileError ? (
+            <div
+              role="alert"
+              className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-rose-300/20 bg-rose-300/[0.06] px-2 py-2 text-[10px] leading-4 text-rose-100"
+            >
+              <span>{selectedFileError}</span>
+              <button
+                type="button"
+                onClick={() => void selectFile(selected.id)}
+                className="shrink-0 font-semibold underline underline-offset-2"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           {isVisualArtifactDocument(draft) ? (
             <DeepSpaceVisualArtifactWorkspace
               key={`${selected.id}:visual`}
@@ -1763,6 +2050,7 @@ export default function DeepSpaceLibraryDrawer({
               value={draft}
               onChange={setDraft}
               previewUrl={previewUrl}
+              previewContentType={previewContentType}
               archiveEntries={archiveSelection ? null : selected.archive_entries}
               onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
               archiveEntryName={archiveSelection?.name}
@@ -1771,6 +2059,7 @@ export default function DeepSpaceLibraryDrawer({
                   ? () => {
                       setArchiveSelection(null);
                       setPreviewUrl(null);
+                      setPreviewContentType(null);
                       setDraft(selected.extracted_text ?? "");
                     }
                   : undefined
@@ -1789,6 +2078,33 @@ export default function DeepSpaceLibraryDrawer({
                   : null
               }
             />
+          )}
+        </section>
+      ) : selectedFileLoading || selectedFileError ? (
+        <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+          {selectedFileLoading ? (
+            <div
+              role="status"
+              className="text-foreground/55 flex min-h-0 flex-1 items-center justify-center text-xs"
+            >
+              Loading file preview…
+            </div>
+          ) : (
+            <div
+              role="alert"
+              className="m-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-rose-300/20 bg-rose-300/[0.06] px-3 py-2 text-[11px] leading-5 text-rose-100"
+            >
+              <span>{selectedFileError}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  selectedFileTargetId ? void selectFile(selectedFileTargetId) : void refresh()
+                }
+                className="shrink-0 font-semibold underline underline-offset-2"
+              >
+                Retry
+              </button>
+            </div>
           )}
         </section>
       ) : (

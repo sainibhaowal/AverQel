@@ -5,17 +5,36 @@ import { afterEach, beforeEach, vi } from "vitest";
 
 import DeepSpacePageClient from "../app/dashboard/deepspace/_components/DeepSpacePageClient";
 import DeepSpaceThread from "../app/dashboard/deepspace/_components/DeepSpaceThread";
+import {
+  noteDraftStorageKey,
+  writeDeepSpaceNoteDraft,
+} from "../app/dashboard/deepspace/_lib/note-drafts";
 
 const fetchWithAuthMock = vi.fn();
+let serverNotes: Array<{
+  id: string;
+  title: string;
+  updated_at: string;
+  content_html: string;
+}> = [];
+let failNotePatch = false;
+let mismatchNotePatch = false;
 
 vi.mock("../lib/api", () => ({
   fetchWithAuth: (...args: Parameters<typeof fetchWithAuthMock>) => fetchWithAuthMock(...args),
 }));
 
 vi.mock("../app/dashboard/deepspace/_components/DeepSpaceChatClient", () => ({
-  default: ({ onInsertLatestAnswer }: { onInsertLatestAnswer?: (content: string) => void }) => (
+  default: ({
+    onInsertLatestAnswer,
+    onSelectNote,
+  }: {
+    onInsertLatestAnswer?: (content: string) => void;
+    onSelectNote?: (noteId: string) => void;
+  }) => (
     <div>
       <div>Mock DeepSpace Chat</div>
+      <button onClick={() => onSelectNote?.("note-2")}>Select second note</button>
       <button
         aria-label="Insert latest answer"
         onClick={() => onInsertLatestAnswer?.("DeepSpace answer for the draft.")}
@@ -32,31 +51,63 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceEditor", () => {
     default: React.forwardRef(function MockDeepSpaceEditor(
       {
         initialContent,
+        conversationId,
         onChange,
+        saveStatus,
+        onRetrySave,
       }: {
         initialContent?: string;
+        conversationId?: string;
         onChange?: (html: string) => void;
+        saveStatus?: "idle" | "saving" | "saved" | "local" | "failed";
+        onRetrySave?: () => void;
       },
-      ref: React.ForwardedRef<{ insertMarkdown: (content: string) => void }>,
+      ref: React.ForwardedRef<{
+        insertMarkdown: (content: string) => void;
+        replaceHTML: (content: string) => Promise<void>;
+      }>,
     ) {
       const [content, setContent] = React.useState(initialContent ?? "");
+      React.useEffect(() => setContent(initialContent ?? ""), [conversationId, initialContent]);
 
       React.useImperativeHandle(ref, () => ({
         insertMarkdown(markdown: string) {
           setContent(markdown);
           onChange?.(markdown);
         },
+        async replaceHTML(html: string) {
+          setContent(html);
+          onChange?.(html);
+        },
       }));
 
       return (
-        <textarea
-          aria-label="Writing canvas editor"
-          value={content}
-          onChange={(event) => {
-            setContent(event.target.value);
-            onChange?.(event.target.value);
-          }}
-        />
+        <>
+          {saveStatus && saveStatus !== "idle" ? (
+            <div role="status" data-testid="mock-note-save-status">
+              {saveStatus === "local"
+                ? "Saved on this tab"
+                : saveStatus === "failed"
+                  ? "Save failed"
+                  : saveStatus === "saved"
+                    ? "Saved"
+                    : "Saving"}
+              {(saveStatus === "local" || saveStatus === "failed") && onRetrySave ? (
+                <button type="button" onClick={onRetrySave}>
+                  Retry note save
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <textarea
+            aria-label="Writing canvas editor"
+            value={content}
+            onChange={(event) => {
+              setContent(event.target.value);
+              onChange?.(event.target.value);
+            }}
+          />
+        </>
       );
     }),
   };
@@ -102,11 +153,14 @@ class ResizeObserverMock {
 
 describe("deepspace page", () => {
   beforeEach(() => {
+    serverNotes = [];
+    failNotePatch = false;
+    mismatchNotePatch = false;
     fetchWithAuthMock.mockImplementation(async (endpoint: string, options?: RequestInit) => {
       if (endpoint === "/deepspace/chats" && !options?.method) {
         return {
           ok: true,
-          json: async () => ({ items: [] }),
+          json: async () => ({ items: serverNotes }),
         } satisfies Partial<Response>;
       }
 
@@ -122,10 +176,41 @@ describe("deepspace page", () => {
         } satisfies Partial<Response>;
       }
 
-      if (endpoint === "/deepspace/chats/note-1" && options?.method === "PATCH") {
+      if (endpoint.startsWith("/deepspace/chats/") && options?.method === "PATCH") {
+        if (failNotePatch) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({}),
+          } satisfies Partial<Response>;
+        }
+        if (mismatchNotePatch) {
+          return {
+            ok: true,
+            json: async () => ({
+              title: "Research note",
+              content_html: "<p>Old response body</p>",
+              updated_at: "2026-10-23T12:00:01.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+        const conversationId = endpoint.slice("/deepspace/chats/".length);
+        const body = JSON.parse(String(options.body ?? "{}")) as {
+          title?: string;
+          content_html?: string;
+        };
+        serverNotes = serverNotes.map((note) =>
+          note.id === conversationId
+            ? {
+                ...note,
+                ...body,
+                updated_at: "2026-10-23T12:00:01.000Z",
+              }
+            : note,
+        );
         return {
           ok: true,
-          json: async () => ({}),
+          json: async () => serverNotes.find((note) => note.id === conversationId) ?? {},
         } satisfies Partial<Response>;
       }
 
@@ -178,6 +263,7 @@ describe("deepspace page", () => {
     fetchWithAuthMock.mockReset();
     headerControls?.remove();
     headerControls = null;
+    window.sessionStorage.clear();
   });
 
   it("enters and exits the split shell without changing the active workspace", async () => {
@@ -206,6 +292,232 @@ describe("deepspace page", () => {
     fireEvent.click(screen.getByRole("button", { name: /split view/i }));
     await waitFor(() => expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument());
     expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
+  });
+
+  it(
+    "recovers a failed autosave after reopening and clears the tab draft after the server saves it",
+    { timeout: 12_000 },
+    async () => {
+      const serverNote = {
+        id: "note-1",
+        title: "Research note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>Original server copy</p>",
+      };
+      serverNotes = [serverNote];
+      failNotePatch = true;
+
+      const firstPage = render(<DeepSpacePageClient />);
+      fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+      const editor = await screen.findByLabelText(/writing canvas editor/i);
+      fireEvent.change(editor, { target: { value: "Recovered research draft" } });
+
+      await waitFor(() => {
+        expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toContain(
+          "Recovered research draft",
+        );
+      });
+      await waitFor(
+        () =>
+          expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent(
+            "Saved on this tab",
+          ),
+        { timeout: 5_000 },
+      );
+      firstPage.unmount();
+
+      failNotePatch = false;
+      render(<DeepSpacePageClient />);
+      fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+
+      expect(await screen.findByLabelText(/writing canvas editor/i)).toHaveValue(
+        "Recovered research draft",
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent("Saved"),
+      );
+      await waitFor(() => {
+        expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toBeNull();
+      });
+      expect(serverNotes[0]?.content_html).toBe("Recovered research draft");
+    },
+  );
+
+  it("keeps the recovery draft when the authoritative save endpoint does not confirm", async () => {
+    serverNotes = [
+      {
+        id: "note-1",
+        title: "Research note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>Original server copy</p>",
+      },
+    ];
+    failNotePatch = true;
+
+    render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    fireEvent.change(await screen.findByLabelText(/writing canvas editor/i), {
+      target: { value: "Still waiting for confirmation" },
+    });
+
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent("Saved on this tab"),
+      { timeout: 5_000 },
+    );
+    expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toContain(
+      "Still waiting for confirmation",
+    );
+    expect(serverNotes[0]?.content_html).toBe("<p>Original server copy</p>");
+  });
+
+  it("does not mark a mismatched 2xx response as saved", async () => {
+    serverNotes = [
+      {
+        id: "note-1",
+        title: "Research note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>Original server copy</p>",
+      },
+    ];
+    mismatchNotePatch = true;
+
+    render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    fireEvent.change(await screen.findByLabelText(/writing canvas editor/i), {
+      target: { value: "Response did not contain this edit" },
+    });
+
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent("Saved on this tab"),
+      { timeout: 5_000 },
+    );
+    expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toContain(
+      "Response did not contain this edit",
+    );
+    expect(serverNotes[0]?.content_html).toBe("<p>Original server copy</p>");
+  });
+
+  it("restores an edit made just before a refresh cancels its debounce timer", async () => {
+    serverNotes = [
+      {
+        id: "note-1",
+        title: "Research note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>Original server copy</p>",
+      },
+    ];
+    const firstPage = render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    fireEvent.change(await screen.findByLabelText(/writing canvas editor/i), {
+      target: { value: "Typed just before refresh" },
+    });
+
+    expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toContain(
+      "Typed just before refresh",
+    );
+    firstPage.unmount();
+
+    render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    expect(await screen.findByLabelText(/writing canvas editor/i)).toHaveValue(
+      "Typed just before refresh",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent("Saved"),
+    );
+    expect(serverNotes[0]?.content_html).toBe("Typed just before refresh");
+  });
+
+  it("keeps pending saves independent when switching between notes", async () => {
+    serverNotes = [
+      {
+        id: "note-1",
+        title: "First note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>First server copy</p>",
+      },
+      {
+        id: "note-2",
+        title: "Second note",
+        updated_at: "2026-10-23T12:00:00.000Z",
+        content_html: "<p>Second server copy</p>",
+      },
+    ];
+    window.localStorage.setItem("averqel_deepspace_active_conversation", "note-1");
+    render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    fireEvent.change(await screen.findByLabelText(/writing canvas editor/i), {
+      target: { value: "First note edit" },
+    });
+    expect(window.sessionStorage.getItem(noteDraftStorageKey("note-1"))).toContain(
+      "First note edit",
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /select second note/i }));
+    const editor = await screen.findByLabelText(/writing canvas editor/i);
+    await waitFor(() => expect(editor).toHaveValue("<p>Second server copy</p>"));
+    fireEvent.change(editor, { target: { value: "Second note edit" } });
+    expect(window.sessionStorage.getItem(noteDraftStorageKey("note-2"))).toContain(
+      "Second note edit",
+    );
+
+    await waitFor(
+      () => {
+        expect(serverNotes.find((note) => note.id === "note-1")?.content_html).toBe(
+          "First note edit",
+        );
+        expect(serverNotes.find((note) => note.id === "note-2")?.content_html).toBe(
+          "Second note edit",
+        );
+      },
+      { timeout: 5_000 },
+    );
+  });
+
+  it("asks before restoring a local draft over a newer server note", async () => {
+    serverNotes = [
+      {
+        id: "note-1",
+        title: "Research note",
+        updated_at: "2026-10-23T12:00:02.000Z",
+        content_html: "<p>Newer server copy</p>",
+      },
+    ];
+    writeDeepSpaceNoteDraft(window.sessionStorage, {
+      version: 1,
+      conversationId: "note-1",
+      contentHtml: "Older local draft",
+      title: "Research note",
+      baseUpdatedAt: "2026-10-23T12:00:00.000Z",
+      updatedAt: Date.now(),
+    });
+
+    render(<DeepSpacePageClient />);
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
+    expect(await screen.findByLabelText(/writing canvas editor/i)).toHaveValue(
+      "<p>Newer server copy</p>",
+    );
+    expect(screen.getByLabelText(/writing canvas editor/i).closest("[inert]")).not.toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(/local draft and the saved note differ/i);
+    expect(
+      fetchWithAuthMock.mock.calls.some(
+        ([endpoint, options]) =>
+          endpoint === "/deepspace/chats/note-1" && options?.method === "PATCH",
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /restore local draft/i }));
+    await waitFor(() =>
+      expect(screen.getByLabelText(/writing canvas editor/i)).toHaveValue("Older local draft"),
+    );
+    expect(screen.getByLabelText(/writing canvas editor/i).closest("[inert]")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId("mock-note-save-status")).toHaveTextContent("Saved"),
+    );
+    expect(serverNotes[0]?.content_html).toBe("Older local draft");
   });
 
   it("switches to a stacked layout when the available width gets narrow", async () => {

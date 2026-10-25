@@ -23,8 +23,6 @@ and must be checked against their target and date before release decisions.
   — reproducible local evidence and remaining staging/VPS gates.
 - [Current worktree change index](release/03-current-worktree-change-index.md)
   — feature families, source areas, migrations, and current verification.
-- [VPS deployment workflow](release/04-vps-deployment.md) — source SHA
-  selection, image verification, cleanup scope, and availability limitations.
 - [Electron desktop guide](../../applications/desktop/README.md) — local setup,
   package targets, app-icon assets, and desktop window lifecycle.
 

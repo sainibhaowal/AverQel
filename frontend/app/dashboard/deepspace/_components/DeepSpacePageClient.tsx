@@ -27,6 +27,12 @@ import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
 import type { StructuredBlock } from "../_lib/deepspace-stream";
+import {
+  clearDeepSpaceNoteDraft,
+  readDeepSpaceNoteDraft,
+  writeDeepSpaceNoteDraft,
+  type DeepSpaceLocalNoteDraft,
+} from "../_lib/note-drafts";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
@@ -85,6 +91,9 @@ const MAX_LEFT_WIDTH = 68;
 const DEFAULT_NOTE_TITLE = "Untitled Note";
 const MOBILE_STACKED_BREAKPOINT = 1024;
 const DEEPSPACE_INITIAL_LOAD_GRACE_MS = 2_500;
+const NOTE_AUTOSAVE_DEBOUNCE_MS = 1_500;
+
+type NoteSaveState = "idle" | "saving" | "saved" | "local" | "failed";
 
 function IconTooltipButton({
   label,
@@ -228,7 +237,12 @@ function extractPersistedVisualBlocks(html: string): StructuredBlock[] {
       if (!id) continue;
       if (typeof parsed.type === "string") {
         blocks.push({ ...parsed, id } as StructuredBlock);
-      } else if (kind === "chart" || kind === "card" || kind === "gallery") {
+      } else if (
+        kind === "chart" ||
+        kind === "card" ||
+        kind === "gallery" ||
+        kind === "infographic"
+      ) {
         blocks.push({ ...parsed, id, type: kind } as StructuredBlock);
       } else if (kind === "graph" && parsed.graph && typeof parsed.graph === "object") {
         blocks.push({
@@ -246,6 +260,118 @@ function extractPersistedVisualBlocks(html: string): StructuredBlock[] {
     }
   }
   return blocks;
+}
+
+function visualRevisionInMessage(
+  message: {
+    content?: unknown;
+    metadata_json?: unknown;
+  },
+  blockId: string,
+  sourceMarkdown?: string | null,
+): number | null {
+  const revisions: number[] = [];
+  const addRevision = (value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      revisions.push(value);
+    }
+  };
+  const metadata =
+    message.metadata_json && typeof message.metadata_json === "object"
+      ? (message.metadata_json as Record<string, unknown>)
+      : {};
+  const visualBlocks = metadata.visual_blocks;
+  if (visualBlocks && typeof visualBlocks === "object") {
+    const record = (visualBlocks as Record<string, unknown>)[blockId];
+    if (record && typeof record === "object") {
+      addRevision((record as Record<string, unknown>).revision);
+    }
+  }
+
+  const metadataBlocks = metadata.blocks;
+  if (Array.isArray(metadataBlocks)) {
+    const block = metadataBlocks.find(
+      (candidate) =>
+        candidate &&
+        typeof candidate === "object" &&
+        ((candidate as Record<string, unknown>).id === blockId ||
+          (candidate as Record<string, unknown>).block_id === blockId),
+    ) as Record<string, unknown> | undefined;
+    if (block) {
+      addRevision(block.revision);
+    }
+  }
+
+  const content = typeof message.content === "string" ? message.content : "";
+  if (sourceMarkdown?.trim() && content.includes(sourceMarkdown.trim())) revisions.push(0);
+
+  const fences = /```(?:chart|card|graph|gallery|infographic)[^\r\n]*\r?\n([\s\S]*?)\r?\n```/gi;
+  for (const match of content.matchAll(fences)) {
+    try {
+      const block = JSON.parse(match[1] ?? "") as Record<string, unknown>;
+      if (block.id !== blockId && block.block_id !== blockId) continue;
+      addRevision(block.revision ?? 0);
+    } catch {
+      // Malformed visual fences are not a revision source.
+    }
+  }
+  return revisions.length ? Math.max(...revisions) : null;
+}
+
+function apiErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const detail = record.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const message = (detail as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        item && typeof item === "object" ? (item as Record<string, unknown>).msg : null,
+      )
+      .filter((message): message is string => typeof message === "string" && Boolean(message.trim()));
+    if (messages.length) return messages.join("; ");
+  }
+  const error = record.error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return null;
+}
+
+async function getResponseErrorMessage(response: Response, fallback: string): Promise<string> {
+  const payload = await response.json().catch(() => null);
+  return (
+    apiErrorMessage(payload) ??
+    `${fallback} (HTTP ${response.status}). Retry the edit; your saved Library copy is preserved.`
+  );
+}
+
+async function getVisualBlockChatRevision(
+  conversationId: string,
+  blockId: string,
+  sourceMarkdown?: string | null,
+): Promise<number | null> {
+  const response = (await fetchWithAuth(`/deepspace/chats/${conversationId}/messages`)) as Response;
+  if (!response.ok) {
+    throw new Error(
+      await getResponseErrorMessage(response, "The chat visual revision could not be loaded"),
+    );
+  }
+  const history = (await response.json()) as {
+    messages?: Array<{ role?: string; content?: unknown; metadata_json?: unknown }>;
+  };
+  const messages = Array.isArray(history.messages) ? history.messages : [];
+  for (const message of [...messages].reverse()) {
+    if (message.role !== "assistant") continue;
+    const revision = visualRevisionInMessage(message, blockId, sourceMarkdown);
+    if (revision !== null) return revision;
+  }
+  return null;
 }
 
 function preserveLatestVisualBlockRevisions(
@@ -282,7 +408,8 @@ export default function DeepSpacePageClient() {
     activeNoteRef.current = activeNote;
   }, [activeNote]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [noteSaveStates, setNoteSaveStates] = useState<Record<string, NoteSaveState>>({});
+  const [recoveryDraft, setRecoveryDraft] = useState<DeepSpaceLocalNoteDraft | null>(null);
   const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
   // Chat is the primary DeepSpace workspace. Notes remains available through
   // the workspace switcher and as the default left panel when split view is
@@ -290,6 +417,15 @@ export default function DeepSpacePageClient() {
   const [panelMode, setPanelMode] = useState<WorkspacePanel>("chat");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
+  const noteVisualSourceRef = useRef(new Map<string, string>());
+  const visualBlockSyncQueuesRef = useRef(new Map<string, Promise<StructuredBlock | null>>());
+  const pendingNoteSavesRef = useRef(new Map<string, DeepSpaceLocalNoteDraft>());
+  const localDraftStoredRef = useRef(new Map<string, boolean>());
+  const noteSaveTimersRef = useRef(new Map<string, number>());
+  const inFlightNoteSavesRef = useRef(new Map<string, Promise<void>>());
+  const scheduleNoteSaveRef = useRef<(conversationId: string, delayMs?: number) => void>(() => {});
+  const flushPendingNoteSavesRef = useRef<() => void>(() => {});
+  const savePendingNoteRef = useRef<(conversationId: string) => Promise<void>>(async () => {});
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSplitView, setIsSplitView] = useState(false);
   const [splitWorkspacePanel, setSplitWorkspacePanel] = useState<SplitWorkspacePanel>("notes");
@@ -308,6 +444,72 @@ export default function DeepSpacePageClient() {
       previous.includes(message) ? previous : [...previous, message].slice(-3),
     );
   }, []);
+
+  const updateNoteSaveState = useCallback((conversationId: string, state: NoteSaveState) => {
+    setNoteSaveStates((previous) => ({ ...previous, [conversationId]: state }));
+  }, []);
+
+  const syncVisualBlockToChat = useCallback(
+    async (conversationId: string, block: StructuredBlock): Promise<StructuredBlock | null> => {
+      const queueKey = `${conversationId}:${block.id}`;
+      const previous = visualBlockSyncQueuesRef.current.get(queueKey) ?? Promise.resolve(null);
+      const operation = previous.catch(() => null).then(async () => {
+        const sourceMarkdown =
+          block.type === "diagram" && block.source === "mermaid" ? block.source_markdown : null;
+        const expectedRevision = await getVisualBlockChatRevision(
+          conversationId,
+          block.id,
+          sourceMarkdown,
+        );
+        if (expectedRevision === null) return null;
+
+        const response = (await fetchWithAuth(`/deepspace/chats/${conversationId}/visual-block`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            block_id: block.id,
+            block,
+            expected_revision: expectedRevision,
+          }),
+        })) as Response;
+        if (response.status === 404) return null;
+        if (!response.ok) {
+          const message = await getResponseErrorMessage(
+            response,
+            response.status === 422
+              ? "The visual block was rejected by chat validation"
+              : "The visual block could not be synchronized to chat",
+          );
+          if (response.status === 409) addServiceWarning(message);
+          const error = new Error(message) as Error & { status?: number };
+          error.status = response.status;
+          throw error;
+        }
+
+        const updated = (await response.json()) as {
+          metadata_json?: { visual_blocks?: Record<string, { block?: StructuredBlock }> };
+        };
+        return (
+          updated.metadata_json?.visual_blocks?.[block.id]?.block ?? {
+            ...block,
+            revision: Math.max(
+              expectedRevision + 1,
+              (block as StructuredBlock & { revision?: number }).revision ?? 0,
+            ),
+          }
+        );
+      });
+
+      visualBlockSyncQueuesRef.current.set(queueKey, operation);
+      try {
+        return await operation;
+      } finally {
+        if (visualBlockSyncQueuesRef.current.get(queueKey) === operation) {
+          visualBlockSyncQueuesRef.current.delete(queueKey);
+        }
+      }
+    },
+    [addServiceWarning],
+  );
 
   const syncExistingVisualArtifact = useCallback(
     async (conversationId: string, block: StructuredBlock) => {
@@ -352,11 +554,10 @@ export default function DeepSpacePageClient() {
         },
       )) as Response;
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
         throw new Error(
-          String(
-            payload?.detail?.message ??
-              "The saved visual artifact could not be synchronized with this edit.",
+          await getResponseErrorMessage(
+            response,
+            "The saved visual artifact could not be synchronized with this edit",
           ),
         );
       }
@@ -395,7 +596,9 @@ export default function DeepSpacePageClient() {
       if (res.ok) {
         const newNote = await res.json();
         setNotes((prev) => [newNote, ...prev]);
+        activeNoteRef.current = newNote;
         setActiveNote(newNote);
+        setRecoveryDraft(null);
         return newNote;
       }
     } catch (err) {
@@ -403,6 +606,67 @@ export default function DeepSpacePageClient() {
     }
     return null;
   };
+
+  const activateNote = useCallback(
+    (serverNote: DeepSpaceNote | null) => {
+      if (!serverNote) {
+        activeNoteRef.current = null;
+        setActiveNote(null);
+        setRecoveryDraft(null);
+        return;
+      }
+
+      let draft = pendingNoteSavesRef.current.get(serverNote.id) ?? null;
+      if (!draft) {
+        try {
+          draft = readDeepSpaceNoteDraft(window.sessionStorage, serverNote.id);
+        } catch {
+          draft = null;
+        }
+      }
+
+      let selectedNote = serverNote;
+      let conflictingDraft: DeepSpaceLocalNoteDraft | null = null;
+      if (draft) {
+        const serverAlreadyHasDraft =
+          (serverNote.content_html ?? "") === draft.contentHtml && serverNote.title === draft.title;
+        if (serverAlreadyHasDraft) {
+          pendingNoteSavesRef.current.delete(serverNote.id);
+          localDraftStoredRef.current.delete(serverNote.id);
+          try {
+            clearDeepSpaceNoteDraft(window.sessionStorage, serverNote.id);
+          } catch {
+            // The server copy is authoritative even if browser storage is unavailable.
+          }
+          updateNoteSaveState(serverNote.id, "saved");
+        } else if (
+          pendingNoteSavesRef.current.has(serverNote.id) ||
+          draft.baseUpdatedAt === serverNote.updated_at
+        ) {
+          selectedNote = {
+            ...serverNote,
+            content_html: draft.contentHtml,
+            title: draft.title,
+          };
+          pendingNoteSavesRef.current.set(serverNote.id, draft);
+          localDraftStoredRef.current.set(serverNote.id, true);
+          updateNoteSaveState(serverNote.id, "saving");
+        } else {
+          conflictingDraft = draft;
+        }
+      }
+
+      activeNoteRef.current = selectedNote;
+      setActiveNote(selectedNote);
+      setRecoveryDraft(conflictingDraft);
+      if (selectedNote !== serverNote) {
+        setNotes((previous) =>
+          previous.map((item) => (item.id === selectedNote.id ? selectedNote : item)),
+        );
+      }
+    },
+    [updateNoteSaveState],
+  );
 
   // ── Lifecycle & Migration ────────────────────────────────────────────────
 
@@ -438,7 +702,7 @@ export default function DeepSpacePageClient() {
       } else {
         const savedId = window.localStorage.getItem(ACTIVE_NOTE_KEY);
         const requestedId = new URLSearchParams(window.location.search).get("conversation");
-        setActiveNote(
+        activateNote(
           items.find((item) => item.id === requestedId) ||
             items.find((item) => item.id === savedId) ||
             items[0] ||
@@ -456,7 +720,7 @@ export default function DeepSpacePageClient() {
       mounted = false;
       window.clearTimeout(releaseTimer);
     };
-  }, [addServiceWarning, fetchNotes, serviceRetryKey]);
+  }, [activateNote, addServiceWarning, fetchNotes, serviceRetryKey]);
 
   // Keep the selected conversation stable across route changes, refreshes,
   // browser restarts, and returning from another dashboard page. The message
@@ -485,75 +749,52 @@ export default function DeepSpacePageClient() {
 
   // ── Auto-save ────────────────────────────────────────────────────────────
 
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const noteVisualSourceRef = useRef(new Map<string, string>());
+  const savePendingNote = useCallback(
+    async (conversationId: string) => {
+      const inFlight = inFlightNoteSavesRef.current.get(conversationId);
+      if (inFlight) {
+        await inFlight;
+        return;
+      }
+      const draft = pendingNoteSavesRef.current.get(conversationId);
+      if (!draft) return;
 
-  const handleEditorChange = (html: string) => {
-    if (!activeNote) return;
-    // replaceHTML can trigger a delayed BlockNote change event containing the
-    // document that was current before a chat or artifact edit. Keep the
-    // newest persisted visual revision when that stale callback arrives.
-    const currentHtml = preserveLatestVisualBlockRevisions(html, noteVisualSourceRef.current);
-    const nextAutoTitle =
-      activeNote.title === DEFAULT_NOTE_TITLE ? deriveNoteTitleFromContent(currentHtml) : null;
-    setActiveNote((prev) =>
-      prev ? { ...prev, content_html: currentHtml, title: nextAutoTitle ?? prev.title } : null,
-    );
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setIsSaving(true);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        // A note edit can originate outside the chat renderer. Persist each
-        // embedded visual block before saving its HTML. That way a revision
-        // conflict cannot leave stale note markup behind. Recheck the latest
-        // known revision when the debounce fires because a chat or artifact
-        // edit may have completed since this callback was scheduled.
-        let synchronizedHtml = preserveLatestVisualBlockRevisions(
-          html,
-          noteVisualSourceRef.current,
-        );
-        let hasVisualConflict = false;
-        for (const block of extractPersistedVisualBlocks(synchronizedHtml)) {
-          const serializedBlock = JSON.stringify(block);
-          if (noteVisualSourceRef.current.get(block.id) === serializedBlock) continue;
-          const revision =
-            typeof (block as StructuredBlock & { revision?: number }).revision === "number"
-              ? Number((block as StructuredBlock & { revision?: number }).revision)
-              : undefined;
-          const visualResponse = (await fetchWithAuth(
-            `/deepspace/chats/${activeNote.id}/visual-block`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({
-                block_id: block.id,
-                block,
-                ...(revision === undefined ? {} : { expected_revision: revision }),
-              }),
-            },
-          )) as Response;
-          // A block may be a note-only visual or a legacy block not yet
-          // associated with a chat message. The note remains authoritative in
-          // that case; a revision conflict must stop the note write.
-          if (!visualResponse.ok && visualResponse.status !== 404) {
-            addServiceWarning(
-              "A visual block changed elsewhere; reload the note before editing it again.",
-            );
-            hasVisualConflict = visualResponse.status === 409;
-            if (!hasVisualConflict) {
-              throw new Error("The visual block could not be synchronized with the note.");
+      updateNoteSaveState(conversationId, "saving");
+      const operation = (async () => {
+        try {
+          // Keep rich visual blocks revisioned before writing the note HTML.
+          let synchronizedHtml = preserveLatestVisualBlockRevisions(
+            draft.contentHtml,
+            noteVisualSourceRef.current,
+          );
+          let hasVisualConflict = false;
+          for (const block of extractPersistedVisualBlocks(synchronizedHtml)) {
+            const serializedBlock = JSON.stringify(block);
+            if (noteVisualSourceRef.current.get(block.id) === serializedBlock) continue;
+            let persisted: StructuredBlock | null;
+            try {
+              // Re-read the chat revision instead of trusting a note's revision;
+              // note and chat revisions can advance independently.
+              persisted = await syncVisualBlockToChat(conversationId, block);
+            } catch (error) {
+              const status = (error as Error & { status?: number }).status;
+              addServiceWarning(
+                error instanceof Error
+                  ? error.message
+                  : "A visual block could not be synchronized. Your draft is kept on this tab.",
+              );
+              hasVisualConflict = status === 409;
+              if (!hasVisualConflict) {
+                throw error;
+              }
+              break;
             }
-            break;
-          } else if (visualResponse.ok) {
-            const updatedMessage = (await visualResponse.json()) as {
-              metadata_json?: { visual_blocks?: Record<string, { block?: StructuredBlock }> };
-            };
-            const persisted = updatedMessage.metadata_json?.visual_blocks?.[block.id]?.block;
             if (persisted) {
               noteVisualSourceRef.current.set(block.id, JSON.stringify(persisted));
               synchronizedHtml =
                 replaceVisualBlockInNoteHtml(synchronizedHtml, persisted) ?? synchronizedHtml;
               try {
-                await syncExistingVisualArtifact(activeNote.id, persisted);
+                await syncExistingVisualArtifact(conversationId, persisted);
               } catch (error) {
                 addServiceWarning(
                   error instanceof Error
@@ -562,63 +803,287 @@ export default function DeepSpacePageClient() {
                 );
               }
             } else {
+              // A note-only visual has no assistant message revision to update.
               noteVisualSourceRef.current.set(block.id, serializedBlock);
             }
           }
-        }
-        if (hasVisualConflict) return;
-        const noteResponse = (await fetchWithAuth(`/deepspace/chats/${activeNote.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            content_html: synchronizedHtml,
-            ...(nextAutoTitle ? { title: nextAutoTitle } : {}),
-          }),
-        })) as Response;
-        if (!noteResponse.ok) {
-          throw new Error("The note could not be saved.");
-        }
-        if (synchronizedHtml !== html) {
-          setActiveNote((current) =>
-            current?.id === activeNote.id
-              ? { ...current, content_html: synchronizedHtml }
-              : current,
-          );
+          if (hasVisualConflict) {
+            updateNoteSaveState(conversationId, "local");
+            return;
+          }
+
+          const noteResponse = (await fetchWithAuth(`/deepspace/chats/${conversationId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              content_html: synchronizedHtml,
+              title: draft.title,
+            }),
+          })) as Response;
+          if (!noteResponse.ok) throw new Error("The note could not be saved.");
+          const savedNote = (await noteResponse.json().catch(() => null)) as {
+            title?: unknown;
+            content_html?: unknown;
+            updated_at?: unknown;
+          } | null;
+          if (
+            !savedNote ||
+            savedNote.content_html !== synchronizedHtml ||
+            typeof savedNote.title !== "string" ||
+            savedNote.title.trim() !== draft.title.trim()
+          ) {
+            throw new Error("The server did not confirm the saved note content.");
+          }
+          const savedUpdatedAt =
+            typeof savedNote?.updated_at === "string" ? savedNote.updated_at : undefined;
+          const latestDraft = pendingNoteSavesRef.current.get(conversationId);
+          const latestMatchesSaved =
+            !latestDraft ||
+            (latestDraft.contentHtml === draft.contentHtml && latestDraft.title === draft.title);
+
           setNotes((current) =>
             current.map((item) =>
-              item.id === activeNote.id ? { ...item, content_html: synchronizedHtml } : item,
+              item.id === conversationId
+                ? {
+                    ...item,
+                    ...(latestMatchesSaved
+                      ? { content_html: synchronizedHtml, title: draft.title }
+                      : {}),
+                    ...(savedUpdatedAt ? { updated_at: savedUpdatedAt } : {}),
+                  }
+                : item,
             ),
           );
-          await editorRef.current?.replaceHTML(synchronizedHtml);
+          setActiveNote((current) => {
+            if (current?.id !== conversationId) return current;
+            return {
+              ...current,
+              ...(latestMatchesSaved ? { content_html: synchronizedHtml, title: draft.title } : {}),
+              ...(savedUpdatedAt ? { updated_at: savedUpdatedAt } : {}),
+            };
+          });
+
+          if (latestMatchesSaved) {
+            pendingNoteSavesRef.current.delete(conversationId);
+            localDraftStoredRef.current.delete(conversationId);
+            try {
+              const localDraft = readDeepSpaceNoteDraft(window.sessionStorage, conversationId);
+              if (
+                localDraft?.contentHtml === draft.contentHtml &&
+                localDraft.title === draft.title
+              ) {
+                clearDeepSpaceNoteDraft(window.sessionStorage, conversationId);
+              }
+            } catch {
+              // The server save is authoritative even when tab storage is blocked.
+            }
+            updateNoteSaveState(conversationId, "saved");
+          } else if (latestDraft) {
+            const advancedDraft = {
+              ...latestDraft,
+              baseUpdatedAt: savedUpdatedAt ?? latestDraft.baseUpdatedAt,
+            };
+            pendingNoteSavesRef.current.set(conversationId, advancedDraft);
+            let stored = false;
+            try {
+              stored = writeDeepSpaceNoteDraft(window.sessionStorage, advancedDraft);
+            } catch {
+              stored = false;
+            }
+            localDraftStoredRef.current.set(conversationId, stored);
+            updateNoteSaveState(conversationId, stored ? "saving" : "failed");
+          }
+        } catch (error) {
+          console.error("Failed to save DeepSpace note", error);
+          const hasLocalCopy = localDraftStoredRef.current.get(conversationId) === true;
+          updateNoteSaveState(conversationId, hasLocalCopy ? "local" : "failed");
+          addServiceWarning(
+            hasLocalCopy
+              ? "The server did not confirm this save. Your latest draft is kept in this tab; retry when the server is available."
+              : "The server did not confirm this save, and a recovery copy could not be stored. Keep this page open and retry.",
+          );
+        } finally {
+          inFlightNoteSavesRef.current.delete(conversationId);
+          const latestDraft = pendingNoteSavesRef.current.get(conversationId);
+          if (
+            latestDraft &&
+            (latestDraft.contentHtml !== draft.contentHtml || latestDraft.title !== draft.title)
+          ) {
+            scheduleNoteSaveRef.current(conversationId, 0);
+          }
         }
-      } catch (error) {
-        console.error("Failed to save DeepSpace note", error);
-        addServiceWarning(
-          "Your latest note edit could not be saved. Please retry after reconnecting.",
-        );
-      } finally {
-        setIsSaving(false);
+      })();
+      inFlightNoteSavesRef.current.set(conversationId, operation);
+      await operation;
+    },
+    [
+      addServiceWarning,
+      syncExistingVisualArtifact,
+      syncVisualBlockToChat,
+      updateNoteSaveState,
+    ],
+  );
+
+  const scheduleNoteSave = useCallback(
+    (conversationId: string, delayMs = NOTE_AUTOSAVE_DEBOUNCE_MS) => {
+      const previousTimer = noteSaveTimersRef.current.get(conversationId);
+      if (previousTimer) window.clearTimeout(previousTimer);
+      const timer = window.setTimeout(() => {
+        noteSaveTimersRef.current.delete(conversationId);
+        void savePendingNote(conversationId);
+      }, delayMs);
+      noteSaveTimersRef.current.set(conversationId, timer);
+    },
+    [savePendingNote],
+  );
+  const flushPendingNoteSaves = useCallback(() => {
+    for (const conversationId of pendingNoteSavesRef.current.keys()) {
+      const timer = noteSaveTimersRef.current.get(conversationId);
+      if (timer) window.clearTimeout(timer);
+      noteSaveTimersRef.current.delete(conversationId);
+      void savePendingNoteRef.current(conversationId);
+    }
+  }, []);
+  useEffect(() => {
+    scheduleNoteSaveRef.current = scheduleNoteSave;
+    savePendingNoteRef.current = savePendingNote;
+    flushPendingNoteSavesRef.current = flushPendingNoteSaves;
+  }, [flushPendingNoteSaves, savePendingNote, scheduleNoteSave]);
+
+  useEffect(() => {
+    if (activeNote?.id && pendingNoteSavesRef.current.has(activeNote.id)) {
+      scheduleNoteSave(activeNote.id, 0);
+    }
+  }, [activeNote?.id, scheduleNoteSave]);
+
+  const queueNoteContentSave = useCallback(
+    (
+      note: DeepSpaceNote,
+      contentHtml: string,
+      title: string,
+      delayMs = NOTE_AUTOSAVE_DEBOUNCE_MS,
+    ) => {
+      const previousDraft = pendingNoteSavesRef.current.get(note.id);
+      const draft: DeepSpaceLocalNoteDraft = {
+        version: 1,
+        conversationId: note.id,
+        contentHtml,
+        title,
+        baseUpdatedAt: previousDraft?.baseUpdatedAt ?? note.updated_at,
+        updatedAt: Date.now(),
+      };
+      pendingNoteSavesRef.current.set(note.id, draft);
+      let stored = false;
+      try {
+        stored = writeDeepSpaceNoteDraft(window.sessionStorage, draft);
+      } catch {
+        stored = false;
       }
-    }, 1500);
+      localDraftStoredRef.current.set(note.id, stored);
+      updateNoteSaveState(note.id, stored ? "saving" : "failed");
+
+      const updatedNote = { ...note, content_html: contentHtml, title };
+      if (activeNoteRef.current?.id === note.id) {
+        activeNoteRef.current = updatedNote;
+        setActiveNote(updatedNote);
+      }
+      setNotes((previous) =>
+        previous.map((item) =>
+          item.id === note.id ? { ...item, content_html: contentHtml, title } : item,
+        ),
+      );
+      scheduleNoteSave(note.id, delayMs);
+      return stored;
+    },
+    [scheduleNoteSave, updateNoteSaveState],
+  );
+
+  const handleEditorChange = (html: string) => {
+    const note = activeNoteRef.current ?? activeNote;
+    if (!note) return;
+    // Keep the newest saved visual revision if a delayed editor event arrives.
+    const currentHtml = preserveLatestVisualBlockRevisions(html, noteVisualSourceRef.current);
+    const nextTitle =
+      (note.title === DEFAULT_NOTE_TITLE ? deriveNoteTitleFromContent(currentHtml) : null) ??
+      note.title;
+    if (currentHtml === (note.content_html ?? "") && nextTitle === note.title) return;
+    queueNoteContentSave(note, currentHtml, nextTitle);
   };
+
+  const restoreConflictingDraft = useCallback(() => {
+    const note = activeNoteRef.current;
+    if (!note || !recoveryDraft || recoveryDraft.conversationId !== note.id) return;
+    const restoredDraft = {
+      ...recoveryDraft,
+      baseUpdatedAt: note.updated_at,
+      updatedAt: Date.now(),
+    };
+    let stored = false;
+    try {
+      stored = writeDeepSpaceNoteDraft(window.sessionStorage, restoredDraft);
+    } catch {
+      stored = false;
+    }
+    pendingNoteSavesRef.current.set(note.id, restoredDraft);
+    localDraftStoredRef.current.set(note.id, stored);
+    const restoredNote = {
+      ...note,
+      content_html: restoredDraft.contentHtml,
+      title: restoredDraft.title,
+    };
+    activeNoteRef.current = restoredNote;
+    setActiveNote(restoredNote);
+    setNotes((previous) => previous.map((item) => (item.id === note.id ? restoredNote : item)));
+    setRecoveryDraft(null);
+    updateNoteSaveState(note.id, stored ? "saving" : "failed");
+    void editorRef.current?.replaceHTML(restoredDraft.contentHtml);
+    scheduleNoteSave(note.id, 0);
+  }, [recoveryDraft, scheduleNoteSave, updateNoteSaveState]);
+
+  const discardConflictingDraft = useCallback(() => {
+    if (!recoveryDraft) return;
+    try {
+      clearDeepSpaceNoteDraft(window.sessionStorage, recoveryDraft.conversationId);
+    } catch {
+      // The server copy remains selected if storage is unavailable.
+    }
+    pendingNoteSavesRef.current.delete(recoveryDraft.conversationId);
+    localDraftStoredRef.current.delete(recoveryDraft.conversationId);
+    noteSaveTimersRef.current.delete(recoveryDraft.conversationId);
+    updateNoteSaveState(recoveryDraft.conversationId, "saved");
+    setRecoveryDraft(null);
+  }, [recoveryDraft, updateNoteSaveState]);
+
+  useEffect(() => {
+    const flushOnExit = () => flushPendingNoteSavesRef.current();
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushPendingNoteSavesRef.current();
+    };
+    window.addEventListener("pagehide", flushOnExit);
+    window.addEventListener("online", flushOnExit);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushOnExit);
+      window.removeEventListener("online", flushOnExit);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      for (const timer of noteSaveTimersRef.current.values()) window.clearTimeout(timer);
+      noteSaveTimersRef.current.clear();
+    },
+    [],
+  );
 
   const handleVisualBlockChange = useCallback(
     async (_messageId: string, block: StructuredBlock) => {
-      const note = activeNote;
+      const note = activeNoteRef.current ?? activeNote;
       if (!note) return;
       const nextHtml = replaceVisualBlockInNoteHtml(note.content_html ?? "", block);
       if (!nextHtml || nextHtml === (note.content_html ?? "")) return;
-      setActiveNote((previous) =>
-        previous?.id === note.id ? { ...previous, content_html: nextHtml } : previous,
-      );
-      setNotes((previous) =>
-        previous.map((item) => (item.id === note.id ? { ...item, content_html: nextHtml } : item)),
-      );
       noteVisualSourceRef.current.set(block.id, JSON.stringify(block));
-      const response = (await fetchWithAuth(`/deepspace/chats/${note.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content_html: nextHtml }),
-      })) as Response;
-      if (!response.ok) throw new Error("The edited visual could not be saved to this note.");
+      queueNoteContentSave(note, nextHtml, note.title, 0);
       await editorRef.current?.replaceHTML(nextHtml);
       try {
         await syncExistingVisualArtifact(note.id, block);
@@ -630,13 +1095,40 @@ export default function DeepSpacePageClient() {
         );
       }
     },
-    [activeNote, addServiceWarning, syncExistingVisualArtifact],
+    [activeNote, addServiceWarning, queueNoteContentSave, syncExistingVisualArtifact],
   );
 
   const handleSaveVisualArtifact = useCallback(
     async (block: StructuredBlock) => {
       if (!activeNote) {
         throw new Error("Open a conversation before saving this visual to Library.");
+      }
+      const entriesResponse = (await fetchWithAuth(`/deepspace/library/${activeNote.id}/entries`, {
+        timeoutMs: 8_000,
+      })) as Response;
+      if (!entriesResponse.ok) {
+        throw new Error("The Library could not be checked for an existing visual artifact.");
+      }
+      const entries = (await entriesResponse.json()) as {
+        files?: Array<{
+          name?: string;
+          version?: number;
+          source?: string;
+          metadata_json?: unknown;
+        }>;
+      };
+      const existing = (entries.files ?? []).find((file) => {
+        const metadata =
+          file.metadata_json && typeof file.metadata_json === "object"
+            ? (file.metadata_json as { visual_document?: { block_id?: unknown } })
+            : null;
+        return (
+          metadata?.visual_document?.block_id === block.id ||
+          (file.source === "visual_editor" && file.name === `${block.id}.visual.json`)
+        );
+      });
+      if (existing && (typeof existing.version !== "number" || !existing.name)) {
+        throw new Error("The existing visual artifact is missing its revision information.");
       }
       const response = (await fetchWithAuth(
         `/deepspace/library/${activeNote.id}/visual-artifacts`,
@@ -645,14 +1137,19 @@ export default function DeepSpacePageClient() {
           body: JSON.stringify({
             block_id: block.id,
             block,
-            filename: `${block.id}.visual.json`,
+            filename: existing?.name ?? `${block.id}.visual.json`,
+            ...(existing ? { expected_version: existing.version } : {}),
           }),
         },
       )) as Response;
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
         throw new Error(
-          String(payload?.detail?.message ?? "The visual artifact could not be saved."),
+          await getResponseErrorMessage(
+            response,
+            response.status === 409
+              ? "The visual artifact changed in another session. Reload before saving"
+              : "The visual artifact could not be saved",
+          ),
         );
       }
     },
@@ -661,47 +1158,16 @@ export default function DeepSpacePageClient() {
 
   const handleArtifactVisualChange = useCallback(
     async (block: StructuredBlock) => {
-      const note = activeNote;
+      const note = activeNoteRef.current ?? activeNote;
       if (!note) return;
-      const revision = (block as { revision?: number }).revision;
-      const response = (await fetchWithAuth(`/deepspace/chats/${note.id}/visual-block`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          block_id: block.id,
-          block,
-          ...(typeof revision === "number" ? { expected_revision: Math.max(0, revision - 1) } : {}),
-        }),
-      })) as Response;
-      if (!response.ok) {
-        if (response.status === 409) {
-          addServiceWarning("This artifact changed in another session. Reload it before editing.");
-        }
-        throw new Error("The artifact change could not be synchronized to chat.");
-      }
-      const updated = (await response.json()) as {
-        metadata_json?: { visual_blocks?: Record<string, { block?: StructuredBlock }> };
-      };
-      const persisted = updated.metadata_json?.visual_blocks?.[block.id]?.block ?? {
-        ...block,
-        revision: (revision ?? 0) + 1,
-      };
+      const persisted = (await syncVisualBlockToChat(note.id, block)) ?? block;
       const nextHtml = replaceVisualBlockInNoteHtml(note.content_html ?? "", persisted);
       if (!nextHtml || nextHtml === (note.content_html ?? "")) return;
-      setActiveNote((current) =>
-        current?.id === note.id ? { ...current, content_html: nextHtml } : current,
-      );
-      setNotes((current) =>
-        current.map((item) => (item.id === note.id ? { ...item, content_html: nextHtml } : item)),
-      );
       noteVisualSourceRef.current.set(block.id, JSON.stringify(persisted));
-      const noteResponse = (await fetchWithAuth(`/deepspace/chats/${note.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content_html: nextHtml }),
-      })) as Response;
-      if (!noteResponse.ok) throw new Error("The synchronized note could not be saved.");
+      queueNoteContentSave(note, nextHtml, note.title, 0);
       await editorRef.current?.replaceHTML(nextHtml);
     },
-    [activeNote, addServiceWarning],
+    [activeNote, queueNoteContentSave, syncVisualBlockToChat],
   );
 
   const handleAgentNotePreview = useCallback(
@@ -967,25 +1433,60 @@ export default function DeepSpacePageClient() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -8 }}
                     transition={panelTransition}
-                    className="absolute inset-0 will-change-transform"
+                    className="absolute inset-0 flex flex-col will-change-transform"
                   >
-                    <DeepSpaceEditor
-                      ref={editorRef}
-                      initialContent={activeNote?.content_html || ""}
-                      onChange={handleEditorChange}
-                      conversationId={activeNote?.id}
-                      isSaving={isSaving}
-                      agentPreview={agentNotePreview}
-                      showCollapseControls={false}
-                      panelMode={legacyPanelMode}
-                      onSetPanelMode={(mode) => {
-                        if (mode === "split") toggleSplitView();
-                        else {
-                          setIsSplitView(false);
-                          setPanelMode(mode);
-                        }
-                      }}
-                    />
+                    {recoveryDraft?.conversationId === activeNote?.id ? (
+                      <div
+                        role="alert"
+                        className="text-foreground flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-400/30 bg-amber-400/[0.08] px-4 py-3 text-xs"
+                      >
+                        <span className="min-w-0 flex-1">
+                          A local draft and the saved note differ. Restore the local draft only if
+                          you want it to replace the newer saved note.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={restoreConflictingDraft}
+                          className="bg-surface-1 hover:bg-surface-2 rounded-lg border border-amber-300/40 px-3 py-1.5 font-semibold"
+                        >
+                          Restore local draft
+                        </button>
+                        <button
+                          type="button"
+                          onClick={discardConflictingDraft}
+                          className="text-muted-foreground hover:text-foreground px-2 py-1.5"
+                        >
+                          Discard draft
+                        </button>
+                      </div>
+                    ) : null}
+                    <div
+                      className="min-h-0 flex-1"
+                      inert={recoveryDraft?.conversationId === activeNote?.id}
+                    >
+                      <DeepSpaceEditor
+                        ref={editorRef}
+                        initialContent={activeNote?.content_html || ""}
+                        onChange={handleEditorChange}
+                        conversationId={activeNote?.id}
+                        saveStatus={activeNote ? (noteSaveStates[activeNote.id] ?? "idle") : "idle"}
+                        onRetrySave={() => {
+                          if (!activeNote) return;
+                          updateNoteSaveState(activeNote.id, "saving");
+                          scheduleNoteSave(activeNote.id, 0);
+                        }}
+                        agentPreview={agentNotePreview}
+                        showCollapseControls={false}
+                        panelMode={legacyPanelMode}
+                        onSetPanelMode={(mode) => {
+                          if (mode === "split") toggleSplitView();
+                          else {
+                            setIsSplitView(false);
+                            setPanelMode(mode);
+                          }
+                        }}
+                      />
+                    </div>
                   </motion.div>
                 ) : null}
                 {showLibraryPanel ? (
@@ -1086,13 +1587,23 @@ export default function DeepSpacePageClient() {
                   }}
                   onConversationUnavailable={(conversationId) => {
                     window.localStorage.removeItem(ACTIVE_NOTE_KEY);
+                    pendingNoteSavesRef.current.delete(conversationId);
+                    localDraftStoredRef.current.delete(conversationId);
+                    const timer = noteSaveTimersRef.current.get(conversationId);
+                    if (timer) window.clearTimeout(timer);
+                    noteSaveTimersRef.current.delete(conversationId);
+                    try {
+                      clearDeepSpaceNoteDraft(window.sessionStorage, conversationId);
+                    } catch {
+                      // The unavailable conversation will not be restored from this tab.
+                    }
                     setNotes((previous) => previous.filter((item) => item.id !== conversationId));
                     setActiveNote((active) => (active?.id === conversationId ? null : active));
                   }}
                   onSelectNote={(noteId) => {
                     const note = notes.find((n) => n.id === noteId);
                     if (note) {
-                      setActiveNote(note);
+                      activateNote(note);
                     }
                   }}
                   onNewNote={() => {
