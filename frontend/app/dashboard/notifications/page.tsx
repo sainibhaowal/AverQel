@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { BellRing, CheckCheck, RefreshCw, Trash2 } from "lucide-react";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 
 type Item = {
@@ -189,9 +190,11 @@ export default function NotificationsPage() {
           </button>
         </div>
         {loading ? (
-          <div className="text-muted-foreground py-16 text-center text-sm">
-            Loading notifications…
-          </div>
+          <AverQelLoading
+            label="Loading notifications…"
+            size="section"
+            className="border-border rounded-xl border border-dashed"
+          />
         ) : items.length === 0 ? (
           <div className="border-border text-muted-foreground rounded-xl border border-dashed py-16 text-center text-sm">
             You’re all caught up.
@@ -247,7 +250,11 @@ export default function NotificationsPage() {
                 disabled={loadingOlder}
                 className="border-border text-foreground w-full rounded-lg border px-4 py-3 text-xs font-semibold disabled:opacity-50"
               >
-                {loadingOlder ? "Loading older notifications…" : "Load older notifications"}
+                {loadingOlder ? (
+                  <AverQelLoading size="inline" label="Loading older notifications" />
+                ) : (
+                  "Load older notifications"
+                )}
               </button>
             )}
           </div>

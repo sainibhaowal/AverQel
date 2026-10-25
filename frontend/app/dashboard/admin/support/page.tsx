@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Search,
   Loader2,
-  User,
   CheckCircle2,
   Clock,
   ChevronRight,
@@ -18,13 +17,24 @@ import {
 } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import ProfileAvatar from "@/app/components/profile/ProfileAvatar";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
+import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
+import SupportEncryptionMigration from "@/app/dashboard/admin/SupportEncryptionMigration";
+import {
+  decryptSupportAttachment,
+  decryptSupportPayload,
+  encryptSupportPayload,
+} from "@/lib/supportEncryption";
 
 interface Ticket {
   id: string;
   user_id?: string;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  user_avatar?: string | null;
   subject: string;
   description: string;
   category: string;
@@ -35,24 +45,49 @@ interface Ticket {
   assigned_admin_id?: string | null;
   first_response_due_at?: string | null;
   resolution_due_at?: string | null;
+  encrypted_payload?: string | null;
 }
 
 interface TicketDetail extends Ticket {
   user_email?: string | null;
-  attachments?: Array<{ id: string; filename: string; size_bytes: number; download_url: string }>;
+  participants?: ConversationParticipant[];
+  attachments?: Array<{
+    id: string;
+    filename: string;
+    size_bytes: number;
+    download_url: string;
+    is_encrypted?: boolean;
+    encrypted_metadata?: string | null;
+  }>;
   messages: Array<{
     id: string;
+    author_ref?: string | null;
     author_role: string;
     kind: string;
     body: string;
+    encrypted_payload?: string | null;
     is_internal: boolean;
     created_at: string;
   }>;
 }
 
+interface ConversationParticipant {
+  ref: string;
+  display_name?: string | null;
+  avatar?: string | null;
+}
+
+interface QueueUserProfile {
+  user_id: string;
+  display_name?: string | null;
+  avatar?: string | null;
+}
+
 interface UserSummary {
   user_id: string;
   email: string;
+  display_name?: string | null;
+  avatar?: string | null;
   ticket_count: number;
   last_ticket_at: string;
   latest_tickets: Ticket[];
@@ -60,12 +95,16 @@ interface UserSummary {
 
 function SupportContent() {
   const { user } = useAuth();
+  const authenticatedUserId = user?.id;
+  const encryption = useSupportEncryption("admin");
+  const cryptoContext = encryption.context;
   const searchParams = useSearchParams();
   const queryUserId = searchParams.get("user");
   const queryTicketId = searchParams.get("ticket");
 
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(queryUserId);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(queryTicketId);
@@ -89,23 +128,51 @@ function SupportContent() {
       const query = new URLSearchParams({ limit: "100", offset: String(pageOffset) });
       if (statusFilter !== "all") query.set("status", statusFilter);
       if (priorityFilter !== "all") query.set("priority", priorityFilter);
-      if (assignmentFilter === "mine" && user?.id) query.set("assigned_to", user.id);
+      if (assignmentFilter === "mine" && authenticatedUserId)
+        query.set("assigned_to", authenticatedUserId);
       if (assignmentFilter === "unassigned") query.set("unassigned_only", "true");
       if (overdueOnly) query.set("overdue_only", "true");
       if (searchQuery.trim()) query.set("search", searchQuery.trim());
       const res = await fetchWithAuth(`/support/admin/queue?${query.toString()}`);
       if (requestId !== loadRequestId.current) return;
+      if (!res.ok) {
+        throw new Error(
+          res.status === 403
+            ? "Your account is not authorized to review support tickets. Use an allowlisted platform-administrator account."
+            : `Support queue could not be loaded (${res.status}).`,
+        );
+      }
+      setLoadError(null);
       if (res.ok) {
         const data = await res.json();
         setQueueCounts({ open: data.open_count, overdue: data.overdue_count, total: data.total });
         setHasMoreTickets(pageOffset + data.items.length < data.total);
+        const userProfiles = new Map<string, QueueUserProfile>(
+          ((data.users ?? []) as QueueUserProfile[]).map((profile) => [profile.user_id, profile]),
+        );
         const byUser = new Map<string, UserSummary>();
-        for (const ticket of data.items as Array<Ticket & { user_email?: string | null }>) {
+        const decryptedTickets = await Promise.all(
+          (data.items as Ticket[]).map(async (ticket) => {
+            if (!cryptoContext || !ticket.encrypted_payload) return ticket;
+            return {
+              ...ticket,
+              ...(await decryptSupportPayload<{ subject: string; description: string }>(
+                ticket.encrypted_payload,
+                cryptoContext.privateKey,
+                cryptoContext.keyId,
+              )),
+            };
+          }),
+        );
+        for (const ticket of decryptedTickets) {
           const userId = ticket.user_id ?? "unknown";
           const email = ticket.user_email ?? "Unknown user";
+          const profile = userProfiles.get(userId);
           const summary = byUser.get(userId) ?? {
             user_id: userId,
             email,
+            display_name: profile?.display_name,
+            avatar: profile?.avatar,
             ticket_count: 0,
             last_ticket_at: ticket.updated_at,
             latest_tickets: [],
@@ -129,6 +196,8 @@ function SupportContent() {
             const existing = merged.get(item.user_id);
             if (!existing) merged.set(item.user_id, item);
             else {
+              existing.display_name = existing.display_name ?? item.display_name;
+              existing.avatar = existing.avatar ?? item.avatar;
               const ids = new Set(existing.latest_tickets.map((ticket) => ticket.id));
               existing.latest_tickets.push(
                 ...item.latest_tickets.filter((ticket) => !ids.has(ticket.id)),
@@ -156,7 +225,11 @@ function SupportContent() {
     } catch (err) {
       if (requestId !== loadRequestId.current) return;
       console.error(err);
-      toast.error("Failed to load support data.");
+      setUsers([]);
+      setSelectedUserId(null);
+      setQueueCounts({ open: 0, overdue: 0, total: 0 });
+      setHasMoreTickets(false);
+      setLoadError(err instanceof Error ? err.message : "Failed to load support data.");
     } finally {
       if (requestId === loadRequestId.current) setLoading(false);
     }
@@ -170,40 +243,84 @@ function SupportContent() {
     overdueOnly,
     searchQuery,
     pageOffset,
-    user?.id,
+    authenticatedUserId,
+    cryptoContext,
   ]);
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     queueMicrotask(() => void loadData());
-  }, [loadData]);
+  }, [loadData, encryption.ready, cryptoContext]);
 
-  useEffect(() => {
-    const ticketId = new URLSearchParams(window.location.search).get("ticket");
-    if (ticketId) {
-      queueMicrotask(() => void loadTicketDetail(ticketId));
-    }
-  }, []);
-
-  async function loadTicketDetail(ticketId: string) {
+  const loadTicketDetail = useCallback(async (ticketId: string) => {
     try {
       const res = await fetchWithAuth(`/support/admin/tickets/${ticketId}`);
       if (!res.ok) throw new Error(`Ticket could not be loaded (${res.status})`);
       const detail = (await res.json()) as TicketDetail;
-      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const ticketContent = detail.encrypted_payload
+        ? await decryptSupportPayload<{ subject: string; description: string }>(
+            detail.encrypted_payload,
+            cryptoContext.privateKey,
+            cryptoContext.keyId,
+          )
+        : null;
+      const messages = await Promise.all(
+        detail.messages.map(async (message) =>
+          message.encrypted_payload
+            ? {
+                ...message,
+                ...(await decryptSupportPayload<{ body: string }>(
+                  message.encrypted_payload,
+                  cryptoContext.privateKey,
+                  cryptoContext.keyId,
+                )),
+              }
+            : message,
+        ),
+      );
+      setTicketDetails((current) => ({
+        ...current,
+        [ticketId]: { ...detail, ...(ticketContent ?? {}), messages },
+      }));
     } catch (err) {
       console.error(err);
       toast.error("Could not load this support conversation.");
     }
-  }
+  }, [cryptoContext]);
 
-  async function downloadAttachment(url: string, filename: string) {
+  useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
+    const ticketId = new URLSearchParams(window.location.search).get("ticket");
+    if (ticketId) {
+      queueMicrotask(() => void loadTicketDetail(ticketId));
+    }
+  }, [encryption.ready, cryptoContext, loadTicketDetail]);
+
+  async function downloadAttachment(
+    url: string,
+    filename: string,
+    isEncrypted = false,
+    encryptedMetadata?: string | null,
+  ) {
     try {
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
       const response = await fetchWithAuth(url);
       if (!response.ok) throw new Error(`Attachment download failed (${response.status})`);
-      const objectUrl = URL.createObjectURL(await response.blob());
+      const downloaded = await response.blob();
+      const file =
+        isEncrypted && encryptedMetadata
+          ? await decryptSupportAttachment(
+              await downloaded.arrayBuffer(),
+              encryptedMetadata,
+              cryptoContext.privateKey,
+              cryptoContext.keyId,
+            )
+          : { blob: downloaded, filename, contentType: downloaded.type };
+      const objectUrl = URL.createObjectURL(file.blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = filename;
+      anchor.download = file.filename;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
     } catch (error) {
@@ -214,15 +331,28 @@ function SupportContent() {
 
   async function sendReply(ticketId: string) {
     if (!replyDraft.trim()) return;
+    if (!cryptoContext) return;
     setSaving(true);
     try {
+      const ticket = ticketDetails[ticketId];
+      if (!ticket?.user_id) throw new Error("The ticket owner key is unavailable.");
+      const recipients =
+        visibility === "internal"
+          ? [cryptoContext.ownPublicKey]
+          : [
+              cryptoContext.ownPublicKey,
+              await readUserPublicKey(ticket.user_id),
+            ];
       const res = await fetchWithAuth(`/support/admin/tickets/${ticketId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: replyDraft.trim(), visibility }),
+        body: JSON.stringify({
+          encrypted_payload: await encryptSupportPayload({ body: replyDraft.trim() }, recipients),
+          visibility,
+        }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
-      const detail = (await res.json()) as TicketDetail;
-      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      await res.json();
+      await loadTicketDetail(ticketId);
       setReplyDraft("");
       toast.success(visibility === "public" ? "Reply sent to the user." : "Internal note saved.");
       void loadData();
@@ -232,6 +362,12 @@ function SupportContent() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function readUserPublicKey(userId: string) {
+    const response = await fetchWithAuth(`/support/encryption/users/${userId}/public-key`);
+    if (!response.ok) throw new Error("The user has not initialized encrypted support yet.");
+    return (await response.json()) as { key_id: string; public_key: string };
   }
 
   const handleUpdateStatus = async (ticketId: string, newStatus: string) => {
@@ -311,27 +447,28 @@ function SupportContent() {
           latest_tickets: [selectedDetail],
         }
       : undefined;
-  // The API search covers ticket subject/description and user email. Filtering
-  // this grouped result by email again would hide valid ticket-text matches.
+  // Ticket text is encrypted, so the API can search only account metadata.
   const filteredUsers = users;
 
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
       case "open":
-        return <Clock className="text-blue-400" size={14} />;
+        return <Clock className="text-teal-700 dark:text-teal-300" size={14} />;
       case "in_progress":
-        return <Loader2 className="animate-spin text-yellow-400" size={14} />;
+        return <Loader2 className="animate-spin text-amber-700 dark:text-amber-300" size={14} />;
       case "resolved":
-        return <CheckCircle2 className="text-green-400" size={14} />;
+        return <CheckCircle2 className="text-emerald-700 dark:text-emerald-300" size={14} />;
       case "closed":
-        return <CheckCircle2 className="text-slate-500" size={14} />;
+        return <CheckCircle2 className="text-muted-foreground" size={14} />;
       default:
         return <Clock size={14} />;
     }
   };
 
+  if (!encryption.ready || !cryptoContext) return encryption.panel;
+
   return (
-    <div className="flex min-h-[calc(100svh-14rem)] w-full flex-col lg:h-[calc(100svh-14rem)]">
+    <div className="dashboard-theme-scope flex min-h-[calc(100svh-14rem)] w-full flex-col lg:h-[calc(100svh-14rem)]">
       <DashboardSectionHeader
         title="Support Management"
         subtitle="Manage user queries, feedback and complaints"
@@ -341,6 +478,8 @@ function SupportContent() {
         backHref="/dashboard"
         backLabel="Back To Dashboard"
       />
+
+      <SupportEncryptionMigration mode="support" context={cryptoContext} />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="border-border bg-card rounded-xl border px-4 py-2 text-xs">
@@ -419,13 +558,29 @@ function SupportContent() {
         </label>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/35 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-200"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-1 flex-col gap-6 overflow-hidden xl:flex-row">
         {/* Users List - Left Side */}
-        <div className="theme-panel flex w-full flex-col overflow-hidden rounded-[2rem] border-white/10 xl:w-80">
-          <div className="border-b border-white/10 p-6">
+        <div className="theme-panel border-border flex w-full flex-col overflow-hidden rounded-[2rem] border xl:w-80">
+          <div className="border-border border-b p-6">
             <div className="relative">
               <Search
-                className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-500"
+                className="text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2"
                 size={16}
               />
               <input
@@ -436,10 +591,11 @@ function SupportContent() {
                   setUsers([]);
                   setSelectedUserId(null);
                 }}
-                placeholder="Search tickets or users..."
-                className="focus:border-primary/40 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pr-4 pl-10 text-xs text-white transition outline-none"
+                placeholder="Search user email..."
+                className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary/50 w-full rounded-xl border py-2.5 pr-4 pl-10 text-xs transition outline-none"
               />
             </div>
+
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -447,8 +603,14 @@ function SupportContent() {
               <div className="flex justify-center py-20">
                 <Loader2 className="text-primary animate-spin" size={32} />
               </div>
+            ) : loadError ? (
+              <div className="py-20 text-center text-xs text-rose-800 dark:text-rose-200">
+                Support queue unavailable.
+              </div>
             ) : filteredUsers.length === 0 ? (
-              <div className="py-20 text-center text-xs text-slate-500 italic">No users found.</div>
+              <div className="text-muted-foreground py-20 text-center text-xs italic">
+                No users found.
+              </div>
             ) : (
               filteredUsers.map((u) => (
                 <button
@@ -457,25 +619,22 @@ function SupportContent() {
                   className={`group flex w-full items-center gap-3 rounded-2xl p-3 transition ${
                     selectedUserId === u.user_id
                       ? "bg-primary/10 border-primary/20 border"
-                      : "border border-transparent hover:bg-white/5"
+                      : "border border-transparent hover:bg-primary/5"
                   }`}
                 >
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
-                      selectedUserId === u.user_id
-                        ? "bg-primary text-black"
-                        : "bg-white/10 text-slate-300"
-                    }`}
-                  >
-                    {u.email[0].toUpperCase()}
-                  </div>
+                  <ProfileAvatar
+                    avatar={u.avatar}
+                    displayName={u.display_name}
+                    fallbackLabel={u.email}
+                    className="h-10 w-10 rounded-xl"
+                  />
                   <div className="min-w-0 flex-1 text-left">
                     <p
-                      className={`truncate text-xs font-bold ${selectedUserId === u.user_id ? "text-white" : "text-slate-300"}`}
+                      className={`truncate text-xs font-bold ${selectedUserId === u.user_id ? "text-foreground" : "text-body"}`}
                     >
                       {u.email}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">
+                    <p className="text-muted-foreground mt-0.5 text-[10px]">
                       {u.ticket_count} {u.ticket_count === 1 ? "ticket" : "tickets"}
                     </p>
                   </div>
@@ -498,23 +657,14 @@ function SupportContent() {
         </div>
 
         {/* Tickets View - Right Side */}
-        <div className="theme-panel flex flex-1 flex-col overflow-hidden rounded-[2rem] border-white/10">
+        <div className="theme-panel border-border flex flex-1 flex-col overflow-hidden rounded-[2rem] border">
           {selectedUser ? (
             <>
-              <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] p-8">
-                <div className="flex items-center gap-4">
-                  <div className="text-primary flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                    <User size={28} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">{selectedUser.email}</h3>
-                    <p className="text-xs text-slate-500">User ID: {selectedUser.user_id}</p>
-                  </div>
-                </div>
-
-                <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400">
-                  {selectedUser.ticket_count} total requests
-                </span>
+              <div className="border-border bg-surface-2 border-b p-8">
+                <h3 className="text-foreground text-lg font-bold">Support history</h3>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Tickets for the selected user.
+                </p>
               </div>
 
               <div className="flex-1 space-y-6 overflow-y-auto p-8">
@@ -523,7 +673,7 @@ function SupportContent() {
                     key={ticket.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]"
+                    className="border-border bg-surface-1 overflow-hidden rounded-3xl border"
                   >
                     <div className="p-6">
                       <div className="mb-4 flex items-start justify-between">
@@ -532,31 +682,31 @@ function SupportContent() {
                             <span
                               className={`rounded-full border px-2 py-0.5 text-[9px] font-black tracking-tighter uppercase ${
                                 ticket.category === "complaint"
-                                  ? "border-red-500/20 bg-red-500/10 text-red-400"
+                                  ? "border-rose-500/30 bg-rose-50 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300"
                                   : ticket.category === "feedback"
-                                    ? "border-purple-500/20 bg-purple-500/10 text-purple-400"
-                                    : "border-blue-500/20 bg-blue-500/10 text-blue-400"
+                                    ? "border-violet-500/30 bg-violet-50 text-violet-800 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300"
+                                    : "border-teal-500/30 bg-teal-50 text-teal-800 dark:border-teal-400/20 dark:bg-teal-400/10 dark:text-teal-300"
                               }`}
                             >
                               {ticket.category}
                             </span>
-                            <span className="font-mono text-[10px] text-slate-600">
+                            <span className="text-muted-foreground font-mono text-[10px]">
                               #{ticket.id.slice(0, 8)}
                             </span>
                           </div>
-                          <h4 className="text-base font-bold text-white">{ticket.subject}</h4>
+                          <h4 className="text-foreground text-base font-bold">{ticket.subject}</h4>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <div
                             className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold ${
                               ticket.status === "open"
-                                ? "border-blue-500/20 text-blue-400"
+                                ? "border-teal-500/30 bg-teal-50 text-teal-800 dark:border-teal-400/20 dark:bg-teal-400/5 dark:text-teal-300"
                                 : ticket.status === "in_progress"
-                                  ? "border-yellow-500/20 text-yellow-400"
+                                  ? "border-amber-500/30 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/5 dark:text-amber-300"
                                   : ticket.status === "resolved"
-                                    ? "border-green-500/20 text-green-400"
-                                    : "border-white/10 text-slate-500"
+                                    ? "border-emerald-500/30 bg-emerald-50 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/5 dark:text-emerald-300"
+                                    : "border-border text-muted-foreground"
                             }`}
                           >
                             {getStatusIcon(ticket.status)}
@@ -565,12 +715,12 @@ function SupportContent() {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/5 bg-black/40 p-5 text-sm leading-relaxed text-slate-300">
+                      <div className="border-border bg-surface-1 text-body rounded-2xl border p-5 text-sm leading-relaxed">
                         {ticket.description}
                       </div>
 
                       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-[10px] font-medium text-slate-500">
+                        <p className="text-muted-foreground text-[10px] font-medium">
                           Submitted on {new Date(ticket.created_at).toLocaleString()}
                         </p>
 
@@ -626,7 +776,7 @@ function SupportContent() {
                           </button>
                         </div>
                       </div>
-                      <p className="mt-2 text-[10px] text-slate-500">
+                      <p className="text-muted-foreground mt-2 text-[10px]">
                         First response due:{" "}
                         {ticket.first_response_due_at
                           ? new Date(ticket.first_response_due_at).toLocaleString()
@@ -647,7 +797,7 @@ function SupportContent() {
                             transition={{ duration: 0.2, ease: "easeInOut" }}
                             className="overflow-hidden"
                           >
-                            <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
+                            <div className="border-border mt-5 space-y-3 border-t pt-4">
                               {(ticketDetails[ticket.id]?.attachments ?? []).length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                   {(ticketDetails[ticket.id]?.attachments ?? []).map(
@@ -659,12 +809,14 @@ function SupportContent() {
                                           void downloadAttachment(
                                             attachment.download_url,
                                             attachment.filename,
+                                            Boolean(attachment.is_encrypted),
+                                            attachment.encrypted_metadata,
                                           )
                                         }
-                                        className="hover:border-primary/30 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                                        className="border-border bg-surface-1 text-body hover:border-primary/40 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
                                       >
                                         <Paperclip size={13} /> {attachment.filename}{" "}
-                                        <span className="text-slate-500">
+                                        <span className="text-muted-foreground">
                                           {(attachment.size_bytes / 1024).toFixed(0)} KB
                                         </span>
                                       </button>
@@ -672,25 +824,52 @@ function SupportContent() {
                                   )}
                                 </div>
                               )}
+                              {(ticketDetails[ticket.id]?.attachments ?? []).some(
+                                (attachment) => attachment.is_encrypted,
+                              ) && (
+                                <p className="text-amber-800 dark:text-amber-300 text-xs leading-5">
+                                  Encrypted attachments cannot be scanned by the VPS. Download only files you trust.
+                                </p>
+                              )}
                               <div className="max-h-72 space-y-2 overflow-y-auto">
-                                {(ticketDetails[ticket.id]?.messages ?? []).map((message) => (
-                                  <article
-                                    key={message.id}
-                                    className={`rounded-xl border p-3 ${message.is_internal ? "border-amber-500/20 bg-amber-500/5" : "border-white/10 bg-white/[0.03]"}`}
-                                  >
-                                    <div className="mb-1 flex justify-between text-[9px] text-slate-500 uppercase">
-                                      <span>
-                                        {message.is_internal
-                                          ? "Internal note"
-                                          : message.author_role}
-                                      </span>
-                                      <time>{new Date(message.created_at).toLocaleString()}</time>
-                                    </div>
-                                    <p className="text-xs whitespace-pre-wrap text-slate-200">
-                                      {message.body}
-                                    </p>
-                                  </article>
-                                ))}
+                                {(ticketDetails[ticket.id]?.messages ?? []).map((message) => {
+                                  const participant = ticketDetails[ticket.id]?.participants?.find(
+                                    (candidate) => candidate.ref === message.author_ref,
+                                  );
+                                  const authorLabel = message.is_internal
+                                    ? "Internal note"
+                                    : message.author_role === "admin"
+                                      ? "Support team"
+                                      : message.author_role === "user"
+                                        ? "User"
+                                        : "Status update";
+                                  return (
+                                    <article
+                                      key={message.id}
+                                      className={`rounded-xl border p-3 ${message.is_internal ? "border-amber-500/35 bg-amber-50 text-amber-950 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-100" : "border-border bg-surface-1 text-foreground"}`}
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <ProfileAvatar
+                                          avatar={participant?.avatar}
+                                          displayName={participant?.display_name}
+                                          fallbackLabel={authorLabel}
+                                          className="h-8 w-8 rounded-lg"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                                            <span className="text-foreground font-semibold">
+                                              {participant?.display_name || authorLabel}
+                                            </span>
+                                            <time>{new Date(message.created_at).toLocaleString()}</time>
+                                          </div>
+                                          <p className="text-body mt-1 text-xs whitespace-pre-wrap">
+                                            {message.body}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </article>
+                                  );
+                                })}
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <RoundedSelect
@@ -714,7 +893,7 @@ function SupportContent() {
                                       ? "Write a reply…"
                                       : "Write a private note…"
                                   }
-                                  className="min-w-40 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                                  className="border-border bg-background text-foreground placeholder:text-muted-foreground min-w-40 flex-1 rounded-lg border px-3 py-2 text-xs"
                                 />
                                 <button
                                   disabled={saving || !replyDraft.trim()}
@@ -735,11 +914,11 @@ function SupportContent() {
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-20 text-center">
-              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-white/5 text-slate-700">
+              <div className="theme-chip text-primary mb-6 flex h-24 w-24 items-center justify-center rounded-3xl">
                 <MessageSquare size={48} />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-white">No User Selected</h3>
-              <p className="max-w-md text-slate-500">
+              <h3 className="text-foreground mb-2 text-xl font-bold">No User Selected</h3>
+              <p className="text-muted-foreground max-w-md">
                 Select a user from the left panel to view their support history and manage tickets.
               </p>
             </div>

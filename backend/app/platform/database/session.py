@@ -122,6 +122,14 @@ def set_db_tenant_context(db: Session, tenant_id: UUID | str) -> None:
     )
 
 
+def set_db_user_context(db: Session, user_id: UUID | str) -> None:
+    """Bind user id for tables whose RLS policy is narrower than tenant scope."""
+    db.execute(
+        text("SELECT set_config('app.user_id', :user_id, true)"),
+        {"user_id": str(user_id)},
+    )
+
+
 def reset_db_state() -> None:
     """Clear cached DB engine and session factory state."""
     get_session_factory.cache_clear()

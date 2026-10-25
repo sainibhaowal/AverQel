@@ -136,11 +136,16 @@ available, what is gated, and which security boundary protects each feature.
    obtains a short-lived room token from `GET /api/v1/voice/token`; API keys,
    secrets, STT models, and TTS models never enter the browser.
 2. The `voice-agent` subscribes to enabled microphone audio, performs local
-   Whisper transcription, and sends partial/final dictation updates to the
-   composer. The user must grant browser microphone permission.
-3. When TTS is enabled, the completed visible assistant answer is sent to the
-   room and synthesized locally with Kokoro. Internal thinking, tool payloads,
-   and credentials are not spoken.
+   Faster-Whisper transcription, and sends partial/final dictation updates to
+   the browser. Dictation mode inserts text into the composer; Voice
+   conversation submits the final transcript through the currently selected
+   DeepSpace chat. The user must grant browser microphone permission.
+3. Voice conversation forwards new visible assistant sentences from the active
+   DeepSpace stream to the room and synthesizes them locally with Kokoro while
+   the request runs. It does not replay chat history, hidden reasoning, or raw
+   tool payloads, and it does not make a second chat-model call for commentary.
+   A brief generic tool-progress status can be spoken when no recent response
+   sentence has been spoken.
 4. The Compose stack runs `livekit` and `voice-agent` with dedicated health
    checks and model mounts. Production deployments require HTTPS/WSS and a
    TURN configuration appropriate to the deployment network.
@@ -168,13 +173,17 @@ available, what is gated, and which security boundary protects each feature.
 
 ## 9. MCP connections
 
-1. The existing MCP marketplace, OAuth, encrypted credentials, tenant
-   isolation, approval policy, discovery, and audit events remain the only
-   connection framework.
-2. Add connectors only as verified catalog entries requested by users. Do not
-   add arbitrary remote servers or bypass approval/credential policy.
+1. The current Marketplace uses Composio's live app catalog. Each user supplies
+   an account-scoped Composio project key; Composio-hosted sessions, tenant/user
+   isolation, tool policy, approvals, discovery, and audit events use the
+   existing MCP runtime.
+2. OAuth apps require a configured public callback origin. Do not promise
+   arbitrary remote endpoint registration or bypass approval/credential policy.
 3. Connected MCP tools are merged into the same provider-neutral tool loop and
    therefore work independently of the selected model.
+
+See the [Composio hosted MCP guide](mcp/03-composio-hosted-mcp.md) for the
+current catalog, key ownership, callback, and data-handling contract.
 
 ## 10. Validation and non-regression requirements
 

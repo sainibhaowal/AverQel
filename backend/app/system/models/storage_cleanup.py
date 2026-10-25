@@ -20,7 +20,9 @@ class StorageCleanupJob(Base):
         UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    owner_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     bucket: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[str] = mapped_column(

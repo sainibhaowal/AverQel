@@ -13,6 +13,7 @@ import {
 } from "@/lib/mcp-api";
 
 import MCPProviderDetails from "../../_components/MCPProviderDetails";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 export default function MCPProviderPageClient() {
   const routeParams = useParams();
@@ -91,8 +92,8 @@ export default function MCPProviderPageClient() {
     );
   if (!entry)
     return (
-      <main className="mcp-theme-scope mx-auto max-w-4xl p-6 text-sm text-white/60">
-        Loading provider details…
+      <main className="mcp-theme-scope mx-auto max-w-4xl p-6">
+        <AverQelLoading label="Loading provider details…" size="section" />
       </main>
     );
   return (

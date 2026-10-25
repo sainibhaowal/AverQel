@@ -22,7 +22,7 @@ export default function PrivacySecurityPage() {
           },
           {
             title: "Content boundaries",
-            body: "Documents and AI requests are processed by configured server-side services. Assigned Support Managers can read support tickets; assigned Feedback Managers can read submitted feedback text.",
+            body: "New and migrated support and feedback text is encrypted in the browser for the submitter and the single platform-key owner. Routing metadata remains visible; legacy records need the admin migration.",
           },
         ]}
       />
@@ -37,22 +37,44 @@ export default function PrivacySecurityPage() {
       <DocsSection title="OAuth consent and secret lifecycle">
         <ul className="list-disc space-y-2 pl-6">
           <li>
-            Users consent on the provider&apos;s authorization page; AverQel does not need the
-            provider password.
+            For an app that requires OAuth, users consent through the app&apos;s authorization flow;
+            AverQel does not need the provider password. Composio apps may use other supported
+            authentication methods.
           </li>
           <li>
-            Access tokens, refresh tokens, and client secrets are handled server-side and encrypted
-            at rest where the configured credential storage applies.
+            Each AverQel user supplies their own Composio project API key. AverQel encrypts the key
+            at rest, but the running backend decrypts it to make Composio requests; it is not
+            end-to-end encrypted from the server. Model-provider credentials use their separate
+            encrypted storage path.
           </li>
           <li>
-            Only safe account details and granted scope information needed by the interface should
-            be exposed to the owning user.
+            Only safe account details and tool information needed by the interface should be exposed
+            to the owning user. Connected app sessions remain scoped to that AverQel user.
           </li>
           <li>
-            Disconnect removes local connection credentials and requests provider revocation where
-            supported; remote revocation behavior is provider-dependent.
+            Removing a Composio key or disconnecting an app removes its local AverQel session state;
+            revoke remote authorization in Composio or the connected provider as well when needed.
+            Remote revocation and data deletion behavior depend on those services.
           </li>
         </ul>
+      </DocsSection>
+      <DocsSection title="Sign-in MFA versus support encryption">
+        <p>
+          TOTP MFA is an account sign-in protection used to gate platform-admin actions. Support and
+          feedback encryption uses a separate passphrase-protected key to protect message content in
+          the browser. A user creates that key once; it stays unlocked across Support and Feedback
+          navigation for four hours of inactivity and clears on sign-out, login-session expiry, page
+          reload, or tab close. The platform administrator must also initialize the shared public
+          key. This message encryption does not make other AverQel content server-blind or
+          end-to-end encrypted.
+        </p>
+        <p>
+          Support and feedback encryption exists to keep message bodies unreadable in database
+          storage while still allowing you and the support administrator to read and reply in the
+          browser. It does not hide routing details such as account, category, status, or
+          timestamps. Composio key encryption protects credentials at rest; AverQel&apos;s running
+          server must decrypt them to call Composio.
+        </p>
       </DocsSection>
       <DocsSection title="Permission modes and precedence">
         <p>
@@ -86,22 +108,29 @@ export default function PrivacySecurityPage() {
       <DocsSection title="Admin and operational boundaries">
         <p>
           Administrative access is role- and route-specific, and platform-wide routes require an
-          account in the configured platform-admin allowlist. Support content access requires the
-          separate Support Manager role; these managers can read support tickets and attachments
-          across workspaces and must also be platform-admin allowlisted. Feedback access is separate
-          and requires the assigned Feedback Manager role; it can read feedback text across
-          workspaces, but its staff API omits submitter email and account IDs. Designated Qel
-          Connect moderators can read report details only inside their active tenant. These are
-          content-bearing workflows, so do not treat AverQel as a system where administrators can
-          never access user content. Privileged support, feedback, and moderation reads and changes
-          are recorded in the audit log.
+          account in the configured platform-admin allowlist. The user and single platform-key owner
+          are the intended decryption recipients for support and feedback. Other allowlisted
+          administrators cannot unlock the key, so the current queue UI cannot open for their
+          accounts. Internal notes are key-owner-only. Legacy Support Manager and Feedback Manager
+          assignments do not grant access to those queues. The feedback queue omits submitter email
+          and account IDs. Designated Qel Connect moderators can read report details only inside
+          their active tenant. Support and feedback metadata remain service-visible, and only the
+          platform-key owner can decrypt the messages by design. The browser-based admin migration
+          must be run to convert old plaintext records; backups can retain old copies until expiry.
+          Privileged support, feedback, and moderation reads and changes are recorded in the audit
+          log.
+        </p>
+        <p>
+          Browser encryption does not protect content from a compromised device or from a
+          compromised live server that changes the application code or recipient keys. The server
+          cannot malware-scan encrypted attachments. This application encryption has not been
+          independently audited; do not read it as a guarantee that all AverQel content is
+          end-to-end encrypted.
         </p>
         <p>
           The default account view shows email, status, roles, and MFA status without per-user usage
-          counts or recent activity. Workspace analytics use a rolling 30-day window with a
-          five-member minimum group threshold; smaller groups and daily points are hidden. Global
-          worker metrics require platform-admin access, and the public gateway blocks the raw
-          Prometheus route.
+          counts or recent activity. Global worker metrics require platform-admin access, and the
+          public gateway blocks the raw Prometheus route.
         </p>
         <p>
           Operators must protect signing and encryption keys, database and object-storage access,

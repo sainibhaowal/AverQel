@@ -1,7 +1,9 @@
 # AverQel MCP: current implementation and release status
 
-**Status:** implemented in the local codebase; deployment and provider-specific
-OAuth credentials remain environment gates.
+**Status:** Composio-hosted app catalog and account-scoped connection flow are
+implemented locally. Each user must supply a Composio project key; OAuth apps
+also require a correctly configured public callback origin. This source status
+does not prove those requirements are met in a particular deployment.
 
 This file summarizes repository behavior. Check the
 [current worktree and release index](../../release/03-current-worktree-change-index.md)
@@ -15,18 +17,20 @@ operational procedures are in the
 
 ## What AverQel provides
 
-AverQel provides a curated MCP marketplace and a tenant/user-scoped MCP
-runtime. A user can inspect an approved connector, authorize it when the
-required provider credentials are configured, review its tools and policy, and
-make approved tools available to DeepSpace.
+AverQel provides a live Composio app catalog and a tenant/user-scoped MCP
+runtime. Each user supplies their own Composio project key, inspects an app and
+its tools, connects their own external account where authorization is required,
+and makes the resulting tools available to DeepSpace under the saved policy.
+The catalog comes from Composio and can change; a listing does not guarantee
+that an app is enabled for a particular project.
 
 The runtime path is:
 
 ```text
-approved catalog entry
-  -> connection/OAuth policy
-  -> encrypted tenant/user credential
-  -> catalog and tool-policy refresh
+user-owned Composio project key
+  -> live Composio catalog
+  -> user connects a selected app
+  -> account-owned hosted session and tool catalog
   -> DeepSpace broker
   -> approval/policy checks
   -> remote tool call and safe result
@@ -34,10 +38,11 @@ approved catalog entry
 
 ## Current implementation
 
-- Approved MCP catalog and provider metadata.
+- Live Composio toolkit and tool metadata.
 - Remote streamable HTTP transport with supported SSE fallback; HTTPS endpoint
   validation rejects unsafe or restricted destinations.
-- OAuth and encrypted credential storage for supported provider profiles.
+- Per-user Composio project-key storage encrypted with the connector-secret
+  backend; Composio hosted-session identifiers are also encrypted and scoped.
 - Tenant and user ownership checks on connections, tools, and tokens.
 - Marketplace, provider details, Inspector, connection, refresh, disconnect,
   and tool-policy UI.
@@ -53,16 +58,18 @@ approved catalog entry
 The MCP router is mounted under `/api/v1/mcp`. The implemented surface
 includes:
 
-- approved marketplace/catalog listing and marketplace facets;
-- marketplace-entry connection creation;
+- per-user Composio key status, validation, save, and removal;
+- paginated Composio toolkit and tool catalog listing and details;
+- Composio hosted app connection and callback completion;
 - tenant/user-owned server listing, details, refresh, disconnect, and Inspector;
-- OAuth start, callback, and disconnect for supported provider profiles;
 - server and tool policy reads/updates;
 - conversation and DeepSpace-scoped connection overrides.
 
-The runtime does not expose an arbitrary endpoint-registration route. New
-connections must originate from an approved catalog entry and pass endpoint,
-ownership, policy, and credential checks.
+The runtime does not expose an arbitrary endpoint-registration route. The
+Marketplace does not use AverQel's former bundled Google, GitHub, Notion, and
+Slack cards; existing installed connection records are retained. OAuth app
+connections require the public AverQel callback origin, and each connected app
+is bound to the AverQel account that started it.
 
 ## Deliberate boundaries
 
@@ -97,9 +104,11 @@ Before a tool is exposed or called, the backend checks:
 5. approval requirements and risk limits;
 6. tenant-safe result handling and audit recording.
 
-Tokens, refresh tokens, client secrets, PKCE data, raw endpoint configuration,
-and encrypted credential payloads are never returned to the frontend, prompt,
-model, or logs.
+Composio project keys, hosted-session identifiers, provider tokens where
+applicable, raw endpoint configuration, and encrypted credential payloads are
+never returned to the frontend, prompt, model, or logs. The running backend
+decrypts the user's Composio key when making provider requests; it is encrypted
+at rest, not end-to-end encrypted from the server.
 
 ## Release verification
 

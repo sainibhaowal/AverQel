@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from functools import lru_cache
+from typing import Any, cast
 
+import redis
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 API_REQUESTS_TOTAL = Counter(
     "aks_api_requests_total",
@@ -96,6 +105,173 @@ DEEPSPACE_CANARY_MISMATCHES_TOTAL = Counter(
     "aks_deepspace_canary_mismatches_total",
     "Non-authoritative DeepSpace tool-profile canary mismatches",
 )
+
+# Dashboard counters are shared across API and Celery processes through Redis.
+# Prometheus remains the source for detailed scrape metrics; these fixed,
+# low-cardinality totals provide a service-wide admin snapshot and event stream.
+RUNTIME_METRICS_HASH_KEY = "averqel:runtime-metrics:v1:counters"
+RUNTIME_METRICS_UPDATE_CHANNEL = "averqel:runtime-metrics:v1:updates"
+RUNTIME_METRICS_PUBLISH_THROTTLE_KEY = "averqel:runtime-metrics:v1:publish-window"
+RUNTIME_METRIC_COUNTER_FIELDS = frozenset(
+    {
+        "api_requests_total",
+        "api_errors_total",
+        "db_query_count",
+        "worker_retries_total",
+        "worker_dead_letters_total",
+        "deepspace_cache_reads_total",
+        "deepspace_cache_writes_total",
+        "deepspace_context_compactions_total",
+        "deepspace_overflow_prevented_total",
+        "deepspace_mcp_result_references_total",
+        "deepspace_budget_allocations_total",
+        "deepspace_result_reference_events_total",
+        "deepspace_execution_batches_total",
+        "deepspace_canary_mismatches_total",
+    }
+)
+
+_RUNTIME_METRIC_INCREMENT_SCRIPT = """
+local value = redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
+redis.call('HSETNX', KEYS[1], 'meta:started_at', ARGV[3])
+redis.call('HSETNX', KEYS[1], 'meta:complete', '1')
+if ARGV[4] == '1' then
+    redis.call('HSET', KEYS[1], 'meta:complete', '0')
+end
+if redis.call('SET', KEYS[2], '1', 'NX', 'PX', 250) then
+    redis.call('PUBLISH', KEYS[3], 'metrics_changed')
+end
+return value
+"""
+
+_runtime_metrics_write_incomplete = False
+_runtime_metrics_write_warning_logged = False
+
+
+class RuntimeMetricsUnavailableError(RuntimeError):
+    """The shared runtime metrics store could not provide a trustworthy snapshot."""
+
+
+@lru_cache(maxsize=1)
+def get_runtime_metrics_redis_client() -> redis.Redis:
+    """Return a bounded Redis client for best-effort metrics writes and snapshots."""
+    settings = get_settings()
+    return redis.Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=0.25,
+        socket_timeout=0.25,
+        retry_on_timeout=False,
+    )
+
+
+def increment_runtime_metric(metric_name: str, amount: int = 1) -> bool:
+    """Atomically add a service-wide event and notify active admin streams.
+
+    Metrics are deliberately fail-open so a telemetry outage cannot fail an
+    application request. A process that observes a failed write marks the
+    shared snapshot incomplete on its next successful write.
+    """
+    global _runtime_metrics_write_incomplete, _runtime_metrics_write_warning_logged
+
+    if metric_name not in RUNTIME_METRIC_COUNTER_FIELDS:
+        raise ValueError(f"Unsupported runtime metric counter: {metric_name}")
+    if isinstance(amount, bool) or not isinstance(amount, int) or amount < 1:
+        raise ValueError("Runtime metric increments must be positive integers")
+
+    try:
+        get_runtime_metrics_redis_client().eval(
+            _RUNTIME_METRIC_INCREMENT_SCRIPT,
+            3,
+            RUNTIME_METRICS_HASH_KEY,
+            RUNTIME_METRICS_PUBLISH_THROTTLE_KEY,
+            RUNTIME_METRICS_UPDATE_CHANNEL,
+            metric_name,
+            str(amount),
+            datetime.now(UTC).isoformat(),
+            "1" if _runtime_metrics_write_incomplete else "0",
+        )
+    except Exception:  # noqa: BLE001
+        # Keep request/worker behavior independent from telemetry, including
+        # invalid Redis configuration and client construction failures.
+        _runtime_metrics_write_incomplete = True
+        if not _runtime_metrics_write_warning_logged:
+            logger.warning(
+                "Shared runtime metric write failed; dashboard totals may be incomplete.",
+                extra={"metric_name": metric_name},
+                exc_info=True,
+            )
+            _runtime_metrics_write_warning_logged = True
+        return False
+    return True
+
+
+def _build_runtime_metrics_summary(values: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for field in RUNTIME_METRIC_COUNTER_FIELDS:
+        raw_value = values.get(field, "0")
+        try:
+            parsed_value = int(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeMetricsUnavailableError("Shared runtime metrics data is invalid") from exc
+        if parsed_value < 0:
+            raise RuntimeMetricsUnavailableError("Shared runtime metrics data is invalid")
+        summary[field] = parsed_value
+
+    complete_value = values.get("meta:complete")
+    if complete_value not in {"0", "1"}:
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics metadata is invalid")
+    started_at_value = values.get("meta:started_at")
+    if not isinstance(started_at_value, str) or not started_at_value:
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics metadata is invalid")
+    try:
+        started_at = datetime.fromisoformat(started_at_value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics metadata is invalid") from exc
+    if started_at.tzinfo is None:
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics metadata is invalid")
+
+    summary["metrics_scope"] = "service-wide"
+    summary["metrics_complete"] = complete_value == "1"
+    summary["metrics_started_at"] = started_at
+    summary["snapshot_at"] = datetime.now(UTC)
+    return summary
+
+
+def read_runtime_metrics_summary() -> dict[str, Any]:
+    """Read service-wide counters, including API and worker processes."""
+    try:
+        client = get_runtime_metrics_redis_client()
+        client.hsetnx(
+            RUNTIME_METRICS_HASH_KEY,
+            "meta:started_at",
+            datetime.now(UTC).isoformat(),
+        )
+        client.hsetnx(RUNTIME_METRICS_HASH_KEY, "meta:complete", "1")
+        values = cast(dict[str, Any], client.hgetall(RUNTIME_METRICS_HASH_KEY))
+        return _build_runtime_metrics_summary(values)
+    except RuntimeMetricsUnavailableError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics store is unavailable") from exc
+
+
+async def read_runtime_metrics_summary_async(client: Any) -> dict[str, Any]:
+    """Async snapshot reader used by the long-lived admin event stream."""
+    try:
+        await client.hsetnx(
+            RUNTIME_METRICS_HASH_KEY,
+            "meta:started_at",
+            datetime.now(UTC).isoformat(),
+        )
+        await client.hsetnx(RUNTIME_METRICS_HASH_KEY, "meta:complete", "1")
+        values = await client.hgetall(RUNTIME_METRICS_HASH_KEY)
+        return _build_runtime_metrics_summary(values)
+    except RuntimeMetricsUnavailableError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeMetricsUnavailableError("Shared runtime metrics store is unavailable") from exc
+
 
 QUERY_PIPELINE_DURATION_SECONDS = Histogram(
     "aks_query_pipeline_duration_seconds",
@@ -220,81 +396,18 @@ def metrics_payload() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
-def read_metrics_summary() -> tuple[int, int, int, int, int]:
-    """Return request, error, and database-query counts from this process."""
-    totals = {"requests": 0, "errors": 0, "queries": 0, "retries": 0, "dead_letters": 0}
-    for family in API_REQUESTS_TOTAL.collect():
-        for sample in family.samples:
-            if sample.name == "aks_api_requests_total":
-                totals["requests"] += int(sample.value)
-    for family in API_ERRORS_TOTAL.collect():
-        for sample in family.samples:
-            if sample.name == "aks_api_errors_total":
-                totals["errors"] += int(sample.value)
-    for family in DB_QUERY_DURATION_SECONDS.collect():
-        for sample in family.samples:
-            if sample.name == "aks_db_query_duration_seconds_count":
-                totals["queries"] += int(sample.value)
-    for family in WORKER_RETRIES_TOTAL.collect():
-        for sample in family.samples:
-            if sample.name == "aks_worker_retries_total":
-                totals["retries"] += int(sample.value)
-    for family in WORKER_DEAD_LETTER_TOTAL.collect():
-        for sample in family.samples:
-            if sample.name == "aks_worker_dead_letter_total":
-                totals["dead_letters"] += int(sample.value)
-    return (
-        totals["requests"],
-        totals["errors"],
-        totals["queries"],
-        totals["retries"],
-        totals["dead_letters"],
-    )
-
-
-def read_deepspace_metrics_summary() -> dict[str, int]:
-    """Return aggregate DeepSpace counters for the admin metrics view."""
-
-    def total(counter: Counter) -> int:
-        return int(
-            sum(float(sample.value) for family in counter.collect() for sample in family.samples)
-        )
-
-    reads = sum(
-        float(sample.value)
-        for family in DEEPSPACE_CACHE_USAGE_TOTAL.collect()
-        for sample in family.samples
-        if sample.labels.get("status") == "read"
-    )
-    writes = sum(
-        float(sample.value)
-        for family in DEEPSPACE_CACHE_USAGE_TOTAL.collect()
-        for sample in family.samples
-        if sample.labels.get("status") == "write"
-    )
-    return {
-        "deepspace_cache_reads_total": int(reads),
-        "deepspace_cache_writes_total": int(writes),
-        "deepspace_context_compactions_total": total(DEEPSPACE_CONTEXT_COMPACTIONS_TOTAL),
-        "deepspace_overflow_prevented_total": total(DEEPSPACE_CONTEXT_OVERFLOW_PREVENTED_TOTAL),
-        "deepspace_mcp_result_references_total": total(DEEPSPACE_MCP_RESULT_REFERENCES_TOTAL),
-        "deepspace_budget_allocations_total": total(DEEPSPACE_BUDGET_ALLOCATIONS_TOTAL),
-        "deepspace_result_reference_events_total": total(DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL),
-        "deepspace_execution_batches_total": total(DEEPSPACE_EXECUTION_BATCHES_TOTAL),
-        "deepspace_canary_mismatches_total": total(DEEPSPACE_CANARY_MISMATCHES_TOTAL),
-    }
-
-
 def increment_query_cache_event(*, event: str) -> None:
     QUERY_CACHE_EVENTS_TOTAL.labels(event=_safe_label(event)).inc()
 
 
 def increment_worker_retry(*, stage: str) -> None:
     WORKER_RETRIES_TOTAL.labels(stage=_safe_label(stage)).inc()
+    increment_runtime_metric("worker_retries_total")
 
 
 def increment_worker_dead_letter(*, stage: str) -> None:
     WORKER_DEAD_LETTER_TOTAL.labels(stage=_safe_label(stage)).inc()
+    increment_runtime_metric("worker_dead_letters_total")
 
 
 def increment_worker_lock_contention(*, stage: str) -> None:
@@ -356,6 +469,7 @@ def observe_db_query(operation: str) -> Generator[None]:
         DB_QUERY_DURATION_SECONDS.labels(operation=operation_label).observe(
             time.perf_counter() - start
         )
+        increment_runtime_metric("db_query_count")
 
 
 @contextmanager

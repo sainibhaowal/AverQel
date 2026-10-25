@@ -80,10 +80,9 @@ refactors to make a local check easier. State and resolve tradeoffs explicitly.
 - Treat destructive data operations, database migrations, service restarts,
   production configuration, release workflows, and deployment workflows as
   high impact. Inspect the full effect before acting.
-- Keep NeoSIS as its own source repository and runtime. AverQel Desktop bundles
-  the pinned NeoSIS runtime in the existing Electron shell; do not package a
-  second Electron application. Desktop release and AverQel VPS deployment are
-  separate workflows.
+- Keep NeoSIS as its own source repository and runtime, separate from AverQel.
+  AverQel Desktop packages only the AverQel shell and shared frontend. Desktop
+  release and AverQel VPS deployment are separate workflows.
 - Protect pre-existing tracked and untracked work. Do not reset, clean, stash,
   revert, overwrite, or stage user changes as a shortcut.
 

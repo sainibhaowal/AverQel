@@ -1,42 +1,60 @@
 import { expect, test } from "@playwright/test";
 
-test("login page uses the exact AverQel logo and requested tagline", async ({ page }) => {
+test("login page uses the selected icon, colored wordmark, and requested tagline", async ({ page }) => {
   await page.goto("/auth/login");
 
-  await expect(page.getByRole("img", { name: "AverQel" })).toHaveAttribute(
-    "src",
-    /AverQel_Exact_Logo\.svg/,
+  await expect(page.locator(".login-exact-logo")).toBeVisible();
+  await expect(page.locator(".login-exact-logo")).toHaveAttribute("alt", "");
+  await expect(page.getByRole("img", { name: "AverQel" })).toBeVisible();
+  await expect(page.locator(".login-brand-wordmark")).toBeVisible();
+  await expect(page.locator(".login-brand-wordmark image")).toHaveAttribute(
+    "href",
+    "/brand/AverQel_Text.svg",
   );
-  const logo = page.getByRole("img", { name: "AverQel" });
-  await expect(logo).toHaveCSS("filter", "none");
-
-  const animatedRegions = page.locator(".login-exact-logo--animated");
-  await expect(animatedRegions).toHaveCount(2);
-  await expect(animatedRegions.nth(0)).toHaveClass(/login-exact-logo--aver/);
-  await expect(animatedRegions.nth(1)).toHaveClass(/login-exact-logo--el/);
-  await expect(animatedRegions.nth(0)).toHaveAttribute("aria-hidden", "true");
-  await expect(animatedRegions.nth(0)).toHaveCSS("animation-name", "login-logo-rgb-gradient-sweep");
-  await expect(animatedRegions.nth(0)).toHaveCSS("background-image", /linear-gradient/);
-  await expect(animatedRegions.nth(0)).toHaveCSS("background-size", "200% 100%");
-
-  const clipPaths = await animatedRegions.evaluateAll((elements) =>
-    elements.map((element) => getComputedStyle(element).clipPath),
+  await expect(page.locator(".login-exact-letter-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
+    "animation-name",
+    "login-letter-rgb-sweep",
   );
-  expect(clipPaths[0]).toContain("56%");
-  expect(clipPaths[1]).toContain("70%");
+  await expect(page.locator(".login-brand-wordmark .averqel-wordmark__svg")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
 
   const tagline = page.getByText("INTELLIGENCE ALL YOU NEED");
   await expect(tagline).toBeVisible();
-  await expect(tagline).toHaveCSS("font-size", "10.2px");
 });
 
-test("signup page uses the same exact animated AverQel brand", async ({ page }) => {
+test("signup page uses the same icon, colored wordmark, and tagline", async ({ page }) => {
   await page.goto("/auth/signup");
 
-  await expect(page.getByRole("img", { name: "AverQel" })).toHaveAttribute(
-    "src",
-    /AverQel_Exact_Logo\.svg/,
+  await expect(page.locator(".login-exact-logo")).toBeVisible();
+  await expect(page.locator(".login-exact-logo")).toHaveAttribute("alt", "");
+  await expect(page.getByRole("img", { name: "AverQel" })).toBeVisible();
+  await expect(page.locator(".login-brand-wordmark")).toBeVisible();
+  await expect(page.locator(".login-brand-wordmark image")).toHaveAttribute(
+    "href",
+    "/brand/AverQel_Text.svg",
   );
-  await expect(page.locator(".login-exact-logo--animated")).toHaveCount(2);
+  await expect(page.locator(".login-exact-letter-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
+    "animation-name",
+    "login-letter-rgb-sweep",
+  );
+  await expect(page.locator(".login-brand-wordmark .averqel-wordmark__svg")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
   await expect(page.getByText("INTELLIGENCE ALL YOU NEED")).toBeVisible();
+});
+
+test("login wordmark keeps a static RGB treatment for reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/auth/login");
+
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
+    "background-position",
+    "50% 50%",
+  );
 });

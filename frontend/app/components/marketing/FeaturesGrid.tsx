@@ -82,19 +82,19 @@ const features = [
     ],
   },
   {
-    title: "Permissioned MCP Connections",
+    title: "Composio MCP App Connections",
     description:
-      "Connect supported remote MCP services through OAuth. Every external call remains subject to ownership, connection status, tool policy, risk limits, and approvals.",
+      "Browse Composio's live app catalog with your own project key, then connect the apps you choose. DeepSpace checks account ownership and tool policy, with approval before side-effecting actions.",
     icon: Workflow,
     accent: "emerald",
     size: "medium",
     capabilities: [
       {
         icon: FileStack,
-        text: "Reviewed services: GitHub, Drive, Gmail, Calendar, Chat, and People",
+        text: "Live Composio app and tool catalog",
       },
-      { icon: HeartHandshake, text: "OAuth authorization with encrypted credential storage" },
-      { icon: BarChart3, text: "Health, catalog, scope, and permission visibility" },
+      { icon: HeartHandshake, text: "Your project key and app authorizations stay account-scoped" },
+      { icon: BarChart3, text: "Policy checks and approval for writes, deletions, and messages" },
     ],
   },
   {
@@ -116,7 +116,7 @@ const features = [
   {
     title: "Security + Control Boundaries",
     description:
-      "AverQel keeps ownership, tenant isolation, encrypted provider and OAuth credentials, workspace policy, approval controls, and audit-safe execution boundaries in the product path.",
+      "AverQel keeps ownership, tenant isolation, encrypted provider credentials and Composio key/session data, workspace policy, approval controls, and audit-safe execution boundaries in the product path.",
     icon: Lock,
     accent: "emerald",
     size: "large",
@@ -127,7 +127,7 @@ const features = [
       },
       {
         icon: Database,
-        text: "Encrypted provider secrets and connector OAuth credentials",
+        text: "Encrypted provider secrets and per-user Composio key/session data",
       },
       {
         icon: Lock,

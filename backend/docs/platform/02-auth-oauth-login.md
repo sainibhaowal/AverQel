@@ -24,6 +24,39 @@ The frontend starts login at `/api/v1/auth/oauth/google/start` or `/api/v1/auth/
 
 OAuth identities are stored in the tenant-scoped `oauth_identities` table. No provider access token or client secret is returned to the browser. Existing password login, refresh cookies, lockout handling, roles, tenant isolation, and TOTP verification remain available.
 
+## Administrator MFA and account security history
+
+Platform-admin routes require an allowlisted administrator account with TOTP enabled and a
+server-recorded successful second factor on the current, revocable authentication session. New
+admins can enroll through `/api/v1/auth/2fa/setup` and `/api/v1/auth/2fa/confirm`; confirming a
+valid code verifies the current session. Turning off TOTP is blocked for allowlisted platform
+administrators. After a deployment applies the session migration, an administrator who already had
+TOTP enabled must sign in again and complete the second-factor challenge before using admin APIs.
+
+The platform-wide Audit Logs endpoint has an account security filter. It includes account creation,
+provider email verification when an OAuth account is first created, completed password/OAuth
+sign-ins and their MFA result, failed sign-ins, lockout events, password changes, session revocation,
+and administrator disable, reactivate, forced logout, and erasure actions. The timeline is visible
+only through platform-admin routes and retained for the configured audit period (90 days by
+default). The account filter matches the account ID, including the target ID on administrator
+actions. It exposes UTC time, outcome, actor/target IDs, authentication method, MFA result, and
+bounded reason codes. It does not expose prompts, documents, chats, query content, passwords, OAuth
+tokens, IP addresses, or device details. Unknown-account sign-in attempts stay anonymous so the
+history does not disclose whether a submitted email has an account. There is no self-service email
+change endpoint; OAuth registration records verification performed by the identity provider.
+
+Sensitive deletion requests and approvals require a platform-admin session authenticated with MFA
+within the last 10 minutes. An administrator can cancel a purge while it is waiting for approval.
+When a second administrator is not available, the requester can approve their own tenant purge only
+after the configured delay (24 hours by default); the worker independently checks the recorded
+approval mode and delay before purging.
+
+The Audit Logs UI displays event timestamps in UTC and abbreviates actor/tenant UUIDs and trace IDs
+in its table for readability; expanding a row shows the full available references. The API returns
+the recorded event outcome separately from its action name. See the
+[platform administration guide](06-platform-administration.md) for all six admin modules, their
+permissions, and the difference between sign-in MFA and support/feedback encryption.
+
 ## Account profile and first-run setup
 
 The authenticated `GET /api/v1/auth/profile` response includes the account's `display_name`, `avatar`, `status`, `totp_enabled`, and `onboarding_completed` values alongside its email, tenant, and roles. The `PUT /api/v1/auth/profile` request can update only `display_name`, `avatar`, and `onboarding_completed`; email and roles are read-only in this route. The endpoint derives the user and tenant from the validated authentication context.

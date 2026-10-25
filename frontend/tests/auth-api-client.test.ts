@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
+
+vi.mock("react-hot-toast", () => ({
+  default: {
+    error: toastMocks.error,
+    success: vi.fn(),
+  },
+}));
+
 import { fetchWithAuth, resetAuthSessionState } from "../lib/api";
 
 const fetchMock = vi.fn();
@@ -21,6 +30,7 @@ describe("fetchWithAuth", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetAuthSessionState();
+    toastMocks.error.mockReset();
     localStorage.clear();
     localStorage.setItem("averqel_token", createJwt(30));
     localStorage.setItem("averqel_tenant_id", "tenant-1");
@@ -157,5 +167,66 @@ describe("fetchWithAuth", () => {
 
     await rejected;
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a page own failed-request messaging without emitting a duplicate global toast", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Temporary server failure" } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const response = await fetchWithAuth("/documents/document-1/full-text", {
+      suppressErrorToast: true,
+    });
+
+    expect(response.status).toBe(500);
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("preserves quiet error handling when authentication refresh retries the request", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    let documentRequestCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) {
+        return new Response(JSON.stringify({ access_token: createJwt(300) }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      documentRequestCount += 1;
+      if (documentRequestCount === 1) {
+        return new Response(JSON.stringify({ detail: "Unauthorized" }), { status: 401 });
+      }
+      return new Response(JSON.stringify({ error: { message: "Temporary server failure" } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const response = await fetchWithAuth("/documents/document-1/full-text", {
+      suppressErrorToast: true,
+    });
+
+    expect(response.status).toBe(500);
+    expect(documentRequestCount).toBe(2);
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps global request-error toasts enabled by default", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Temporary server failure" } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await fetchWithAuth("/documents/document-1/full-text");
+
+    expect(toastMocks.error).toHaveBeenCalledWith("Temporary server failure");
   });
 });

@@ -638,12 +638,17 @@ def test_deletion_service_branches(monkeypatch: pytest.MonkeyPatch) -> None:
         def scalar_one(self):
             return self.rowcount
 
+    queued_cleanup_jobs: list[Any] = []
+
     class _DB:
         def execute(self, stmt):  # type: ignore[no-untyped-def]
             s = str(stmt)
             if "SELECT documents.storage_bucket" in s:
-                return _ExecRes(rows=[("b", "k")])
+                return _ExecRes(rows=[("b", "k", uuid4())])
             return _ExecRes(rowcount=1)
+
+        def add(self, value):  # type: ignore[no-untyped-def]
+            queued_cleanup_jobs.append(value)
 
     svc.repo.apply_tenant_scope = lambda _tenant: None  # type: ignore[assignment]
     svc.db = _DB()  # type: ignore[assignment]
@@ -652,11 +657,24 @@ def test_deletion_service_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     counts = svc._purge_tenant_data(tenant_id=uuid4())
     assert counts["documents"] == 1
+    assert len(queued_cleanup_jobs) == 1
+    assert queued_cleanup_jobs[0].bucket == "b"
+    assert queued_cleanup_jobs[0].object_key == "k"
 
     # process_deletion exception branch (mark_failed + audit + re-raise)
     db_commits: list[str] = []
     svc.db = SimpleNamespace(commit=lambda: db_commits.append("commit"))  # type: ignore[assignment]
-    failed_row = SimpleNamespace(status="queued", id=uuid4(), requested_by_user_id=uuid4())
+    requested_by_user_id = uuid4()
+    failed_row = SimpleNamespace(
+        status="queued",
+        id=uuid4(),
+        requested_by_user_id=requested_by_user_id,
+        approval_mode="two_admin",
+        approved_by_user_id=uuid4(),
+        approved_at=datetime.now(tz=UTC),
+        self_approval_not_before=None,
+        scope="tenant",
+    )
     svc.get_status = lambda **kwargs: failed_row  # type: ignore[assignment]
     mark_failed_calls: list[str] = []
     svc.repo = SimpleNamespace(  # type: ignore[assignment]

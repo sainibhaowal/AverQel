@@ -66,6 +66,17 @@ media. CSV citations use the bounded `/documents/{document_id}/csv-page` endpoin
 load a page of rows at a time instead of transferring the complete file into the browser. When page
 rendering fails, the viewer shows an error and keeps any available format preview usable.
 
+## Canonical visual documents and artifacts
+
+Visual blocks carry a stable `block_id`, `schema_version`, `revision`, source
+Markdown/Mermaid, asset references, and bounded history metadata. DeepSpace note
+edits address the same block ID through the conversation visual-block endpoint.
+The Library `visual-artifacts` endpoint stores editable JSON source as a normal
+versioned file, so the existing version list, restore, and export paths apply.
+Import remote images through the authenticated Library asset-import endpoint
+before PNG or PDF export; the server validates status and MIME type and stores
+an owned copy for reliable rendering.
+
 ## Backend contract
 
 ## Canonical visual documents and artifacts

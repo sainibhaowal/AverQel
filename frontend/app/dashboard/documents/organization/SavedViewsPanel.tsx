@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 import toast from "react-hot-toast";
 
@@ -549,9 +550,11 @@ export default function SavedViewsPanel() {
                   </article>
                 );
               })
+            ) : busy ? (
+              <AverQelLoading label="Loading saved views…" size="compact" className="py-10" />
             ) : (
               <div className="text-muted-foreground border-glass-border rounded-xl border border-dashed py-14 text-center text-sm">
-                {busy ? "Loading saved views…" : "Nothing configured yet."}
+                Nothing configured yet.
               </div>
             )}
           </div>

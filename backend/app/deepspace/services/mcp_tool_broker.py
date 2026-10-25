@@ -338,7 +338,10 @@ class MCPToolBroker:
         if binding is None:
             return {
                 "status": "error",
-                "message": "That MCP tool is not available in this conversation.",
+                "message": (
+                    "That MCP tool reference is no longer available. Search the connected tools again, "
+                    "then load the current schema before calling a tool."
+                ),
             }
         catalog = binding.catalog if isinstance(binding.catalog, dict) else {}
         schema = catalog.get("inputSchema") if isinstance(catalog.get("inputSchema"), dict) else {}

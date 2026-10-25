@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -11,6 +12,11 @@ const appstream = readFileSync(
   path.join(desktopRoot, "assets/com.averqel.app.metainfo.xml"),
   "utf8",
 );
+const frontendLayout = readFileSync(
+  path.resolve(desktopRoot, "..", "..", "frontend", "app", "layout.tsx"),
+  "utf8",
+);
+const frontendRoot = path.resolve(desktopRoot, "..", "..", "frontend");
 const frontendBrandRoot = path.resolve(desktopRoot, "..", "..", "frontend", "public", "brand");
 
 function readPngDimensions(buffer) {
@@ -19,6 +25,10 @@ function readPngDimensions(buffer) {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20),
   };
+}
+
+function sha256(buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
 }
 
 test("keeps the stable Debian package ID and configures the human-facing installer name", () => {
@@ -37,8 +47,22 @@ test("keeps the stable Debian package ID and configures the human-facing install
 
 test("uses readable ASCII installer text and matching AppStream identity", () => {
   const { synopsis, description } = packageConfig.build.linux;
+  assert.equal(
+    synopsis,
+    "AI workspace for documents, grounded answers, agent workflows, and team messaging",
+  );
+  assert.equal(
+    description,
+    "AverQel is an AI workspace for document management and search, source-grounded questions, DeepSpace conversations and agent workflows, configurable model providers, approved connected apps, Qel Connect shared spaces and messaging, feedback and support, and tenant-aware security and administration. Provider and app integrations require configuration; Qel Connect is experimental beta.",
+  );
+  assert.equal(packageConfig.description, description);
   assert.doesNotMatch(synopsis, /[^\x00-\x7f]/);
   assert.doesNotMatch(description, /[^\x00-\x7f]/);
+  assert.doesNotMatch(`${synopsis} ${description}`, /\?\?/);
+  assert.ok(appstream.includes(`<summary>${synopsis}</summary>`));
+  assert.ok(appstream.includes(`<p>${description}</p>`));
+  assert.ok(frontendLayout.includes(`"${synopsis}"`));
+  assert.ok(frontendLayout.includes(`"${description}"`));
   assert.match(appstream, /<id>com\.averqel\.app<\/id>/);
   assert.match(appstream, /<name>AverQel<\/name>/);
   assert.match(
@@ -63,10 +87,19 @@ test("stages both canonical SVG brand sources in the desktop package", () => {
     packageConfig.scripts["prepare:brand-assets"],
     "node scripts/prepare-brand-assets.mjs",
   );
-  for (const fileName of ["AverQel_Icon.svg", "AverQel_Text.svg"]) {
-    assert.deepEqual(
-      readFileSync(path.join(desktopRoot, "assets", "brand", fileName)),
-      readFileSync(path.join(frontendBrandRoot, fileName)),
+  const brandSources = {
+    "AverQel_Icon.svg": path.join(
+      frontendRoot,
+      "public",
+      "AverQel Logo",
+      "AverQel_Icon.svg",
+    ),
+    "AverQel_Text.svg": path.join(frontendBrandRoot, "AverQel_Text.svg"),
+  };
+  for (const [fileName, source] of Object.entries(brandSources)) {
+    assert.equal(
+      sha256(readFileSync(path.join(desktopRoot, "assets", "brand", fileName))),
+      sha256(readFileSync(source)),
       `${fileName} must be copied from the canonical frontend brand source`,
     );
   }

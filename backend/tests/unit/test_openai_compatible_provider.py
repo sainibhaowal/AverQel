@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -805,6 +806,22 @@ def test_openai_compatible_downgrades_deepseek_v4_forced_tool_choice() -> None:
     assert OpenAICompatibleProvider._effective_tool_choice(request) == "auto"
 
 
+def test_openai_compatible_omits_deepseek_v4_tool_choice_when_thinking() -> None:
+    request = ChatGenerateRequest(
+        model="deepseek-v4-flash",
+        messages=[{"role": "user", "content": "Check my inbox."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://opencode.ai/zen/v1",
+        tools=[{"type": "function", "function": {"name": "search"}}],
+        tool_choice="auto",
+        reasoning_enabled=True,
+        metadata={"provider_type": "opencode-zen", "reasoning_mode": "explicit"},
+    )
+
+    assert OpenAICompatibleProvider._effective_tool_choice(request) is None
+
+
 def test_openai_compatible_auto_mode_observes_tagged_reasoning() -> None:
     request = ChatGenerateRequest(
         model="qwen3-14b",
@@ -1518,14 +1535,24 @@ async def test_mistral_streaming_thinking_chunks_are_not_emitted_as_answer(monke
 
 
 @pytest.mark.asyncio
-async def test_deepseek_stream_preserves_exact_private_reasoning_continuation(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("provider_name", "provider_type", "model", "expected"),
+    [
+        ("deepseek", "deepseek", "deepseek-reasoner", True),
+        ("openrouter", "openrouter", "deepseek/deepseek-chat", True),
+        ("openai-compatible", "custom", "DeepSeek-V4-Flash", True),
+        ("openai", "openai", "gpt-5", False),
+    ],
+)
+async def test_deepseek_stream_preserves_exact_private_reasoning_continuation(
+    monkeypatch, provider_name, provider_type, model, expected
+) -> None:
     lines = [
         'data: {"choices":[{"delta":{"reasoning_content":"opaque continuation"}}]}',
         "data: [DONE]",
     ]
-    provider = OpenAICompatibleProvider(provider_name="deepseek")
-    request = _request()
-    request.metadata["provider_type"] = "deepseek"
+    provider = OpenAICompatibleProvider(provider_name=provider_name)
+    request = replace(_request(), model=model, metadata={"provider_type": provider_type})
     monkeypatch.setitem(
         sys.modules,
         "httpx",
@@ -1537,10 +1564,11 @@ async def test_deepseek_stream_preserves_exact_private_reasoning_continuation(mo
 
     events = [event async for event in provider.stream_generate_events(request)]
 
-    assert {
+    continuation_event = {
         "type": "provider_continuation",
         "reasoning_content": "opaque continuation",
-    } in events
+    }
+    assert (continuation_event in events) is expected
 
 
 def test_meta_uses_stateless_responses_and_private_reasoning(monkeypatch) -> None:

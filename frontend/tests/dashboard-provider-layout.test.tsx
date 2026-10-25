@@ -1,10 +1,19 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, vi } from "vitest";
 
 import DashboardLayout from "../app/dashboard/layout";
 
 const routerState = vi.hoisted(() => ({ pathname: "/dashboard/settings/providers" }));
+const authState = vi.hoisted(() => ({
+  user: { email: "provider-layout@example.test", roles: ["admin"] as string[] },
+}));
+
+afterEach(() => {
+  cleanup();
+  routerState.pathname = "/dashboard/settings/providers";
+  authState.user = { email: "provider-layout@example.test", roles: ["admin"] };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => routerState.pathname,
@@ -19,7 +28,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/app/context/AuthContext", () => ({
   useAuth: () => ({
-    user: { email: "provider-layout@example.test", roles: ["admin"] },
+    user: authState.user,
     logout: vi.fn(),
     loading: false,
     userDisabled: false,
@@ -39,6 +48,7 @@ vi.mock("@/app/components/layout/NotificationCenter", () => ({ default: () => nu
 vi.mock("@/app/components/ui/AverQelLogo", () => ({
   default: (props: {
     size?: string;
+    iconSrc?: string;
     showWordmark?: boolean;
     animateWordmark?: boolean;
     wordmarkVisible?: boolean;
@@ -46,6 +56,7 @@ vi.mock("@/app/components/ui/AverQelLogo", () => ({
     <span
       data-testid="averqel-nav-logo"
       data-size={props.size}
+      data-icon-src={props.iconSrc}
       data-show-wordmark={String(props.showWordmark)}
       data-animate-wordmark={String(props.animateWordmark)}
       data-wordmark-visible={String(props.wordmarkVisible)}
@@ -75,8 +86,13 @@ describe("dashboard provider route layout", () => {
       expect(screen.getByTestId("beta-notice")).toBeInTheDocument();
       const navLogo = screen.getByTestId("averqel-nav-logo");
       expect(navLogo).toHaveAttribute("data-size", "footer");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
       expect(navLogo).toHaveAttribute("data-show-wordmark", "true");
-      expect(navLogo).toHaveAttribute("data-wordmark-visible", "true");
+      expect(navLogo.parentElement).toHaveClass(
+        "dashboard-sidebar-brand-lockup",
+        "dashboard-sidebar-brand-lockup--expanded",
+      );
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
 
       const routeContent = screen.getByTestId("provider-route-content");
       expect(routeContent.parentElement).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
@@ -91,5 +107,80 @@ describe("dashboard provider route layout", () => {
         value: previousWidth,
       });
     }
+  });
+
+  it("centers the logo on the collapsed desktop sidebar rail", () => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+
+    try {
+      render(
+        <DashboardLayout>
+          <div data-testid="provider-route-content" />
+        </DashboardLayout>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+      const navLogo = screen.getByTestId("averqel-nav-logo");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
+      expect(navLogo.parentElement).toHaveClass("dashboard-sidebar-brand-lockup");
+      expect(navLogo.parentElement).not.toHaveClass("dashboard-sidebar-brand-lockup--expanded");
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: previousWidth,
+      });
+    }
+  });
+
+  it("uses the centered AverQel lockup in the mobile dashboard drawer", () => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+
+    try {
+      render(
+        <DashboardLayout>
+          <div data-testid="provider-route-content" />
+        </DashboardLayout>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+      const navLogo = screen.getByTestId("averqel-nav-logo");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "true");
+      expect(navLogo.parentElement).toHaveClass(
+        "dashboard-sidebar-brand-lockup",
+        "dashboard-sidebar-brand-lockup--expanded",
+      );
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: previousWidth,
+      });
+    }
+  });
+
+  it("keeps legacy feedback managers out of the admin feedback queue", () => {
+    authState.user = {
+      email: "legacy-feedback-manager@example.test",
+      roles: ["feedback_manager"],
+    };
+    routerState.pathname = "/dashboard/admin/feedback";
+
+    render(
+      <DashboardLayout>
+        <div data-testid="feedback-route-content" />
+      </DashboardLayout>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Admin Console Restricted" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Feedback Management" })).not.toBeInTheDocument();
   });
 });

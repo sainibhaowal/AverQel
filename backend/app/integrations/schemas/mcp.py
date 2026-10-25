@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
 
 
 class MCPServerRead(BaseModel):
@@ -203,6 +203,70 @@ class MCPMarketplaceFacetsRead(BaseModel):
     transports: list[str]
     auth_types: list[str]
     trust_statuses: list[str]
+
+
+class MCPComposioStatusRead(BaseModel):
+    configured: bool
+    oauth_callback_ready: bool
+
+
+class MCPComposioCredentialWrite(BaseModel):
+    api_key: SecretStr = Field(min_length=12, max_length=4096)
+
+
+class MCPComposioToolkitRead(BaseModel):
+    slug: str
+    name: str
+    description: str = ""
+    logo_url: str | None = None
+    app_url: str | None = None
+    auth_guide_url: str | None = None
+    version: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    categories: list[str] = Field(default_factory=list)
+    tool_count: int = 0
+    auth_schemes: list[str] = Field(default_factory=list)
+    no_auth: bool = False
+
+
+class MCPComposioToolkitPageRead(BaseModel):
+    items: list[MCPComposioToolkitRead]
+    next_cursor: str | None = None
+    current_page: int = 1
+    total_items: int = 0
+
+
+class MCPComposioToolRead(BaseModel):
+    name: str
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    risk_labels: list[str] = Field(default_factory=list)
+    version: str | None = None
+
+
+class MCPComposioToolkitDetailRead(MCPComposioToolkitRead):
+    tools: list[MCPComposioToolRead] = Field(default_factory=list)
+    tools_loaded: int = 0
+    tools_next_cursor: str | None = None
+
+
+class MCPComposioConnectResponse(BaseModel):
+    server: MCPServerRead
+    authorization_url: str | None = None
+    already_connected: bool = False
+    authorization_required: bool = True
+
+
+class MCPComposioAuthCompleteRequest(BaseModel):
+    toolkit_slug: str = Field(min_length=1, max_length=128)
+    connected_account_id: str = Field(min_length=1, max_length=256)
+    status: Literal["success", "failed"]
+
+
+class MCPComposioAuthCompleteRead(BaseModel):
+    status: Literal["connecting", "failed"]
+    server_id: uuid.UUID
 
 
 class MCPConnectionCreateResponse(BaseModel):

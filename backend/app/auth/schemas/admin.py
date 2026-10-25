@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AuditLogItem(BaseModel):
     id: UUID
-    tenant_id: UUID
+    tenant_id: UUID | None
     actor_user_id: UUID | None
     action: str
     resource_type: str
@@ -17,6 +17,7 @@ class AuditLogItem(BaseModel):
     status: str
     trace_id: str
     created_at: datetime
+    details: dict[str, str] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,6 +47,7 @@ class DataDeletionRequest(BaseModel):
 class DataDeletionRequestResponse(BaseModel):
     deletion_id: UUID
     status: str
+    self_approval_not_before: datetime | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -57,6 +59,9 @@ class DataDeletionStatusResponse(BaseModel):
     scope: str
     reason: str | None
     can_approve: bool = False
+    can_self_approve: bool = False
+    can_cancel: bool = False
+    self_approval_not_before: datetime | None = None
     error_code: str | None
     error_message: str | None
     requested_at: datetime
@@ -81,6 +86,8 @@ class AdminUserSummaryResponse(BaseModel):
     is_active: bool
     totp_enabled: bool
     roles: list[str] = Field(default_factory=list)
+    created_at: datetime
+    last_login_at: datetime | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -91,16 +98,23 @@ class AdminUserListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AdminUserDetailResponse(BaseModel):
-    user: AdminUserSummaryResponse
+class PlatformAdminAccessResponse(BaseModel):
+    allowed: bool
+    reason: (
+        Literal[
+            "ADMIN_ROLE_REQUIRED",
+            "PLATFORM_ADMIN_ALLOWLIST_REQUIRED",
+            "ADMIN_MFA_SETUP_REQUIRED",
+            "ADMIN_MFA_REQUIRED",
+        ]
+        | None
+    ) = None
 
     model_config = ConfigDict(extra="forbid")
 
 
-class AdminStaffRoleUpdateRequest(BaseModel):
-    roles: list[Literal["feedback_manager", "collection_moderator", "support_manager"]] = Field(
-        default_factory=list, max_length=3
-    )
+class AdminUserDetailResponse(BaseModel):
+    user: AdminUserSummaryResponse
 
     model_config = ConfigDict(extra="forbid")
 
@@ -111,9 +125,16 @@ class AdminUserActionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AdminUserDeleteRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=400)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AdminUserDeleteResponse(BaseModel):
     success: bool = True
     deleted_user_id: UUID
+    pending_storage_cleanup_count: int = 0
 
     model_config = ConfigDict(extra="forbid")
 
@@ -131,6 +152,14 @@ class StorageCleanupJobResponse(BaseModel):
 
 class StorageCleanupListResponse(BaseModel):
     items: list[StorageCleanupJobResponse]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class StorageCleanupRetryResponse(BaseModel):
+    success: bool = True
+    job_id: UUID
+    status: str
 
     model_config = ConfigDict(extra="forbid")
 

@@ -382,10 +382,30 @@ def test_context_history_fit_preserves_system_and_newest_messages() -> None:
     messages = [{"role": "system", "content": "rules"}]
     messages.extend({"role": "user", "content": "x" * 300} for _ in range(12))
 
-    fitted, compacted = DeepSpaceChatService._fit_history_to_context(
+    fitted, compacted, overflow_prevented = DeepSpaceChatService._fit_history_to_context(
         messages, context_window=700, max_output_tokens=256
     )
 
     assert compacted is True
+    assert overflow_prevented is True
     assert fitted[0]["role"] == "system"
+    assert fitted[-1] == messages[-1]
+
+
+def test_history_budget_compaction_does_not_count_as_context_overflow_prevention() -> None:
+    messages = [
+        {"role": "user", "content": "Earlier question"},
+        {"role": "assistant", "content": "Earlier answer"},
+        {"role": "user", "content": "Current question"},
+    ]
+
+    fitted, compacted, overflow_prevented = DeepSpaceChatService._fit_history_to_context(
+        messages,
+        context_window=16_000,
+        max_output_tokens=512,
+        history_budget_tokens=0,
+    )
+
+    assert compacted is True
+    assert overflow_prevented is False
     assert fitted[-1] == messages[-1]

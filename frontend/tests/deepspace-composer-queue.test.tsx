@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import DeepSpaceComposer from "../app/dashboard/deepspace/_components/DeepSpaceComposer";
 
 describe("DeepSpaceComposer active-turn controls", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("grows the message field up to five rows, then scrolls longer drafts inside it", () => {
     const renderComposer = (query: string) => (
       <DeepSpaceComposer
@@ -56,6 +60,10 @@ describe("DeepSpaceComposer active-turn controls", () => {
   });
 
   it("shows the live output estimate and generation rate during a stream", () => {
+    vi.useFakeTimers();
+    const startedAtMs = 1_000;
+    vi.setSystemTime(startedAtMs + 2_000);
+
     render(
       <DeepSpaceComposer
         query=""
@@ -64,7 +72,8 @@ describe("DeepSpaceComposer active-turn controls", () => {
         contextLimit={1_048_576}
         requestInputTokens={4516}
         requestOutputTokens={12}
-        liveTokensPerSecond={7.5}
+        liveOutputTokens={15}
+        liveOutputStartedAtMs={startedAtMs}
         onQueryChange={vi.fn()}
         onSubmit={vi.fn()}
         onStop={vi.fn()}

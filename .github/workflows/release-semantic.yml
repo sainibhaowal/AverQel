@@ -35,40 +35,12 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha: ${{ steps.version.outputs.sha }}
-      neosis_sha: ${{ steps.neosis.outputs.sha }}
-      neosis_version: ${{ steps.neosis.outputs.version }}
     steps:
       - name: Checkout the selected main commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
-
-      - name: Checkout NeoSIS main to resolve the release source
-        uses: actions/checkout@v4
-        with:
-          repository: sainibhaowal/AverQel_NeoSIS
-          ref: main
-          path: neosis
-          persist-credentials: false
-
-      - name: Setup Node for release metadata
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Record the NeoSIS release source
-        id: neosis
-        shell: bash
-        run: |
-          set -euo pipefail
-          SHA="$(git -C neosis rev-parse HEAD)"
-          VERSION="$(node -p 'require("./neosis/package.json").version')"
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ -n "$VERSION" ]]
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "NeoSIS $VERSION ($SHA) will be bundled in this release."
 
       - name: Calculate next version
         id: version
@@ -131,14 +103,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - name: Checkout the pinned NeoSIS release source
-        uses: actions/checkout@v4
-        with:
-          repository: sainibhaowal/AverQel_NeoSIS
-          ref: ${{ needs.prepare-release.outputs.neosis_sha }}
-          path: neosis
-          persist-credentials: false
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -178,17 +142,6 @@ jobs:
           NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL: https://github.com/sainibhaowal/AverQel/releases/latest/download
         run: pnpm --dir frontend build
 
-      - name: Setup NeoSIS pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.7.0
-
-      - name: Install NeoSIS dependencies
-        run: pnpm --dir neosis install --frozen-lockfile
-
-      - name: Prepare temporary NeoSIS runtime packaging settings
-        run: node applications/desktop/scripts/prepare-neosis-package-env.mjs neosis
-
       - name: Stamp the semantic release version into the desktop app
         shell: bash
         env:
@@ -196,12 +149,6 @@ jobs:
         run: |
           set -euo pipefail
           node .github/scripts/stamp-desktop-version.mjs "${RELEASE_VERSION#v}"
-
-      - name: Install Linux native packaging prerequisites
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes musl-tools
 
       - name: Build Linux desktop package
         if: matrix.platform == 'ubuntu-22.04'
@@ -242,23 +189,56 @@ jobs:
               ;;
           esac
 
-      - name: Verify NeoSIS runtime in the Linux installer
+      - name: Verify Linux installer metadata
         if: matrix.platform == 'ubuntu-22.04'
         shell: bash
         run: |
           set -euo pipefail
           PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)"
           test -n "$PACKAGE_PATH"
-          EXTRACT_DIR="$(mktemp -d "${RUNNER_TEMP}/averqel-neosis-deb.XXXXXX")"
+          EXTRACT_DIR="$(mktemp -d "${RUNNER_TEMP}/averqel-deb.XXXXXX")"
           trap 'rm -rf -- "$EXTRACT_DIR"' EXIT
           dpkg-deb --extract "$PACKAGE_PATH" "$EXTRACT_DIR"
-          mapfile -t DESCRIPTORS < <(find "$EXTRACT_DIR" -type f -path '*/resources/neosis/desktop-runtime.json' -print)
-          test "${#DESCRIPTORS[@]}" -eq 1 || {
-            echo "Expected one NeoSIS runtime manifest in the Linux installer; found ${#DESCRIPTORS[@]}" >&2
+          APPSTREAM_PATH="$EXTRACT_DIR/usr/share/metainfo/com.averqel.app.metainfo.xml"
+          test -f "$APPSTREAM_PATH" || {
+            echo "AppStream metadata is missing from the Linux installer." >&2
             exit 1
           }
-          RUNTIME_PATH="$(dirname "${DESCRIPTORS[0]}")"
-          node applications/desktop/scripts/verify-neosis-runtime.cjs "$RUNTIME_PATH" linux x64
+          python3 - "$PACKAGE_PATH" "$APPSTREAM_PATH" <<'PY'
+          import subprocess
+          import sys
+          import xml.etree.ElementTree as ET
+
+          package_path, appstream_path = sys.argv[1:]
+          root = ET.parse(appstream_path).getroot()
+          metadata = {
+              "id": root.findtext("id"),
+              "name": root.findtext("name"),
+              "summary": root.findtext("summary"),
+              "desktop_id": root.findtext("launchable"),
+          }
+          expected = {
+              "id": "com.averqel.app",
+              "name": "AverQel",
+              "desktop_id": "AverQel.desktop",
+          }
+          for field, value in expected.items():
+              if metadata[field] != value:
+                  raise SystemExit(f"Unexpected AppStream {field}: {metadata[field]!r}")
+          if not metadata["summary"] or not metadata["summary"].isascii():
+              raise SystemExit("AppStream summary must be present and ASCII-only.")
+
+          package_name = subprocess.check_output(
+              ["dpkg-deb", "--field", package_path, "Package"], text=True
+          ).strip()
+          if package_name != "averqel-desktop":
+              raise SystemExit(f"Unexpected Debian package ID: {package_name!r}")
+          description = subprocess.check_output(
+              ["dpkg-deb", "--field", package_path, "Description"], text=True
+          )
+          if not description.isascii():
+              raise SystemExit("Debian package description must be ASCII-only.")
+          PY
 
           APPSTREAM_PATH="$EXTRACT_DIR/usr/share/metainfo/com.averqel.app.metainfo.xml"
           test -f "$APPSTREAM_PATH" || {
@@ -376,8 +356,6 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
           RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
-          NEOSIS_VERSION: ${{ needs.prepare-release.outputs.neosis_version }}
-          NEOSIS_SHA: ${{ needs.prepare-release.outputs.neosis_sha }}
         run: |
           set -euo pipefail
           rm -rf release-assets
@@ -401,8 +379,6 @@ jobs:
           python3 .github/scripts/create-release-manifest.py \
             --version "$RELEASE_VERSION" \
             --git-sha "$RELEASE_SHA" \
-            --neosis-version "$NEOSIS_VERSION" \
-            --neosis-git-sha "$NEOSIS_SHA" \
             --asset-dir release-assets \
             --output release-manifest.json \
             --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download"
@@ -431,8 +407,6 @@ jobs:
             The generated changelog below is based on the merged pull requests and conventional commits included in this release.
 
             Desktop packages: Linux `.deb` and Windows `.exe`.
-
-            This release bundles NeoSIS `${{ needs.prepare-release.outputs.neosis_version }}` from commit `${{ needs.prepare-release.outputs.neosis_sha }}`.
 
             Public downloads are provided directly by this GitHub release. The AverQel website uses
             direct asset URLs and does not copy desktop packages to the VPS.

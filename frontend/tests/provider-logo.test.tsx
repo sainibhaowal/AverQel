@@ -51,6 +51,7 @@ describe("provider logos", () => {
     }
 
     expect(getProviderLogoDefinition("custom").kind).toBe("endpoint");
+    expect(getProviderLogoDefinition("sentence-transformers").kind).toBe("endpoint");
     expect(getProviderLogoDefinition("groq")).toEqual({ kind: "wordmark", text: "GROQ" });
     expect(getProviderLogoDefinition("tavily")).toEqual({ kind: "wordmark", text: "TAVILY" });
   });

@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import case, desc, func, or_, select
+from sqlalchemy import case, desc, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
@@ -13,9 +13,10 @@ from app.auth.models.user import User
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import TenantContext, get_tenant_context
 from app.core.config import get_settings
-from app.ingestion.services.security.malware_scan_service import MalwareScanService
 from app.platform.database.session import get_db, set_db_tenant_context
 from app.system.api.admin import require_platform_admin_access
+from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_encryption_key import SupportEncryptionKey
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.models.support_ticket_message import SupportTicketMessage
@@ -24,6 +25,7 @@ from app.system.schemas.support import (
     AdminSupportMessageCreate,
     AdminSupportQueueItem,
     AdminSupportQueueResponse,
+    AdminSupportQueueUserProfile,
     SupportTicketAttachmentResponse,
     SupportTicketCreate,
     SupportTicketDetailResponse,
@@ -33,10 +35,21 @@ from app.system.schemas.support import (
     SupportTicketUpdate,
     UserSupportSummary,
 )
+from app.system.schemas.support_encryption import (
+    LegacySupportRecord,
+    LegacySupportRecordPage,
+    SupportRecordEncryptionMigration,
+)
 from app.system.services.audit_service import AuditService
+from app.system.services.conversation_profiles import conversation_participants
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_quota import StorageQuotaService
 from app.system.services.storage_service import StorageService, StorageServiceError
+from app.system.services.support_encryption import (
+    EncryptedPayloadError,
+    validate_attachment_metadata,
+    validate_payload,
+)
 from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
 router = APIRouter(prefix="/support", tags=["support"])
@@ -47,41 +60,11 @@ QUEUE_OFFSET = Query(default=0, ge=0, le=100_000)
 QUEUE_SEARCH = Query(default=None, max_length=120)
 QUEUE_ASSIGNEE = Query(default=None)
 QUEUE_UNASSIGNED = Query(default=False)
-_SUPPORT_MIME_BY_EXTENSION = {
-    ".pdf": "application/pdf",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".txt": "text/plain",
-}
 
 
-def _checked_attachment(filename: str, payload: bytes) -> tuple[str, str]:
-    from pathlib import PurePath
-
-    safe_name = PurePath(filename.replace("\\", "/")).name.strip()[:255]
-    extension = PurePath(safe_name).suffix.lower()
-    content_type = _SUPPORT_MIME_BY_EXTENSION.get(extension)
-    valid = bool(payload)
-    if extension == ".pdf":
-        valid = valid and payload.startswith(b"%PDF-")
-    elif extension == ".png":
-        valid = valid and payload.startswith(b"\x89PNG\r\n\x1a\n")
-    elif extension in {".jpg", ".jpeg"}:
-        valid = valid and payload.startswith(b"\xff\xd8\xff")
-    elif extension == ".txt":
-        try:
-            payload.decode("utf-8", errors="strict")
-            valid = valid and b"\x00" not in payload
-        except UnicodeDecodeError:
-            valid = False
-    else:
-        valid = False
-    if not valid or not content_type:
-        raise HTTPException(
-            status_code=415, detail="Attachment must be a valid PDF, PNG, JPEG, or UTF-8 text file"
-        )
-    return safe_name, content_type
+def _no_store(response: Response) -> None:
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
 
 
 def _attachment_response(row: SupportTicketAttachment) -> SupportTicketAttachmentResponse:
@@ -93,7 +76,52 @@ def _attachment_response(row: SupportTicketAttachment) -> SupportTicketAttachmen
         size_bytes=row.size_bytes,
         created_at=row.created_at,
         download_url=f"/api/v1/support/tickets/{row.ticket_id}/attachments/{row.id}",
+        is_encrypted=row.is_encrypted,
+        encrypted_metadata=row.encrypted_metadata,
     )
+
+
+def _conversation_key_ids(
+    db: Session, *, user_id: uuid.UUID, tenant_id_to_restore: uuid.UUID | None = None
+) -> set[str]:
+    set_db_tenant_context(db, "bypass")
+    rows = (
+        db.execute(
+            select(SupportEncryptionKey).where(
+                (SupportEncryptionKey.scope == "platform_admin")
+                | (
+                    (SupportEncryptionKey.scope == "user")
+                    & (SupportEncryptionKey.user_id == user_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    admin_key = next((row for row in rows if row.scope == "platform_admin"), None)
+    user_key = next((row for row in rows if row.scope == "user" and row.user_id == user_id), None)
+    if tenant_id_to_restore is not None:
+        set_db_tenant_context(db, tenant_id_to_restore)
+    if admin_key is None or user_key is None:
+        raise HTTPException(status_code=409, detail="Support encryption keys are not initialized")
+    return {admin_key.key_id, user_key.key_id}
+
+
+def _admin_key_id(db: Session, *, admin_user_id: uuid.UUID) -> str:
+    set_db_tenant_context(db, "bypass")
+    row = db.execute(
+        select(SupportEncryptionKey).where(SupportEncryptionKey.scope == "platform_admin")
+    ).scalar_one_or_none()
+    if row is None or row.user_id != admin_user_id:
+        raise HTTPException(status_code=409, detail="Admin support encryption key is unavailable")
+    return row.key_id
+
+
+def _validate_payload_or_422(payload: str, expected_key_ids: set[str]) -> None:
+    try:
+        validate_payload(payload, expected_key_ids)
+    except EncryptedPayloadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _ticket_for_user(
@@ -133,7 +161,16 @@ def _detail(
     *,
     include_internal: bool,
     user_email: str | None = None,
+    tenant_id_to_restore: uuid.UUID | None = None,
 ) -> SupportTicketDetailResponse:
+    message_rows = _ticket_messages(db, ticket=ticket, include_internal=include_internal)
+    participants, author_refs = conversation_participants(
+        db,
+        message_rows,
+        primary_author_ids=[ticket.user_id],
+        include_display_names=include_internal,
+        tenant_id_to_restore=tenant_id_to_restore,
+    )
     attachment_rows = (
         db.execute(
             select(SupportTicketAttachment)
@@ -156,9 +193,18 @@ def _detail(
         **SupportTicketResponse.model_validate(ticket).model_dump(),
         user_email=user_email,
         messages=[
-            SupportTicketMessageResponse.model_validate(item)
-            for item in _ticket_messages(db, ticket=ticket, include_internal=include_internal)
+            SupportTicketMessageResponse.model_validate(item).model_copy(
+                update={
+                    "author_ref": (
+                        author_refs.get(item.author_user_id)
+                        if item.author_user_id is not None
+                        else None
+                    )
+                }
+            )
+            for item in message_rows
         ],
+        participants=participants,
         attachments=attachments,
     )
 
@@ -170,6 +216,10 @@ def create_ticket(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> SupportTicketResponse:
+    _validate_payload_or_422(
+        payload.encrypted_payload,
+        _conversation_key_ids(db, user_id=auth.user_id, tenant_id_to_restore=tenant.tenant_id),
+    )
     RateLimitService(get_settings()).enforce_support_submission_limit(
         tenant_id=str(tenant.tenant_id), user_id=str(auth.user_id)
     )
@@ -178,8 +228,9 @@ def create_ticket(
     ticket = SupportTicket(
         tenant_id=tenant.tenant_id,
         user_id=auth.user_id,
-        subject=payload.subject.strip(),
-        description=payload.description.strip(),
+        subject="[Encrypted support request]",
+        description="[Encrypted]",
+        encrypted_payload=payload.encrypted_payload,
         category=payload.category,
         status="open",
         priority="normal",
@@ -204,7 +255,7 @@ def create_ticket(
         event_domain="support",
         event_type="ticket_received",
         title="Support request received",
-        message=f"We received your request: {ticket.subject}",
+        message="Your encrypted support request was received.",
         href=f"/dashboard/support?ticket={ticket.id}",
         resource_id=ticket.id,
         idempotency_key=f"support:received:{ticket.id}",
@@ -214,7 +265,7 @@ def create_ticket(
         event_domain="support",
         event_type="ticket_created",
         title="New support request",
-        message=f"{ticket.category.replace('_', ' ').title()}: {ticket.subject}",
+        message="A user submitted a support request.",
         href=f"/dashboard/admin/support?ticket={ticket.id}",
         resource_id=ticket.id,
     )
@@ -224,10 +275,12 @@ def create_ticket(
 
 @router.get("/tickets", response_model=list[SupportTicketResponse])
 def list_my_tickets(
+    response: Response,
     auth: AuthContext = Depends(get_auth_context),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> list[SupportTicketResponse]:
+    _no_store(response)
     tickets = (
         db.execute(
             select(SupportTicket)
@@ -246,14 +299,16 @@ def list_my_tickets(
 @router.get("/tickets/{ticket_id}", response_model=SupportTicketDetailResponse)
 def get_my_ticket(
     ticket_id: uuid.UUID,
+    response: Response,
     auth: AuthContext = Depends(get_auth_context),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetailResponse:
+    _no_store(response)
     ticket = _ticket_for_user(
         db, ticket_id=ticket_id, tenant_id=tenant.tenant_id, user_id=auth.user_id
     )
-    return _detail(db, ticket, include_internal=False)
+    return _detail(db, ticket, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
 
 
 @router.post("/tickets/{ticket_id}/messages", response_model=SupportTicketDetailResponse)
@@ -267,6 +322,10 @@ def add_user_ticket_message(
     ticket = _ticket_for_user(
         db, ticket_id=ticket_id, tenant_id=tenant.tenant_id, user_id=auth.user_id
     )
+    _validate_payload_or_422(
+        payload.encrypted_payload,
+        _conversation_key_ids(db, user_id=auth.user_id, tenant_id_to_restore=tenant.tenant_id),
+    )
     if ticket.status in {"resolved", "closed"}:
         old_status = ticket.status
         ticket.status = "open"
@@ -275,7 +334,7 @@ def add_user_ticket_message(
                 tenant_id=tenant.tenant_id,
                 ticket_id=ticket.id,
                 author_user_id=auth.user_id,
-                author_role="user",
+                author_role="system",
                 kind="status_changed",
                 body=f"User reopened this request from {old_status.replace('_', ' ')}.",
             )
@@ -286,7 +345,8 @@ def add_user_ticket_message(
             ticket_id=ticket.id,
             author_user_id=auth.user_id,
             author_role="user",
-            body=payload.body.strip(),
+            body="[Encrypted message]",
+            encrypted_payload=payload.encrypted_payload,
         )
     )
     ticket.updated_at = datetime.now(UTC)
@@ -297,12 +357,12 @@ def add_user_ticket_message(
         event_domain="support",
         event_type="ticket_user_reply",
         title="User replied to a support request",
-        message=f"New reply: {ticket.subject}",
+        message="A user added an encrypted reply to a support request.",
         href=f"/dashboard/admin/support?ticket={ticket.id}",
         resource_id=f"{ticket.id}:user-reply:{uuid.uuid4()}",
     )
     db.flush()
-    detail = _detail(db, ticket, include_internal=False)
+    detail = _detail(db, ticket, include_internal=False, tenant_id_to_restore=tenant.tenant_id)
     db.commit()
     return detail
 
@@ -315,6 +375,7 @@ def add_user_ticket_message(
 async def upload_ticket_attachment(
     ticket_id: uuid.UUID,
     file: UploadFile = SUPPORT_ATTACHMENT_FILE,
+    encrypted_metadata: str = Form(..., max_length=12_000),
     auth: AuthContext = Depends(get_auth_context),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
@@ -325,17 +386,19 @@ async def upload_ticket_attachment(
     RateLimitService(get_settings()).enforce_support_submission_limit(
         tenant_id=str(tenant.tenant_id), user_id=str(auth.user_id)
     )
-    payload = await file.read(MAX_SUPPORT_ATTACHMENT_BYTES + 1)
-    if len(payload) > MAX_SUPPORT_ATTACHMENT_BYTES:
+    payload = await file.read(MAX_SUPPORT_ATTACHMENT_BYTES + 17)
+    if len(payload) > MAX_SUPPORT_ATTACHMENT_BYTES + 16:
         raise HTTPException(status_code=413, detail="Support attachments are limited to 5 MiB")
-    filename, content_type = _checked_attachment(file.filename or "attachment", payload)
-    scan = MalwareScanService().scan_bytes(
-        filename=filename, content_type=content_type, payload=payload
+    if len(payload) < 16:
+        raise HTTPException(status_code=422, detail="Encrypted attachment is incomplete")
+    expected_key_ids = _conversation_key_ids(
+        db, user_id=auth.user_id, tenant_id_to_restore=tenant.tenant_id
     )
-    if not scan.is_clean:
-        raise HTTPException(
-            status_code=422, detail="Attachment could not pass the configured security scan"
-        )
+    try:
+        validate_attachment_metadata(encrypted_metadata, expected_key_ids)
+    except EncryptedPayloadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    filename, content_type = "Encrypted attachment.bin", "application/octet-stream"
     StorageQuotaService(db).ensure_capacity(
         tenant_id=tenant.tenant_id,
         roles=auth.roles,
@@ -349,18 +412,18 @@ async def upload_ticket_attachment(
         filename=filename,
         content_type=content_type,
         size_bytes=len(payload),
+        encrypted_metadata=encrypted_metadata,
+        is_encrypted=True,
         storage_bucket=get_settings().minio_bucket,
         storage_key=f"{tenant.tenant_id}/pending/{uuid.uuid4()}",
     )
     db.add(row)
     db.flush()
     try:
-        from pathlib import PurePath
-
         stored = StorageService(get_settings()).put_bytes(
             tenant_id=tenant.tenant_id,
             document_id=row.id,
-            filename=f"support-{row.id}{PurePath(filename).suffix.lower()}",
+            filename=f"support-{row.id}.bin",
             content_type=content_type,
             payload=payload,
         )
@@ -469,9 +532,11 @@ def download_ticket_attachment_admin(
     dependencies=[Depends(require_permissions("admin:support:read"))],
 )
 def list_all_tickets_admin(
+    response: Response,
     auth: AuthContext = Depends(require_platform_admin_access),
     db: Session = Depends(get_db),
 ) -> AdminSupportListResponse:
+    _no_store(response)
     set_db_tenant_context(db, "bypass")
     results = db.execute(
         select(SupportTicket, User.email)
@@ -508,6 +573,7 @@ def list_all_tickets_admin(
     dependencies=[Depends(require_permissions("admin:support:read"))],
 )
 def list_support_queue_admin(
+    response: Response,
     status: str | None = Query(default=None),
     priority: str | None = Query(default=None),
     search: str | None = QUEUE_SEARCH,
@@ -519,20 +585,19 @@ def list_support_queue_admin(
     auth: AuthContext = Depends(require_platform_admin_access),
     db: Session = Depends(get_db),
 ) -> AdminSupportQueueResponse:
+    _no_store(response)
     set_db_tenant_context(db, "bypass")
     now = datetime.now(UTC)
-    base = select(SupportTicket, User.email).join(User, User.id == SupportTicket.user_id)
+    base = select(SupportTicket, User.email, User.display_name, User.avatar).join(
+        User, User.id == SupportTicket.user_id
+    )
     if status:
         base = base.where(SupportTicket.status == status)
     if priority:
         base = base.where(SupportTicket.priority == priority)
     if search:
-        like = f"%{search.strip()}%"
-        base = base.where(
-            SupportTicket.subject.ilike(like)
-            | SupportTicket.description.ilike(like)
-            | User.email.ilike(like)
-        )
+        # Content is encrypted in the browser; only account metadata can be searched server-side.
+        base = base.where(User.email.ilike(f"%{search.strip()}%"))
     if assigned_to:
         base = base.where(SupportTicket.assigned_admin_id == assigned_to)
     elif unassigned_only:
@@ -556,11 +621,22 @@ def list_support_queue_admin(
     rows = db.execute(
         base.order_by(priority_rank, SupportTicket.updated_at.asc()).limit(limit).offset(offset)
     ).all()
+    user_profiles: dict[uuid.UUID, AdminSupportQueueUserProfile] = {}
+    for ticket, _, display_name, avatar in rows:
+        user_profiles.setdefault(
+            ticket.user_id,
+            AdminSupportQueueUserProfile(
+                user_id=ticket.user_id,
+                display_name=display_name,
+                avatar=avatar,
+            ),
+        )
     tickets = [
         AdminSupportQueueItem(
-            **SupportTicketResponse.model_validate(ticket).model_dump(), user_email=email
+            **SupportTicketResponse.model_validate(ticket).model_dump(),
+            user_email=email,
         )
-        for ticket, email in rows
+        for ticket, email, display_name, avatar in rows
     ]
     open_count = (
         db.scalar(
@@ -593,9 +669,78 @@ def list_support_queue_admin(
     )
     return AdminSupportQueueResponse(
         items=tickets,
+        users=list(user_profiles.values()),
         total=int(total),
         open_count=int(open_count),
         overdue_count=int(overdue_count),
+    )
+
+
+@router.get(
+    "/admin/encryption/legacy",
+    response_model=LegacySupportRecordPage,
+    dependencies=[Depends(require_permissions("admin:support:read"))],
+)
+def list_legacy_support_records(
+    response: Response,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
+    auth: AuthContext = Depends(require_platform_admin_access),
+    db: Session = Depends(get_db),
+) -> LegacySupportRecordPage:
+    _no_store(response)
+    set_db_tenant_context(db, "bypass")
+    has_legacy_messages = exists(
+        select(1).where(
+            SupportTicketMessage.ticket_id == SupportTicket.id,
+            SupportTicketMessage.encrypted_payload.is_(None),
+            SupportTicketMessage.author_role != "system",
+        )
+    )
+    has_legacy_attachments = exists(
+        select(1).where(
+            SupportTicketAttachment.ticket_id == SupportTicket.id,
+            SupportTicketAttachment.is_encrypted.is_(False),
+        )
+    )
+    legacy_filter = or_(
+        SupportTicket.encrypted_payload.is_(None), has_legacy_messages, has_legacy_attachments
+    )
+    total = db.scalar(select(func.count()).select_from(SupportTicket).where(legacy_filter)) or 0
+    user_key_initialized = exists(
+        select(1).where(
+            SupportEncryptionKey.user_id == SupportTicket.user_id,
+            SupportEncryptionKey.tenant_id == SupportTicket.tenant_id,
+            SupportEncryptionKey.scope == "user",
+        )
+    )
+    rows = db.execute(
+        select(
+            SupportTicket.id,
+            SupportTicket.user_id,
+            user_key_initialized.label("user_key_initialized"),
+        )
+        .where(legacy_filter)
+        .order_by(SupportTicket.created_at, SupportTicket.id)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.encryption.legacy.list.read",
+        resource_type="support_encryption_migration",
+    )
+    return LegacySupportRecordPage(
+        items=[
+            LegacySupportRecord(
+                id=row.id,
+                user_id=row.user_id,
+                user_key_initialized=row.user_key_initialized,
+            )
+            for row in rows
+        ],
+        total=int(total),
     )
 
 
@@ -606,9 +751,11 @@ def list_support_queue_admin(
 )
 def get_ticket_admin(
     ticket_id: uuid.UUID,
+    response: Response,
     auth: AuthContext = Depends(require_platform_admin_access),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetailResponse:
+    _no_store(response)
     set_db_tenant_context(db, "bypass")
     result = db.execute(
         select(SupportTicket, User.email)
@@ -626,6 +773,170 @@ def get_ticket_admin(
         resource_id=str(ticket_id),
     )
     return detail
+
+
+@router.put(
+    "/admin/tickets/{ticket_id}/encryption",
+    response_model=SupportTicketDetailResponse,
+    dependencies=[Depends(require_permissions("admin:support:write"))],
+)
+def encrypt_legacy_support_record(
+    ticket_id: uuid.UUID,
+    payload: SupportRecordEncryptionMigration,
+    auth: AuthContext = Depends(require_platform_admin_access),
+    db: Session = Depends(get_db),
+) -> SupportTicketDetailResponse:
+    set_db_tenant_context(db, "bypass")
+    result = db.execute(
+        select(SupportTicket, User.email)
+        .join(User, User.id == SupportTicket.user_id)
+        .where(SupportTicket.id == ticket_id)
+    ).one_or_none()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket, user_email = result
+    if ticket.encrypted_payload is None:
+        if payload.encrypted_payload is None:
+            raise HTTPException(status_code=422, detail="Encrypted ticket content is required")
+        conversation_key_ids = _conversation_key_ids(db, user_id=ticket.user_id)
+        _validate_payload_or_422(payload.encrypted_payload, conversation_key_ids)
+        ticket.encrypted_payload = payload.encrypted_payload
+        ticket.subject = "[Encrypted support request]"
+        ticket.description = "[Encrypted]"
+    elif payload.encrypted_payload is not None:
+        raise HTTPException(status_code=409, detail="Ticket content is already encrypted")
+
+    legacy_messages = (
+        db.execute(
+            select(SupportTicketMessage).where(
+                SupportTicketMessage.ticket_id == ticket.id,
+                SupportTicketMessage.encrypted_payload.is_(None),
+                SupportTicketMessage.author_role != "system",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    expected_message_ids = {message.id for message in legacy_messages}
+    supplied_messages = {message.id: message.encrypted_payload for message in payload.messages}
+    if (
+        len(supplied_messages) != len(payload.messages)
+        or set(supplied_messages) != expected_message_ids
+    ):
+        raise HTTPException(
+            status_code=422, detail="Migration must include each legacy message once"
+        )
+    conversation_key_ids = _conversation_key_ids(db, user_id=ticket.user_id)
+    admin_key_id = _admin_key_id(db, admin_user_id=auth.user_id)
+    for message in legacy_messages:
+        ciphertext = supplied_messages[message.id]
+        recipients = {admin_key_id} if message.is_internal else conversation_key_ids
+        _validate_payload_or_422(ciphertext, recipients)
+        message.encrypted_payload = ciphertext
+        message.body = "[Encrypted message]"
+
+    db.flush()
+    detail = _detail(db, ticket, include_internal=True, user_email=user_email)
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.encryption.legacy.migrated",
+        resource_type="support_ticket",
+        resource_id=str(ticket.id),
+    )
+    db.commit()
+    return detail
+
+
+@router.post(
+    "/admin/tickets/{ticket_id}/attachments/{attachment_id}/encryption",
+    response_model=SupportTicketAttachmentResponse,
+    dependencies=[Depends(require_permissions("admin:support:write"))],
+)
+async def encrypt_legacy_support_attachment(
+    ticket_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    file: UploadFile = SUPPORT_ATTACHMENT_FILE,
+    encrypted_metadata: str = Form(..., max_length=12_000),
+    auth: AuthContext = Depends(require_platform_admin_access),
+    db: Session = Depends(get_db),
+) -> SupportTicketAttachmentResponse:
+    set_db_tenant_context(db, "bypass")
+    ticket = db.get(SupportTicket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    row = db.execute(
+        select(SupportTicketAttachment).where(
+            SupportTicketAttachment.id == attachment_id,
+            SupportTicketAttachment.ticket_id == ticket.id,
+            SupportTicketAttachment.tenant_id == ticket.tenant_id,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if row.is_encrypted:
+        raise HTTPException(status_code=409, detail="Attachment is already encrypted")
+    payload = await file.read(MAX_SUPPORT_ATTACHMENT_BYTES + 17)
+    if len(payload) > MAX_SUPPORT_ATTACHMENT_BYTES + 16:
+        raise HTTPException(status_code=413, detail="Support attachments are limited to 5 MiB")
+    if len(payload) < 16:
+        raise HTTPException(status_code=422, detail="Encrypted attachment is incomplete")
+    expected_key_ids = _conversation_key_ids(db, user_id=ticket.user_id)
+    try:
+        validate_attachment_metadata(encrypted_metadata, expected_key_ids)
+    except EncryptedPayloadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    old_bucket, old_key = row.storage_bucket, row.storage_key
+    settings = get_settings()
+    stored = None
+    try:
+        stored = StorageService(settings).put_bytes(
+            tenant_id=ticket.tenant_id,
+            document_id=row.id,
+            filename=f"support-{row.id}-{uuid.uuid4()}.bin",
+            content_type="application/octet-stream",
+            payload=payload,
+        )
+        row.storage_bucket = stored.bucket
+        row.storage_key = stored.object_key
+        row.filename = "Encrypted attachment.bin"
+        row.content_type = "application/octet-stream"
+        row.size_bytes = len(payload)
+        row.encrypted_metadata = encrypted_metadata
+        row.is_encrypted = True
+        db.add(
+            StorageCleanupJob(
+                tenant_id=ticket.tenant_id,
+                owner_user_id=row.uploaded_by_user_id,
+                bucket=old_bucket,
+                object_key=old_key,
+            )
+        )
+        AuditService(db).write_event(
+            tenant_id=auth.tenant_id,
+            actor_user_id=auth.user_id,
+            action="admin.support.encryption.attachment.migrated",
+            resource_type="support_attachment",
+            resource_id=str(row.id),
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        if stored is not None:
+            try:
+                StorageService(settings).delete_tenant_object(
+                    tenant_id=ticket.tenant_id,
+                    bucket=stored.bucket,
+                    object_key=stored.object_key,
+                    raise_on_error=True,
+                )
+            except Exception:
+                pass
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=503, detail="Unable to encrypt support attachment") from exc
+    return _attachment_response(row)
 
 
 @router.post(
@@ -649,13 +960,19 @@ def add_admin_ticket_message(
         raise HTTPException(status_code=404, detail="Ticket not found")
     ticket, user_email = result
     is_internal = payload.visibility == "internal"
+    admin_key_id = _admin_key_id(db, admin_user_id=auth.user_id)
+    expected_key_ids = (
+        {admin_key_id} if is_internal else _conversation_key_ids(db, user_id=ticket.user_id)
+    )
+    _validate_payload_or_422(payload.encrypted_payload, expected_key_ids)
     db.add(
         SupportTicketMessage(
             tenant_id=ticket.tenant_id,
             ticket_id=ticket.id,
             author_user_id=auth.user_id,
             author_role="admin",
-            body=payload.body.strip(),
+            body="[Encrypted message]",
+            encrypted_payload=payload.encrypted_payload,
             is_internal=is_internal,
         )
     )
@@ -671,7 +988,7 @@ def add_admin_ticket_message(
             event_domain="support",
             event_type="ticket_reply",
             title="Support replied to your request",
-            message=f"There is a new reply to: {ticket.subject}",
+            message="There is a new encrypted reply to your support request.",
             href=f"/dashboard/support?ticket={ticket.id}",
             resource_id=ticket.id,
             idempotency_key=f"support:reply:{uuid.uuid4()}",
@@ -749,7 +1066,7 @@ def update_ticket_admin(
                     event_domain="support",
                     event_type="ticket_assigned",
                     title="Support ticket assigned to you",
-                    message=f"{ticket.subject} ({ticket.priority} priority)",
+                    message=f"A support ticket priority changed to {ticket.priority}.",
                     href=f"/dashboard/admin/support?ticket={ticket.id}",
                     resource_id=ticket.id,
                     idempotency_key=f"support:assigned:{ticket.id}:{assigned_user.id}:{uuid.uuid4()}",
@@ -762,7 +1079,7 @@ def update_ticket_admin(
                 tenant_id=ticket.tenant_id,
                 ticket_id=ticket.id,
                 author_user_id=auth.user_id,
-                author_role="admin",
+                author_role="system",
                 kind="status_changed",
                 body=f"Status changed from {old_status.replace('_', ' ')} to {ticket.status.replace('_', ' ')}.",
             )
@@ -774,7 +1091,7 @@ def update_ticket_admin(
             event_domain="support",
             event_type="ticket_status_changed",
             title="Support request updated",
-            message=f"Your request is now {ticket.status.replace('_', ' ')}: {ticket.subject}",
+            message=f"Your support ticket status changed to {ticket.status.replace('_', ' ')}.",
             href=f"/dashboard/support?ticket={ticket.id}",
             resource_id=ticket.id,
             idempotency_key=f"support:status:{ticket.id}:{uuid.uuid4()}",

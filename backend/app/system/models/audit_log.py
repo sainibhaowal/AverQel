@@ -20,10 +20,10 @@ class AuditLog(Base):
         primary_key=True,
         default=generate_uuid7_with_fallback,
     )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(

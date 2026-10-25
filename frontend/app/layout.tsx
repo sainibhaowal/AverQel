@@ -9,30 +9,32 @@ import { BRAND_NAME } from "@/lib/brand";
 import AverQelDialogHost from "@/app/components/ui/AverQelDialogHost";
 import AppTooltipLayer from "@/app/components/ui/AppTooltipLayer";
 
+const PRODUCT_SUMMARY =
+  "AI workspace for documents, grounded answers, agent workflows, and team messaging";
+const PRODUCT_DESCRIPTION =
+  "AverQel is an AI workspace for document management and search, source-grounded questions, DeepSpace conversations and agent workflows, configurable model providers, approved connected apps, Qel Connect shared spaces and messaging, feedback and support, and tenant-aware security and administration. Provider and app integrations require configuration; Qel Connect is experimental beta.";
+
 export const metadata: Metadata = {
   title: BRAND_NAME,
-  description: `${BRAND_NAME} combines grounded chat, DeepSpace execution, proactive workspaces, connector automation, and tenant-isolated security for grounded AI work.`,
+  description: PRODUCT_DESCRIPTION,
   keywords: [
-    "document intelligence",
-    "agentic OS",
-    "DeepSpace",
-    "proactive workspace",
-    "connector automation",
-    "AI search",
-    "enterprise AI",
-    "tenant isolation",
+    "document management",
+    "source-cited answers",
+    "AI conversations",
+    "shared workspaces",
+    "AI models",
+    "connected tools",
   ],
   openGraph: {
-    title: `${BRAND_NAME} | Agentic OS for documents, connectors, and autonomous work`,
-    description:
-      "Grounded chat, DeepSpace execution, proactive workspaces, and connector automation in one tenant-isolated product.",
+    title: `${BRAND_NAME} - ${PRODUCT_SUMMARY}`,
+    description: PRODUCT_DESCRIPTION,
     type: "website",
     siteName: BRAND_NAME,
   },
   icons: {
-    icon: "/brand/AverQel_Icon.svg",
-    shortcut: "/brand/AverQel_Icon.svg",
-    apple: "/brand/AverQel_Icon.svg",
+    icon: "/AverQel%20Logo/AverQel_Icon.svg",
+    shortcut: "/AverQel%20Logo/AverQel_Icon.svg",
+    apple: "/AverQel%20Logo/AverQel_Icon.svg",
   },
 };
 

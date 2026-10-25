@@ -14,7 +14,6 @@ import {
   Gauge,
   HardDrive,
   ListTodo,
-  Loader2,
   MessageSquare,
   Network,
   PieChart,
@@ -26,6 +25,7 @@ import {
 } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import { useRealtimeEvents } from "@/lib/realtime";
 
@@ -297,8 +297,8 @@ export default function StorageDetailsPage() {
       />
 
       {loading && (
-        <div className="settings-featured text-muted-foreground flex items-center gap-3 p-7 text-sm">
-          <Loader2 size={18} /> Loading storage inventory…
+        <div className="settings-featured rounded-2xl">
+          <AverQelLoading label="Loading storage inventory…" size="section" />
         </div>
       )}
       {error && (

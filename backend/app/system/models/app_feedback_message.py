@@ -32,6 +32,7 @@ class AppFeedbackMessage(Base):
     author_role: Mapped[str] = mapped_column(String(24), nullable=False, server_default="user")
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="message")
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_internal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -10,19 +10,13 @@ GitHub Releases and never starts a VPS deployment.
 | --- | --- |
 | Linux | Builds `AverQel-linux-amd64.deb` |
 | Windows | Builds `AverQel-windows-x64.exe` |
-| NeoSIS | Checks out its repository separately, pins the selected commit and version in the release manifest, bundles its runtime inside the AverQel Electron package, and receives only allowlisted OS environment variables plus its own `NEOSIS_HOME` |
-| Electron | Uses the AverQel desktop shell; the separate NeoSIS Electron application is not packaged |
+| Electron | Packages the AverQel desktop shell and shared AverQel frontend |
 | Size | Blocks publication if either compressed installer exceeds 160 MiB |
 | Integrity | Publishes `SHA256SUMS.txt` and `release-manifest.json` with the installers |
 | Website downloads | The website points directly to stable GitHub `releases/latest/download` asset URLs |
 | Website version label | Comes from the deployed frontend build and updates only when the VPS deployment workflow is run |
 | macOS and RPM | Not built or published by this workflow |
 | VPS | Not built, changed, or deployed by this workflow |
-
-NeoSIS remains a separate source repository. GitHub's source archive for an
-AverQel tag contains the AverQel repository only; NeoSIS is checked out in a
-temporary workflow directory and is not committed or uploaded as a source
-archive.
 
 ## Signing status
 

@@ -7,6 +7,11 @@ test("homepage renders the visual workspace hero without hydration failures", as
       hydrationErrors.push(error.message);
     }
   });
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydration|Minified React error #418/i.test(message.text())) {
+      hydrationErrors.push(message.text());
+    }
+  });
 
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto("/");
@@ -16,28 +21,17 @@ test("homepage renders the visual workspace hero without hydration failures", as
   await expect(page.getByText("AI grounded in your sources")).toBeVisible();
   await expect(page.getByRole("link", { name: "Create your workspace" })).toBeVisible();
 
-  const lockup = page.locator("[data-brand-lockup]:visible").first();
-  const mark = lockup.locator('img[src="/brand/AverQel_Icon.svg"]');
-  const wordmark = lockup.locator(".averqel-wordmark__svg");
+  const navBrand = page.getByRole("navigation", { name: "Main navigation" }).locator('a[href="/"]');
+  const mark = navBrand.locator(".averqel-logo__mark-image");
+  await expect(mark).toHaveAttribute("alt", "AverQel");
   await expect(mark).toHaveAttribute("width", "92");
   await expect(mark).toHaveAttribute("height", "46");
-  await expect(wordmark).toHaveAttribute("width", "156");
-  await expect(wordmark).toHaveAttribute("height", "29");
-
-  const [markBox, wordmarkBox] = await Promise.all([mark.boundingBox(), wordmark.boundingBox()]);
-  expect(markBox).not.toBeNull();
-  expect(wordmarkBox).not.toBeNull();
-  if (markBox && wordmarkBox) {
-    const markCenter = markBox.y + markBox.height / 2;
-    const wordmarkCenter = wordmarkBox.y + wordmarkBox.height / 2;
-    expect(Math.abs(markCenter - wordmarkCenter)).toBeLessThan(3);
-    expect(wordmarkBox.x - (markBox.x + markBox.width)).toBeLessThanOrEqual(-12);
-  }
+  await expect(navBrand.locator(".averqel-logo__wordmark")).toHaveCount(0);
 
   const footerLockup = page.locator("[data-brand-lockup].averqel-logo--footer:visible").first();
   await expect(footerLockup).toBeVisible();
   await footerLockup.scrollIntoViewIfNeeded();
-  const footerMark = footerLockup.locator('img[src="/brand/AverQel_Icon.svg"]');
+  const footerMark = footerLockup.locator("img").first();
   const footerWordmark = footerLockup.locator(".averqel-wordmark__svg");
   const [footerMarkBox, footerWordmarkBox] = await Promise.all([
     footerMark.boundingBox(),

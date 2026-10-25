@@ -35,11 +35,29 @@ export default function FeedbackDocsPage() {
       </DocsSection>
       <DocsSection title="Privacy and expectations">
         <p>
-          Feedback is attached to your account so you can follow replies. Assigned Feedback Managers
-          can read submitted text across workspaces to review and respond; their staff view does not
-          show your email address or account ID. Replies appear in your in-app feedback thread.
-          Feedback is not end-to-end encrypted. The product does not provide public roadmap voting,
-          a community forum, or anonymous telemetry through this page. Do not include credentials,
+          Feedback is attached to your account so you can follow replies. New and migrated text is
+          encrypted in your browser for your account and the platform-key owner, who can decrypt it
+          to respond. That is the administrator account that initialized the shared key; other
+          allowlisted administrators cannot decrypt the message body. The first time you use Support
+          or Feedback, create your own encryption key with a passphrase of at least 14 characters;
+          you do this once for your account, not for every submission. Your passphrase is not sent
+          to the server, and losing it can make your encrypted copy unreadable. If an administrator
+          is migrating older feedback, your key must exist first; records without it are skipped
+          until you finish setup, and the administrator can then retry. The app decrypts messages in
+          your browser after you unlock your key; there is no separate decrypt button. Legacy
+          Feedback Manager assignments do not grant queue access. The review queue does not show
+          your email address or account ID. Older records stay plaintext until the administrator
+          runs the migration in Feedback Management, and older backups may retain plaintext until
+          expiry. Account IDs, category, status, and timestamps remain visible to the service. After
+          you unlock your key, it stays in browser memory across Support and Feedback navigation and
+          locks after four hours without activity, sign-out, or login-session expiry. Reloading or
+          closing the tab clears the in-memory unlock, so you may need to enter your passphrase
+          again. A compromised live server could change the browser code or keys, and decrypted
+          content is visible on your device. Replies show profile photos when participants have
+          added one, with initials shown when no photo is available. Completed or declined
+          submissions are automatically deleted after 365 days by default; active submissions are
+          retained while under review. The product does not provide public roadmap voting, a
+          community forum, or anonymous telemetry through this page. Do not include credentials,
           recovery codes, customer files, or other sensitive data in feedback.
         </p>
       </DocsSection>

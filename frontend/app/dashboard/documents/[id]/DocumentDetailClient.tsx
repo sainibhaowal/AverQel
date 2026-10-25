@@ -37,7 +37,16 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
+import { useAuth } from "@/app/context/AuthContext";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useRealtimeEvents } from "@/lib/realtime";
+import { hasDocumentOrganizationAdvancedAccess } from "@/lib/roles";
+import {
+  getDocumentStatusPollingInterval,
+  getDocumentStatusRetryDelay,
+  getRealtimeStatusRefreshDelay,
+  isTerminalDocumentStatus,
+} from "../_lib/status-polling";
 import { saveDocumentContentToDeepSpace } from "@/app/lib/deepspace-document-notes";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -184,9 +193,22 @@ function extractMentionIds(value: string): string[] {
   );
 }
 
+async function getDocumentApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.clone().json();
+    const message = payload?.error?.message ?? payload?.detail ?? payload?.message;
+    if (typeof message === "string" && message.trim()) return message.trim().slice(0, 300);
+  } catch {
+    // Keep a safe status-based fallback for non-JSON or malformed responses.
+  }
+  return `${fallback} (HTTP ${response.status})`;
+}
+
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const { user } = useAuth();
+  const canViewClassificationHistory = hasDocumentOrganizationAdvancedAccess(user?.roles);
   const [doc, setDoc] = useState<DocumentMetadata | null>(null);
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const [versions, setVersions] = useState<VersionHistory[]>([]);
@@ -195,8 +217,13 @@ export default function DocumentDetailPage() {
   const [hasMoreChunks, setHasMoreChunks] = useState(false);
   const [loadingMoreChunks, setLoadingMoreChunks] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [fullTextLoading, setFullTextLoading] = useState(true);
+  const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
+  const [chunksError, setChunksError] = useState<string | null>(null);
+  const [fullTextLoading, setFullTextLoading] = useState(false);
+  const [fullTextError, setFullTextError] = useState<string | null>(null);
+  const [fullTextLoadedFor, setFullTextLoadedFor] = useState<string | null>(null);
   const [fullText, setFullText] = useState<string | null>(null);
+  const [requestRetrySeconds, setRequestRetrySeconds] = useState(0);
   const [viewMode, setViewMode] = useState<"reader" | "technical">("reader");
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -228,113 +255,366 @@ export default function DocumentDetailPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const aiActionButtonRef = useRef<HTMLButtonElement>(null);
   const [aiActionMenuOpen, setAiActionMenuOpen] = useState(false);
+  const detailRequestInFlightRef = useRef(false);
+  const statusRequestInFlightRef = useRef(false);
+  const fullTextRequestInFlightRef = useRef(false);
+  const fullTextLoadedForRef = useRef<string | null>(null);
+  const requestRetryAtRef = useRef(0);
+  const terminalDataRefreshStartedRef = useRef(false);
+  const realtimeStatusRefreshTimerRef = useRef<number | null>(null);
+  const lastRealtimeStatusRefreshAtRef = useRef(0);
+
+  const recordRequestCooldown = useCallback((response: Response) => {
+    if (response.status !== 429 && response.status !== 503) return;
+    const retryAt = Date.now() + getDocumentStatusRetryDelay(response, 5_000);
+    requestRetryAtRef.current = Math.max(requestRetryAtRef.current, retryAt);
+    setRequestRetrySeconds(Math.ceil((requestRetryAtRef.current - Date.now()) / 1000));
+  }, []);
+
+  const recordTransientCooldown = useCallback(() => {
+    const retryAt = Date.now() + 10_000;
+    requestRetryAtRef.current = Math.max(requestRetryAtRef.current, retryAt);
+    setRequestRetrySeconds(Math.ceil((requestRetryAtRef.current - Date.now()) / 1000));
+  }, []);
+
+  useEffect(() => {
+    if (requestRetrySeconds <= 0) return;
+    const timer = window.setTimeout(() => {
+      const remainingSeconds = Math.max(
+        0,
+        Math.ceil((requestRetryAtRef.current - Date.now()) / 1000),
+      );
+      setRequestRetrySeconds(remainingSeconds);
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [requestRetrySeconds]);
 
   const fetchChunks = useCallback(
     async (offset: number, append: boolean) => {
-      if (!id) return;
-      const response = (await fetchWithAuth(
-        `/documents/${id}/chunks?limit=${CHUNK_PAGE_SIZE}&offset=${offset}`,
-        { timeoutMs: 60_000, silentTimeout: true },
-      )) as Response;
-      if (!response.ok) {
-        return;
+      if (!id) return false;
+      if (Date.now() < requestRetryAtRef.current) {
+        setChunksError("The service is busy. Wait for the retry timer before loading fragments.");
+        return false;
       }
-      const data = (await response.json()) as ChunksResponse;
-      setTotalChunks(data.total_chunks);
-      setHasMoreChunks(data.has_more);
-      setChunks((current) => (append ? [...current, ...data.chunks] : data.chunks));
+      try {
+        const response = (await fetchWithAuth(
+          `/documents/${id}/chunks?limit=${CHUNK_PAGE_SIZE}&offset=${offset}`,
+          { timeoutMs: 60_000, silentTimeout: true, suppressErrorToast: true },
+        )) as Response;
+        if (!response.ok) {
+          recordRequestCooldown(response);
+          setChunksError(
+            "Document fragments could not be loaded. Retry when the service is available.",
+          );
+          return false;
+        }
+        const data = (await response.json()) as ChunksResponse;
+        setTotalChunks(data.total_chunks);
+        setHasMoreChunks(data.has_more);
+        setChunks((current) => (append ? [...current, ...data.chunks] : data.chunks));
+        setChunksError(null);
+        return true;
+      } catch {
+        recordTransientCooldown();
+        setChunksError(
+          "Document fragments could not be loaded. Retry when the service is available.",
+        );
+        return false;
+      }
     },
-    [id],
+    [id, recordRequestCooldown, recordTransientCooldown],
   );
 
-  const fetchData = useCallback(async () => {
-    if (!id) return;
+  const fetchDocumentStatus = useCallback(async () => {
+    if (!id || statusRequestInFlightRef.current) return null;
+    if (Date.now() < requestRetryAtRef.current) return null;
+    statusRequestInFlightRef.current = true;
     try {
-      const [metaResult, statusResult] = await Promise.allSettled([
-        fetchWithAuth(`/documents/${id}`, { timeoutMs: 60_000, silentTimeout: true }),
-        fetchWithAuth(`/documents/${id}/status`, { timeoutMs: 60_000, silentTimeout: true }),
-      ]);
+      const response = (await fetchWithAuth(`/documents/${id}/status`, {
+        timeoutMs: 60_000,
+        silentTimeout: true,
+        suppressErrorToast: true,
+      })) as Response;
+      if (!response.ok) {
+        recordRequestCooldown(response);
+        return { response, status: null };
+      }
 
-      if (metaResult.status === "fulfilled" && metaResult.value.ok)
-        setDoc(await metaResult.value.json());
-      if (statusResult.status === "fulfilled" && statusResult.value.ok)
-        setStatus(await statusResult.value.json());
-      await fetchChunks(0, false);
+      const nextStatus = (await response.json()) as DocumentStatus;
+      setStatus(nextStatus);
+      return { response, status: nextStatus };
+    } catch {
+      recordTransientCooldown();
+      return null;
+    } finally {
+      statusRequestInFlightRef.current = false;
+    }
+  }, [id, recordRequestCooldown, recordTransientCooldown]);
 
-      const [qualityResult, commentsResult, classificationResult] = await Promise.allSettled([
-        fetchWithAuth(`/documents/${id}/quality`, { timeoutMs: 60_000, silentTimeout: true }),
-        fetchWithAuth(`/documents/${id}/comments`, { timeoutMs: 60_000, silentTimeout: true }),
-        fetchWithAuth(`/documents/organization/classification-rules/documents/${id}/history`, {
-          timeoutMs: 60_000,
-          silentTimeout: true,
-        }),
-      ]);
-      if (qualityResult.status === "fulfilled" && qualityResult.value.ok)
-        setQuality((await qualityResult.value.json()) as QualityReport);
-      if (commentsResult.status === "fulfilled" && commentsResult.value.ok)
-        setComments((await commentsResult.value.json()) as DocumentComment[]);
-      if (classificationResult.status === "fulfilled" && classificationResult.value.ok) {
-        setClassificationHistory(
-          ((await classificationResult.value.json()) as { items?: ClassificationHistoryItem[] })
-            .items ?? [],
+  const loadFullText = useCallback(async () => {
+    if (!id || fullTextRequestInFlightRef.current || fullTextLoadedForRef.current === id) return;
+    if (Date.now() < requestRetryAtRef.current) {
+      const seconds = Math.ceil((requestRetryAtRef.current - Date.now()) / 1000);
+      setFullTextError(`The service asked us to wait ${seconds} seconds before retrying.`);
+      return;
+    }
+    fullTextRequestInFlightRef.current = true;
+    setFullTextLoading(true);
+    setFullTextError(null);
+    try {
+      const response = (await fetchWithAuth(`/documents/${id}/full-text`, {
+        timeoutMs: 60_000,
+        silentTimeout: true,
+        suppressErrorToast: true,
+      })) as Response;
+      if (!response.ok) {
+        recordRequestCooldown(response);
+        setFullTextError(
+          response.status === 429 || response.status === 503
+            ? "The service is busy. Wait for the retry timer, then try again."
+            : "Extracted text could not be loaded. Retry when the service is available.",
         );
+        return;
       }
+      const data = (await response.json()) as { content?: unknown };
+      if (typeof data.content !== "string") {
+        setFullTextError("The server returned an invalid extracted-text response.");
+        return;
+      }
+      setFullText(data.content);
+      fullTextLoadedForRef.current = id;
+      setFullTextLoadedFor(id);
+    } catch (error) {
+      recordTransientCooldown();
+      setFullTextError(
+        error instanceof Error && error.name === "ApiRequestTimeoutError"
+          ? "Loading extracted text timed out. Your document is still available; retry later."
+          : "Extracted text could not be loaded. Check your connection and retry.",
+      );
+    } finally {
+      fullTextRequestInFlightRef.current = false;
+      setFullTextLoading(false);
+    }
+  }, [id, recordRequestCooldown, recordTransientCooldown]);
 
+  const fetchData = useCallback(async () => {
+    if (!id || detailRequestInFlightRef.current) return;
+    if (Date.now() < requestRetryAtRef.current) {
+      const seconds = Math.ceil((requestRetryAtRef.current - Date.now()) / 1000);
+      setDetailLoadError(`The service asked us to wait ${seconds} seconds before retrying.`);
+      return;
+    }
+    detailRequestInFlightRef.current = true;
+    try {
+      setDetailLoadError(null);
+      const requestOptions = {
+        timeoutMs: 60_000,
+        silentTimeout: true,
+        suppressErrorToast: true,
+      };
+      const statusPromise = fetchDocumentStatus();
+      let metaResponse: Response | null = null;
       try {
-        const versionsRes = (await fetchWithAuth(`/documents/${id}/versions`, {
-          timeoutMs: 60_000,
-          silentTimeout: true,
-        })) as Response;
-        if (versionsRes.ok) {
-          const data = (await versionsRes.json()) as VersionsResponse;
-          setVersions(data.versions);
-        }
-      } catch (e) {
-        console.error("Failed to fetch versions", e);
+        metaResponse = (await fetchWithAuth(`/documents/${id}`, requestOptions)) as Response;
+      } catch {
+        // Keep failures in the page state so callers do not produce unhandled
+        // rejections or a duplicate global toast.
+        recordTransientCooldown();
       }
 
-      // The document shell and fragments are useful immediately. Full text
-      // can be large, so it must not block the first render of the page.
+      if (!metaResponse?.ok) {
+        if (metaResponse) recordRequestCooldown(metaResponse);
+        setDetailLoadError(
+          metaResponse?.status === 429 || metaResponse?.status === 503
+            ? "The service is busy. Wait for the retry timer, then retry the document details."
+            : metaResponse?.status === 404
+              ? "This document was not found or is no longer available to your account."
+              : "Document details could not be loaded. Check your connection and retry.",
+        );
+        return;
+      }
+
+      let metadata: DocumentMetadata;
+      try {
+        metadata = (await metaResponse.json()) as DocumentMetadata;
+      } catch {
+        setDetailLoadError("The server returned invalid document details. Retry in a moment.");
+        return;
+      }
+      setDoc(metadata);
       setLoading(false);
 
-      try {
-        const fullRes = (await fetchWithAuth(`/documents/${id}/full-text`, {
-          timeoutMs: 60_000,
-          silentTimeout: true,
-        })) as Response;
-        if (fullRes.ok) {
-          const data = await fullRes.json();
-          setFullText(data.content);
+      const [statusResult] = await Promise.allSettled([statusPromise]);
+      let partialFailure = false;
+      const currentStatus =
+        statusResult?.status === "fulfilled" ? (statusResult.value?.status ?? null) : null;
+      if (currentStatus) {
+        terminalDataRefreshStartedRef.current =
+          isTerminalDocumentStatus(currentStatus.status) && !currentStatus.recovery_available;
+      } else {
+        partialFailure = true;
+      }
+      if (Date.now() < requestRetryAtRef.current) {
+        setDetailLoadError(
+          "The service is busy. Wait for the retry timer before loading more details.",
+        );
+        return;
+      }
+
+      const [chunksLoaded, qualityResult, commentsResult, classificationResult, versionsResult] =
+        await Promise.all([
+          fetchChunks(0, false).catch(() => false),
+          (fetchWithAuth(`/documents/${id}/quality`, requestOptions) as Promise<Response>).catch(
+            () => {
+              recordTransientCooldown();
+              return null;
+            },
+          ),
+          (fetchWithAuth(`/documents/${id}/comments`, requestOptions) as Promise<Response>).catch(
+            () => {
+              recordTransientCooldown();
+              return null;
+            },
+          ),
+          canViewClassificationHistory
+            ? (
+                fetchWithAuth(
+                  `/documents/organization/classification-rules/documents/${id}/history`,
+                  requestOptions,
+                ) as Promise<Response>
+              ).catch(() => {
+                recordTransientCooldown();
+                return null;
+              })
+            : Promise.resolve(null),
+          (fetchWithAuth(`/documents/${id}/versions`, requestOptions) as Promise<Response>).catch(
+            () => {
+              recordTransientCooldown();
+              return null;
+            },
+          ),
+        ]);
+
+      if (!chunksLoaded) partialFailure = true;
+      [qualityResult, commentsResult, classificationResult, versionsResult].forEach((response) => {
+        if (response) recordRequestCooldown(response);
+      });
+      const readJson = async <T,>(response: Response | null): Promise<T | null> => {
+        if (!response?.ok) return null;
+        try {
+          return (await response.json()) as T;
+        } catch {
+          return null;
         }
-      } catch (e) {
-        console.error("Failed to fetch full text", e);
-      } finally {
+      };
+      const [qualityData, commentsData, classificationData, versionsData] = await Promise.all([
+        readJson<QualityReport>(qualityResult),
+        readJson<DocumentComment[]>(commentsResult),
+        classificationResult === null
+          ? Promise.resolve(null)
+          : readJson<{ items?: ClassificationHistoryItem[] }>(classificationResult),
+        readJson<VersionsResponse>(versionsResult),
+      ]);
+      if (qualityData) setQuality(qualityData);
+      else partialFailure = true;
+      if (commentsData) setComments(commentsData);
+      else partialFailure = true;
+      if (classificationResult !== null) {
+        if (classificationData) setClassificationHistory(classificationData.items ?? []);
+        else partialFailure = true;
+      }
+      if (versionsData) setVersions(versionsData.versions);
+      else partialFailure = true;
+
+      setDetailLoadError(
+        partialFailure
+          ? "Some document details are temporarily unavailable. Retry to load the missing information."
+          : null,
+      );
+
+      // Full text is a potentially large response. Do not request it while OCR,
+      // extraction, or embedding is still in progress.
+      if (
+        currentStatus &&
+        (currentStatus.status === "indexed" || currentStatus.status === "completed") &&
+        !currentStatus?.recovery_available
+      ) {
+        void loadFullText();
+      } else {
+        setFullText(null);
+        setFullTextError(null);
         setFullTextLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to fetch document details", error);
+    } catch {
+      recordTransientCooldown();
+      setDetailLoadError(
+        "Some document details could not be loaded. Retry when the service is available.",
+      );
     } finally {
+      detailRequestInFlightRef.current = false;
       setLoading(false);
     }
-  }, [fetchChunks, id]);
+  }, [
+    canViewClassificationHistory,
+    fetchChunks,
+    fetchDocumentStatus,
+    id,
+    loadFullText,
+    recordRequestCooldown,
+    recordTransientCooldown,
+  ]);
+
+  const refreshDocumentStatus = useCallback(async () => {
+    const result = await fetchDocumentStatus();
+    if (!result?.status) return result;
+
+    const nextStatus = result.status;
+    const pollInterval = getDocumentStatusPollingInterval(nextStatus);
+    if (pollInterval !== null) {
+      terminalDataRefreshStartedRef.current = false;
+    } else if (
+      isTerminalDocumentStatus(nextStatus.status) &&
+      !nextStatus.recovery_available &&
+      !terminalDataRefreshStartedRef.current
+    ) {
+      terminalDataRefreshStartedRef.current = true;
+      await fetchData();
+    }
+
+    return result;
+  }, [fetchData, fetchDocumentStatus]);
 
   useEffect(() => {
     if (!id || !quality?.page_numbers.length || !doc?.content_type.includes("pdf")) return;
     let cancelled = false;
+    const controller = new AbortController();
     const createdUrls: string[] = [];
     const loadThumbnails = async () => {
-      const entries = await Promise.all(
-        quality.page_numbers.slice(0, 12).map(async (page) => {
-          const response = (await fetchWithAuth(
-            `/documents/${id}/pages/${page}/thumbnail`,
-          )) as Response;
-          if (!response.ok) return null;
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          createdUrls.push(url);
-          return [page, url] as const;
-        }),
-      );
+      const pages = quality.page_numbers.slice(0, 12);
+      const entries: (readonly [number, string] | null)[] = Array(pages.length).fill(null);
+      let nextIndex = 0;
+      const loadNext = async () => {
+        while (!cancelled && nextIndex < pages.length) {
+          const index = nextIndex++;
+          const page = pages[index];
+          if (page === undefined) continue;
+          try {
+            const response = (await fetchWithAuth(`/documents/${id}/pages/${page}/thumbnail`, {
+              signal: controller.signal,
+              timeoutMs: 20_000,
+              silentTimeout: true,
+              suppressErrorToast: true,
+            })) as Response;
+            if (!response.ok || cancelled) continue;
+            const url = URL.createObjectURL(await response.blob());
+            createdUrls.push(url);
+            entries[index] = [page, url];
+          } catch {
+            // Thumbnails are optional; one failed page must not reject the group.
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, pages.length) }, () => loadNext()));
       if (!cancelled)
         setThumbnailUrls(
           Object.fromEntries(
@@ -345,6 +625,7 @@ export default function DocumentDetailPage() {
     void loadThumbnails();
     return () => {
       cancelled = true;
+      controller.abort();
       createdUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [doc?.content_type, id, quality?.page_numbers]);
@@ -359,7 +640,11 @@ export default function DocumentDetailPage() {
     setPreviewText(null);
     void (async () => {
       try {
-        const response = (await fetchWithAuth(`/documents/${id}/pages/${previewPage}`)) as Response;
+        const response = (await fetchWithAuth(`/documents/${id}/pages/${previewPage}`, {
+          timeoutMs: 30_000,
+          silentTimeout: true,
+          suppressErrorToast: true,
+        })) as Response;
         if (!response.ok) throw new Error("This page preview is unavailable.");
         const contentType = response.headers.get("content-type") ?? "";
         if (contentType.startsWith("image/")) {
@@ -404,8 +689,15 @@ export default function DocumentDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: aiAction }),
+        timeoutMs: 120_000,
+        silentTimeout: true,
+        suppressErrorToast: true,
       })) as Response;
-      if (!response.ok) throw new Error("The document action could not be completed.");
+      if (!response.ok) {
+        throw new Error(
+          await getDocumentApiErrorMessage(response, "The document action could not be completed."),
+        );
+      }
       const data = (await response.json()) as {
         answer?: unknown;
         citations?: Array<Record<string, unknown>>;
@@ -435,7 +727,11 @@ export default function DocumentDetailPage() {
     if (!doc || downloading) return;
     setDownloading(true);
     try {
-      const response = (await fetchWithAuth(`/documents/${doc.document_id}/download`)) as Response;
+      const response = (await fetchWithAuth(`/documents/${doc.document_id}/download`, {
+        timeoutMs: 60_000,
+        silentTimeout: true,
+        suppressErrorToast: true,
+      })) as Response;
       if (!response.ok) throw new Error("Unable to download the original file.");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -447,7 +743,6 @@ export default function DocumentDetailPage() {
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Document download failed", error);
       await averqelAlert(
         error instanceof Error ? error.message : "Unable to download the original file.",
       );
@@ -501,7 +796,11 @@ export default function DocumentDetailPage() {
               </div>
               <div className="flex max-h-[82vh] min-h-48 items-center justify-center overflow-auto rounded-xl bg-black/10 p-4 text-center">
                 {previewLoading ? (
-                  <Loader2 className="text-primary animate-spin" size={28} />
+                  <AverQelLoading
+                    label="Loading document preview…"
+                    size="section"
+                    className="w-full"
+                  />
                 ) : previewError ? (
                   <div className="flex flex-col items-center gap-4">
                     <p className="text-danger max-w-md text-sm font-bold">{previewError}</p>
@@ -551,6 +850,8 @@ export default function DocumentDetailPage() {
           content: commentDraft.trim(),
           mentions: extractMentionIds(commentDraft.trim()),
         }),
+        silentTimeout: true,
+        suppressErrorToast: true,
       })) as Response;
       if (!response.ok) throw new Error("Unable to save comment.");
       const created = (await response.json()) as DocumentComment;
@@ -571,6 +872,8 @@ export default function DocumentDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expires_in_seconds: 86_400 }),
+        silentTimeout: true,
+        suppressErrorToast: true,
       })) as Response;
       if (!response.ok) throw new Error("Unable to create share link.");
       const data = (await response.json()) as { id?: string; share_token?: string };
@@ -590,6 +893,8 @@ export default function DocumentDetailPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content, mentions: extractMentionIds(content) }),
+      silentTimeout: true,
+      suppressErrorToast: true,
     })) as Response;
     if (!response.ok) {
       toast.error("Unable to edit comment.");
@@ -603,6 +908,8 @@ export default function DocumentDetailPage() {
     if (!(await averqelConfirm("Delete this comment? This cannot be undone."))) return;
     const response = (await fetchWithAuth(`/documents/comments/${commentId}`, {
       method: "DELETE",
+      silentTimeout: true,
+      suppressErrorToast: true,
     })) as Response;
     if (!response.ok) {
       toast.error("Unable to delete comment.");
@@ -631,7 +938,6 @@ export default function DocumentDetailPage() {
       });
       toast.success("Content added to your active DeepSpace note.");
     } catch (err) {
-      console.error("Send to note failed", err);
       toast.error(err instanceof Error ? err.message : "Failed to send to notes.");
     }
   };
@@ -642,6 +948,8 @@ export default function DocumentDetailPage() {
     try {
       const response = (await fetchWithAuth(`/documents/${id}/resume`, {
         method: "POST",
+        silentTimeout: true,
+        suppressErrorToast: true,
       })) as Response;
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.message || "Unable to resume ingestion.");
@@ -658,6 +966,7 @@ export default function DocumentDetailPage() {
     if (!id || versionId === id) return;
     const response = (await fetchWithAuth(
       `/documents/${id}/versions/diff?compare_to=${versionId}`,
+      { silentTimeout: true, suppressErrorToast: true },
     )) as Response;
     if (!response.ok) {
       toast.error("Unable to compare document versions.");
@@ -672,6 +981,8 @@ export default function DocumentDetailPage() {
     try {
       const response = (await fetchWithAuth(`/documents/${id}/versions/${versionId}/restore`, {
         method: "POST",
+        silentTimeout: true,
+        suppressErrorToast: true,
       })) as Response;
       if (!response.ok) throw new Error("Unable to restore this version.");
       toast.success("Version restored and queued for indexing.");
@@ -691,26 +1002,73 @@ export default function DocumentDetailPage() {
   useRealtimeEvents(
     (event) => {
       if (!id || event.data?.document_id !== id) return;
-      void fetchData();
+      if (getDocumentStatusPollingInterval(status) === null) return;
+      if (realtimeStatusRefreshTimerRef.current !== null) return;
+      const delayMs = getRealtimeStatusRefreshDelay(
+        Date.now(),
+        lastRealtimeStatusRefreshAtRef.current,
+      );
+      realtimeStatusRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeStatusRefreshTimerRef.current = null;
+        lastRealtimeStatusRefreshAtRef.current = Date.now();
+        void refreshDocumentStatus();
+      }, delayMs);
     },
     ["documents"],
   );
 
-  // SSE is the fast path. This bounded reconciliation keeps OCR-derived
-  // Reader Mode and fragments current if an event is briefly missed while an
-  // ingestion worker is still processing the document.
+  useEffect(
+    () => () => {
+      if (realtimeStatusRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeStatusRefreshTimerRef.current);
+        realtimeStatusRefreshTimerRef.current = null;
+      }
+    },
+    [id],
+  );
+
+  const pollingStatus = status?.status ?? doc?.status;
+  const pollingIngestionStatus = status?.ingestion_status;
+  const pollingRecoveryAvailable = status?.recovery_available;
+
+  // Realtime events are the fast path. This single-endpoint reconciliation
+  // updates progress without reloading comments, versions, and full text.
   useEffect(() => {
-    const currentStatus = status?.status ?? doc?.status;
-    if (
-      !id ||
-      (["indexed", "completed", "failed", "dead_lettered"].includes(currentStatus ?? "") &&
-        !status?.recovery_available)
-    ) {
-      return;
-    }
-    const intervalId = window.setInterval(() => void fetchData(), 2000);
-    return () => window.clearInterval(intervalId);
-  }, [doc?.status, fetchData, id, status?.recovery_available, status?.status]);
+    if (!id) return;
+    const currentStatus = pollingStatus
+      ? {
+          status: pollingStatus,
+          ingestion_status: pollingIngestionStatus,
+          recovery_available: pollingRecoveryAvailable,
+        }
+      : null;
+    const initialDelay = getDocumentStatusPollingInterval(currentStatus);
+    if (initialDelay === null) return;
+
+    let active = true;
+    let timerId: number | null = null;
+    let nextDelay: number = initialDelay;
+    const poll = async () => {
+      const result = await refreshDocumentStatus();
+      if (!active) return;
+
+      if (result?.status) {
+        const pollInterval = getDocumentStatusPollingInterval(result.status);
+        if (pollInterval === null) return;
+        nextDelay = pollInterval;
+      } else {
+        nextDelay = getDocumentStatusRetryDelay(result?.response ?? null, nextDelay);
+      }
+
+      timerId = window.setTimeout(() => void poll(), nextDelay);
+    };
+
+    timerId = window.setTimeout(() => void poll(), nextDelay);
+    return () => {
+      active = false;
+      if (timerId !== null) window.clearTimeout(timerId);
+    };
+  }, [id, pollingIngestionStatus, pollingRecoveryAvailable, pollingStatus, refreshDocumentStatus]);
 
   if (loading) {
     return (
@@ -725,10 +1083,33 @@ export default function DocumentDetailPage() {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
         <AlertCircle size={48} className="text-red-500" />
-        <p className="text-foreground text-xl font-bold">Document Not Found</p>
-        <Link href="/dashboard/documents" prefetch={false} className="text-primary hover:underline">
-          Return to list
-        </Link>
+        <p className="text-foreground text-xl font-bold">
+          {detailLoadError?.includes("not found")
+            ? "Document Not Found"
+            : "Could Not Load Document"}
+        </p>
+        <p className="text-muted-foreground max-w-md text-center text-sm" role="alert">
+          {detailLoadError ?? "Document details are temporarily unavailable."}
+        </p>
+        <div className="flex items-center gap-4">
+          {!detailLoadError?.includes("not found") ? (
+            <button
+              type="button"
+              onClick={() => void fetchData()}
+              disabled={requestRetrySeconds > 0}
+              className="border-primary/25 text-primary rounded-lg border px-4 py-2 text-sm font-semibold"
+            >
+              {requestRetrySeconds > 0 ? `Retry in ${requestRetrySeconds}s` : "Retry"}
+            </button>
+          ) : null}
+          <Link
+            href="/dashboard/documents"
+            prefetch={false}
+            className="text-primary hover:underline"
+          >
+            Return to list
+          </Link>
+        </div>
       </div>
     );
   }
@@ -762,6 +1143,8 @@ export default function DocumentDetailPage() {
   const isFailed =
     (status?.status || doc.status) === "failed" ||
     (status?.status || doc.status) === "dead_lettered";
+  const readerTextIsReady =
+    !status?.recovery_available && ["indexed", "completed"].includes(status?.status ?? doc.status);
   const overallProgress = status?.processing_progress ?? doc.processing_progress ?? 0;
 
   const cleanText = (text: string) => {
@@ -799,6 +1182,24 @@ export default function DocumentDetailPage() {
         <ArrowLeft size={18} className="transition-transform group-hover:-translate-x-1" />
         <span className="text-sm font-semibold">Back to Documents</span>
       </Link>
+
+      {detailLoadError ? (
+        <div
+          className="text-foreground flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 text-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <span>{detailLoadError}</span>
+          <button
+            type="button"
+            onClick={() => void fetchData()}
+            disabled={requestRetrySeconds > 0}
+            className="border-primary/25 text-primary rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60"
+          >
+            {requestRetrySeconds > 0 ? `Retry in ${requestRetrySeconds}s` : "Retry details"}
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="space-y-8 lg:col-span-2">
@@ -1100,9 +1501,15 @@ export default function DocumentDetailPage() {
                   ) : null}
                   <div className="text-foreground/30 text-[10px] font-bold tracking-wider uppercase">
                     {viewMode === "reader"
-                      ? fullText?.length
-                        ? `${Math.ceil(fullText.length / 5)} words`
-                        : "Reading..."
+                      ? fullTextLoading
+                        ? "Loading text"
+                        : fullText?.length
+                          ? `${Math.ceil(fullText.length / 5)} words`
+                          : fullTextError || fullTextLoadedFor === id
+                            ? "Text unavailable"
+                            : readerTextIsReady
+                              ? "Text ready"
+                              : "Processing"
                       : `${chunks.length} fragments`}
                   </div>
                 </div>
@@ -1121,19 +1528,78 @@ export default function DocumentDetailPage() {
                   ) : (
                     <div className="flex flex-col items-center gap-4 py-24">
                       {fullTextLoading ? (
-                        <Loader2 size={32} className="text-primary/20 animate-spin" />
+                        <AverQelLoading label="Loading document text…" size="compact" />
+                      ) : fullTextError ? (
+                        <div className="border-danger/25 bg-danger/5 flex max-w-lg flex-col items-center gap-3 rounded-xl border p-5 text-center">
+                          <AlertCircle size={24} className="text-danger" />
+                          <p className="text-foreground text-sm" role="alert">
+                            {fullTextError}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void loadFullText()}
+                            disabled={fullTextLoading || requestRetrySeconds > 0}
+                            className="border-primary/25 text-primary rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {requestRetrySeconds > 0
+                              ? `Retry in ${requestRetrySeconds}s`
+                              : "Retry text loading"}
+                          </button>
+                        </div>
+                      ) : readerTextIsReady && fullTextLoadedFor === id ? (
+                        <>
+                          <AlertCircle size={32} className="text-foreground/20" />
+                          <p className="text-foreground/50 text-center text-sm">
+                            No extracted text is available for this document.
+                          </p>
+                        </>
+                      ) : readerTextIsReady ? (
+                        <>
+                          <FileText size={28} className="text-foreground/30" />
+                          <p className="text-foreground/50 text-center text-sm">
+                            Reader text is ready to load.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void loadFullText()}
+                            disabled={fullTextLoading || requestRetrySeconds > 0}
+                            className="border-primary/25 text-primary rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {requestRetrySeconds > 0
+                              ? `Retry in ${requestRetrySeconds}s`
+                              : "Load extracted text"}
+                          </button>
+                        </>
                       ) : (
-                        <AlertCircle size={32} className="text-foreground/20" />
+                        <>
+                          <Clock size={24} className="text-foreground/30" />
+                          <p className="text-foreground/50 text-center text-sm">
+                            Extracted text will be loaded after document processing finishes.
+                          </p>
+                        </>
                       )}
-                      <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
-                        {fullTextLoading
-                          ? "Loading document text without blocking the page"
-                          : "No extracted text available"}
-                      </p>
                     </div>
                   )
                 ) : (
                   <div className="space-y-6">
+                    {chunksError ? (
+                      <div
+                        className="border-danger/25 bg-danger/5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm"
+                        role="alert"
+                      >
+                        <span>{chunksError}</span>
+                        <button
+                          type="button"
+                          onClick={() => void fetchChunks(0, false)}
+                          disabled={requestRetrySeconds > 0}
+                          className="border-primary/25 text-primary rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {requestRetrySeconds > 0
+                            ? `Retry in ${requestRetrySeconds}s`
+                            : "Retry fragments"}
+                        </button>
+                      </div>
+                    ) : null}
                     {chunks.length > 0 ? (
                       chunks.map((chunk) => (
                         <div
@@ -1233,38 +1699,40 @@ export default function DocumentDetailPage() {
         </div>
 
         <div className="space-y-8">
-          <div className="glass-card space-y-6 p-6">
-            <h3 className="text-foreground border-glass-border/60 flex items-center gap-2 border-b pb-4 text-sm font-bold tracking-widest uppercase">
-              <Tag size={16} className="text-primary" /> Classification history
-            </h3>
-            {classificationHistory.length ? (
-              <div className="space-y-2">
-                {classificationHistory.map((item) => (
-                  <div key={item.id} className="theme-chip rounded-xl p-3 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-bold">{item.rule_name}</span>
-                      <span className="text-muted-foreground text-[10px]">
-                        {item.source} · {item.status}
-                      </span>
+          {canViewClassificationHistory ? (
+            <div className="glass-card space-y-6 p-6">
+              <h3 className="text-foreground border-glass-border/60 flex items-center gap-2 border-b pb-4 text-sm font-bold tracking-widest uppercase">
+                <Tag size={16} className="text-primary" /> Classification history
+              </h3>
+              {classificationHistory.length ? (
+                <div className="space-y-2">
+                  {classificationHistory.map((item) => (
+                    <div key={item.id} className="theme-chip rounded-xl p-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold">{item.rule_name}</span>
+                        <span className="text-muted-foreground text-[10px]">
+                          {item.source} · {item.status}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground mt-1 text-[10px]">
+                        {Object.entries(item.actions)
+                          .filter(([, changed]) => changed)
+                          .map(([action]) => action.replaceAll("_", " "))
+                          .join(" · ") || "Matched; no new assignment was needed"}
+                      </p>
+                      {item.error_message ? (
+                        <p className="text-danger mt-1 text-[10px]">{item.error_message}</p>
+                      ) : null}
                     </div>
-                    <p className="text-muted-foreground mt-1 text-[10px]">
-                      {Object.entries(item.actions)
-                        .filter(([, changed]) => changed)
-                        .map(([action]) => action.replaceAll("_", " "))
-                        .join(" · ") || "Matched; no new assignment was needed"}
-                    </p>
-                    {item.error_message ? (
-                      <p className="text-danger mt-1 text-[10px]">{item.error_message}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-foreground/50 text-xs">
-                No classification rules have matched this document.
-              </p>
-            )}
-          </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-foreground/50 text-xs">
+                  No classification rules have matched this document.
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="glass-card space-y-6 p-6">
             <h3 className="text-foreground border-glass-border/60 flex items-center gap-2 border-b pb-4 text-sm font-bold tracking-widest uppercase">

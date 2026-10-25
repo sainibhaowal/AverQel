@@ -19,8 +19,6 @@ def _run_manifest(
     *,
     version: str = "v1.2.13",
     git_sha: str = "a" * 40,
-    neosis_version: str = "0.2.0-rc.2",
-    neosis_git_sha: str = "b" * 40,
 ) -> subprocess.CompletedProcess[str]:
     asset_dir = tmp_path / "assets"
     asset_dir.mkdir(exist_ok=True)
@@ -35,10 +33,6 @@ def _run_manifest(
             version,
             "--git-sha",
             git_sha,
-            "--neosis-version",
-            neosis_version,
-            "--neosis-git-sha",
-            neosis_git_sha,
             "--asset-dir",
             str(asset_dir),
             "--output",
@@ -52,7 +46,7 @@ def _run_manifest(
     )
 
 
-def test_manifest_records_asset_hashes_urls_and_component_provenance(
+def test_manifest_records_asset_hashes_urls_and_averqel_provenance(
     tmp_path: Path,
 ) -> None:
     result = _run_manifest(tmp_path)
@@ -64,7 +58,6 @@ def test_manifest_records_asset_hashes_urls_and_component_provenance(
     assert manifest["git_sha"] == "a" * 40
     assert manifest["components"] == {
         "averqel": {"version": "v1.2.13", "git_sha": "a" * 40},
-        "neosis": {"version": "0.2.0-rc.2", "git_sha": "b" * 40},
     }
     assert set(manifest["assets"]) == set(ASSET_NAMES)
     for name in ASSET_NAMES:
@@ -91,26 +84,6 @@ def test_manifest_rejects_invalid_release_identity(
     assert message in result.stderr
 
 
-@pytest.mark.parametrize(
-    ("neosis_version", "neosis_git_sha", "message"),
-    [
-        ("0.2", "b" * 40, "valid SemVer version"),
-        ("0.2.0-rc.2", "b" * 39, "full lowercase commit SHA"),
-    ],
-)
-def test_manifest_rejects_invalid_neosis_provenance(
-    tmp_path: Path, neosis_version: str, neosis_git_sha: str, message: str
-) -> None:
-    result = _run_manifest(
-        tmp_path,
-        neosis_version=neosis_version,
-        neosis_git_sha=neosis_git_sha,
-    )
-
-    assert result.returncode != 0
-    assert message in result.stderr
-
-
 def test_manifest_fails_when_a_required_package_is_missing(tmp_path: Path) -> None:
     asset_dir = tmp_path / "assets"
     asset_dir.mkdir()
@@ -124,10 +97,6 @@ def test_manifest_fails_when_a_required_package_is_missing(tmp_path: Path) -> No
             "v1.2.13",
             "--git-sha",
             "a" * 40,
-            "--neosis-version",
-            "0.2.0-rc.2",
-            "--neosis-git-sha",
-            "b" * 40,
             "--asset-dir",
             str(tmp_path / "assets"),
             "--output",
@@ -142,30 +111,12 @@ def test_manifest_fails_when_a_required_package_is_missing(tmp_path: Path) -> No
     assert "missing or empty release asset" in result.stderr
 
 
-def test_release_workflow_pins_neosis_and_limits_artifacts_to_linux_and_windows() -> None:
+def test_release_workflow_packages_averqel_only_for_linux_and_windows() -> None:
     workflow = (ROOT / ".github/workflows/release-semantic.yml").read_text(encoding="utf-8")
 
-    assert "repository: sainibhaowal/AverQel_NeoSIS" in workflow
-    assert "ref: main" in workflow
-    assert "outputs.neosis_sha" in workflow
-    assert "outputs.neosis_version" in workflow
+    assert "NeoSIS" not in workflow
+    assert "NEOSIS" not in workflow
     assert "platform: [ubuntu-22.04, windows-latest]" in workflow
-    prepare_environment = "node applications/desktop/scripts/prepare-neosis-package-env.mjs neosis"
-    assert prepare_environment in workflow
-    assert workflow.index(prepare_environment) < workflow.index(
-        "- name: Build Linux desktop package"
-    )
-    assert workflow.index(prepare_environment) < workflow.index(
-        "- name: Build Windows desktop package"
-    )
-    install_linux_toolchain = "sudo apt-get install --no-install-recommends --yes musl-tools"
-    assert install_linux_toolchain in workflow
-    assert workflow.index(install_linux_toolchain) < workflow.index(
-        "- name: Build Linux desktop package"
-    )
-    install_toolchain_step = workflow.index("- name: Install Linux native packaging prerequisites")
-    linux_package_step = workflow.index("- name: Build Linux desktop package")
-    assert "if: runner.os == 'Linux'" in workflow[install_toolchain_step:linux_package_step]
     assert "macos-latest" not in workflow
     assert "AverQel-linux-amd64.deb" in workflow
     assert "AverQel-windows-x64.exe" in workflow
@@ -185,11 +136,12 @@ def test_desktop_pnpm_approves_only_the_reviewed_installer_build_script() -> Non
     }
 
 
-def test_manifest_contract_includes_only_current_assets_and_component_provenance() -> None:
+def test_manifest_contract_includes_only_current_assets_and_averqel_provenance() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
 
     assert '"AverQel-linux-amd64.deb"' in script
     assert '"AverQel-windows-x64.exe"' in script
     assert '"AverQel-macos-universal.dmg"' not in script
     assert '"AverQel-linux-x86_64.rpm"' not in script
-    assert '"neosis": {"version": args.neosis_version, "git_sha": args.neosis_git_sha}' in script
+    assert '"averqel": {"version": args.version, "git_sha": args.git_sha}' in script
+    assert "neosis" not in script.lower()

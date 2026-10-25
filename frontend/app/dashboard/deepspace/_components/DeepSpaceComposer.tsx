@@ -32,6 +32,7 @@ import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import { formatReasoningEffortLabel, isValidReasoningEffort } from "../_lib/reasoning-options";
 import type { TaskProgress } from "../_lib/task-progress";
 import DeepSpaceTaskPlanDrawer from "./DeepSpaceTaskPlanDrawer";
+import DeepSpaceLiveOutputRate from "./DeepSpaceLiveOutputRate";
 
 type ReasoningEffort = string;
 
@@ -99,7 +100,8 @@ interface DeepSpaceComposerProps {
   requestOutputTokens?: number | null;
   requestInputTokensSource?: string | null;
   requestOutputTokensSource?: string | null;
-  liveTokensPerSecond?: number | null;
+  liveOutputTokens?: number;
+  liveOutputStartedAtMs?: number | null;
   reservedOutputTokens?: number | null;
   maxOutputTokens?: number | null;
   contextStatus?: string | null;
@@ -276,7 +278,8 @@ export default function DeepSpaceComposer({
   requestOutputTokens = null,
   requestInputTokensSource = null,
   requestOutputTokensSource = null,
-  liveTokensPerSecond = null,
+  liveOutputTokens = 0,
+  liveOutputStartedAtMs = null,
   reservedOutputTokens = null,
   maxOutputTokens = null,
   contextStatus = null,
@@ -1333,13 +1336,10 @@ export default function DeepSpaceComposer({
                 {(requestOutputTokens ?? 0).toLocaleString()} model out ·{" "}
                 {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
                 {isStreaming ? (
-                  <>
-                    {" · "}~
-                    {typeof liveTokensPerSecond === "number" && Number.isFinite(liveTokensPerSecond)
-                      ? liveTokensPerSecond.toFixed(1)
-                      : "0.0"}{" "}
-                    tok/s
-                  </>
+                  <DeepSpaceLiveOutputRate
+                    outputTokens={liveOutputTokens}
+                    startedAtMs={liveOutputStartedAtMs}
+                  />
                 ) : null}
               </span>
             </div>
@@ -1784,7 +1784,7 @@ export default function DeepSpaceComposer({
 
               {/* Direct Voice Integration Controls */}
               <div className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md">
-                {/* Voice Dictation (STT Mode) Button */}
+                {/* Dictation stays in the composer for review before sending. */}
                 <div className="group relative">
                   <button
                     type="button"
@@ -1794,7 +1794,7 @@ export default function DeepSpaceComposer({
                         ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
-                    aria-label="Voice Dictation (STT)"
+                    aria-label="Dictate to composer"
                   >
                     {sttActive ? (
                       <Mic
@@ -1807,12 +1807,12 @@ export default function DeepSpaceComposer({
                   </button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
-                      Voice Dictation (STT)
+                      Dictate to composer
                     </div>
                   </div>
                 </div>
 
-                {/* Jarvis Mode (Verbal Commentary) Button */}
+                {/* Voice conversation uses the active DeepSpace chat for both directions. */}
                 <div className="group relative">
                   <button
                     type="button"
@@ -1822,7 +1822,7 @@ export default function DeepSpaceComposer({
                         ? "bg-primary/20 text-primary border-primary/35 border shadow-[0_2px_8px_rgba(var(--primary),0.3)]"
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
-                    aria-label="Jarvis Mode"
+                    aria-label="Voice conversation"
                   >
                     {ttsActive ? (
                       <Volume2
@@ -1835,7 +1835,7 @@ export default function DeepSpaceComposer({
                   </button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
-                      Voice Commentary (TTS)
+                      Voice conversation
                     </div>
                   </div>
                 </div>

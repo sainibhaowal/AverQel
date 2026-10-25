@@ -132,7 +132,7 @@ describe("ProductDomains", () => {
     expect(
       providers.getByText(/Query and DeepSpace use assigned provider roles/i),
     ).toBeInTheDocument();
-    expect(mcp.getByRole("heading", { name: /curated marketplace/i })).toBeInTheDocument();
+    expect(mcp.getByRole("heading", { name: /live Composio app catalog/i })).toBeInTheDocument();
     expect(mcp.getByText(/MCP Inspector/i)).toBeInTheDocument();
     expect(
       mcp.getByText(/arbitrary endpoint registration is not part of this release/i),

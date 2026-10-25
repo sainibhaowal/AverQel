@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 type ReportStatus = "open" | "reviewing" | "resolved" | "dismissed";
 type StatusFilter = ReportStatus | "all";
@@ -286,9 +287,7 @@ export default function CollectionModerationPage() {
         </div>
 
         {loading ? (
-          <p className="text-muted-foreground py-12 text-center text-sm" role="status">
-            Loading moderation reports…
-          </p>
+          <AverQelLoading label="Loading moderation reports…" size="section" />
         ) : loadError ? (
           <div className="border-border rounded-xl border border-dashed px-4 py-10 text-center">
             <p className="text-foreground text-sm" role="alert">
@@ -384,11 +383,13 @@ export default function CollectionModerationPage() {
                       onClick={() => void toggleDetails(report.id)}
                       className="border-border text-foreground inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold"
                     >
-                      {loadingDetailsId === report.id
-                        ? "Loading details…"
-                        : expandedDetailsId === report.id
-                          ? "Hide report details"
-                          : "View report details"}
+                      {loadingDetailsId === report.id ? (
+                        <AverQelLoading size="inline" label="Loading report details" />
+                      ) : expandedDetailsId === report.id ? (
+                        "Hide report details"
+                      ) : (
+                        "View report details"
+                      )}
                     </button>
                     <button
                       type="button"
@@ -471,9 +472,11 @@ export default function CollectionModerationPage() {
                         </p>
                       )}
                       {history?.loading && (
-                        <p role="status" className="text-muted-foreground mt-2 text-xs">
-                          Loading history…
-                        </p>
+                        <AverQelLoading
+                          size="inline"
+                          label="Loading moderation history"
+                          className="text-muted-foreground mt-2"
+                        />
                       )}
                       {history?.items.map((action) => (
                         <div key={action.id} className="border-border mt-3 border-t pt-3 text-xs">
@@ -485,7 +488,9 @@ export default function CollectionModerationPage() {
                               {new Date(action.created_at).toLocaleString()}
                             </time>
                           </div>
-                          <p className="text-muted-foreground mt-1">Actor role: {action.actor_role}</p>
+                          <p className="text-muted-foreground mt-1">
+                            Actor role: {action.actor_role}
+                          </p>
                           {action.note && (
                             <p className="text-foreground/85 bg-background mt-2 rounded-lg px-3 py-2 whitespace-pre-wrap">
                               {action.note}

@@ -11,6 +11,7 @@ import {
   resetAuthSessionState,
   shouldRefreshAccessToken,
 } from "../../lib/api";
+import { clearSupportEncryptionSessions } from "../../lib/supportEncryptionSession";
 
 interface User {
   id: string;
@@ -291,6 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (token: string, tenantId: string, userData: User, remember: boolean = false) => {
     const persistentSession = remember || isDesktopEnvironment();
+    clearSupportEncryptionSessions();
     resetAuthSessionState();
     localStorage.setItem("averqel_token", token);
     localStorage.setItem("averqel_tenant_id", tenantId);

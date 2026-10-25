@@ -37,10 +37,9 @@ the working directory.
 
 - `backend/` is the AverQel server. `frontend/` is the shared Next.js web app.
   `applications/desktop/` packages them in one Electron shell.
-- NeoSIS is a separately maintained repository. Desktop builds bundle a pinned
-  NeoSIS runtime into the Electron package; do not merge its source or its
-  independent Electron application into AverQel. The release workflow checks
-  out NeoSIS separately and records the exact source commit.
+- NeoSIS is a separately maintained repository and is not part of AverQel
+  Desktop. Do not add its source, runtime, or independent Electron application
+  to AverQel packages or release workflows.
 - The manual desktop release builds Linux `.deb` and Windows `.exe` packages.
   It does not deploy the VPS. VPS deployment is a separate manual workflow for
   AverQel's server services.

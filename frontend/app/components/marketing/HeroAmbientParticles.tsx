@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useLandingReducedMotion } from "./landingMotion";
 
 type AmbientParticle = {
   x: number;
@@ -18,7 +18,7 @@ const PARTICLE_COLORS = ["0, 255, 163", "0, 184, 255", "214, 239, 244"] as const
 
 export default function HeroAmbientParticles() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;

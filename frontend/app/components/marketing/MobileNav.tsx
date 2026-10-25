@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AverQelLogo from "../ui/AverQelLogo";
+import { useLandingReducedMotion } from "./landingMotion";
 import { QEL_CONNECT_NAME } from "@/lib/brand";
 
 const navLinks = [
@@ -32,7 +33,7 @@ const navLinks = [
 
 export default function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
 
   useEffect(() => {
     if (!isOpen) {
@@ -115,7 +116,7 @@ export default function MobileNav() {
             >
               <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-6 sm:py-4">
                 <div className="flex min-w-0 items-center gap-3">
-                  <AverQelLogo size="nav" />
+                  <AverQelLogo size="nav" animateMark showWordmark={false} />
                   <span className="hidden h-7 w-px bg-white/10 sm:block" aria-hidden="true" />
                   <span className="hidden font-mono text-[0.6rem] font-bold tracking-[0.18em] text-slate-500 uppercase sm:inline">
                     Workspace navigation

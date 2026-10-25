@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.system.schemas.conversation import ConversationParticipantResponse
+
 SupportCategory = Literal[
     "complaint",
     "feedback",
@@ -28,10 +30,14 @@ class SupportTicketBase(BaseModel):
     subject: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1, max_length=20_000)
     category: SupportCategory = "query"
+    encrypted_payload: str | None = Field(default=None, max_length=150_000)
 
 
-class SupportTicketCreate(SupportTicketBase):
-    pass
+class SupportTicketCreate(BaseModel):
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
+    category: SupportCategory = "query"
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class SupportTicketUpdate(BaseModel):
@@ -73,7 +79,9 @@ class AdminSupportListResponse(BaseModel):
 
 
 class SupportTicketMessageCreate(BaseModel):
-    body: str = Field(..., min_length=1, max_length=10_000)
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AdminSupportMessageCreate(SupportTicketMessageCreate):
@@ -87,8 +95,10 @@ class SupportTicketMessageResponse(BaseModel):
     author_role: str
     kind: str
     body: str
+    encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
+    author_ref: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +111,8 @@ class SupportTicketAttachmentResponse(BaseModel):
     size_bytes: int
     created_at: datetime
     download_url: str
+    is_encrypted: bool = False
+    encrypted_metadata: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -108,6 +120,7 @@ class SupportTicketAttachmentResponse(BaseModel):
 class SupportTicketDetailResponse(SupportTicketResponse):
     user_email: str | None = None
     messages: list[SupportTicketMessageResponse]
+    participants: list[ConversationParticipantResponse] = Field(default_factory=list)
     attachments: list[SupportTicketAttachmentResponse] = Field(default_factory=list)
 
 
@@ -115,8 +128,17 @@ class AdminSupportQueueItem(SupportTicketResponse):
     user_email: str
 
 
+class AdminSupportQueueUserProfile(BaseModel):
+    user_id: uuid.UUID
+    display_name: str | None = None
+    avatar: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AdminSupportQueueResponse(BaseModel):
     items: list[AdminSupportQueueItem]
+    users: list[AdminSupportQueueUserProfile] = Field(default_factory=list)
     total: int
     open_count: int
     overdue_count: int

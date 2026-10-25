@@ -85,6 +85,7 @@ from app.documents.models.organization import (
     DocumentWebhookSubscription,
 )
 from app.ingestion.models.ingestion_job import IngestionJob
+from app.integrations.models.composio_credential import ComposioCredential  # noqa: F401
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
@@ -123,6 +124,7 @@ from app.system.models.storage_lifecycle import (
     StorageRetentionDecision,
     StorageRetentionRun,
 )
+from app.system.models.support_encryption_key import SupportEncryptionKey
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.models.support_ticket_message import SupportTicketMessage
@@ -217,6 +219,7 @@ __all__ = [
     "SupportTicketMessage",
     "SupportTicketAttachment",
     "AppFeedbackMessage",
+    "SupportEncryptionKey",
     "UserNotification",
     "UserNotificationPreference",
     "NotificationDelivery",

@@ -14,28 +14,24 @@ afterEach(() => {
 });
 
 describe("MCP documentation", () => {
-  it("documents the marketplace, transport limits, and policy precedence", () => {
+  it("documents the Composio marketplace, user setup, and approval limits", () => {
     render(<ConnectorsMcpDocsPage />);
 
+    expect(screen.getAllByRole("heading", { name: "Connect an app" })).not.toHaveLength(0);
+    expect(screen.getAllByRole("heading", { name: "OAuth setup" })).not.toHaveLength(0);
     expect(
-      screen.getAllByRole("heading", { name: "Official and community providers" }),
+      screen.getAllByRole("heading", { name: "Account isolation and data handling" }),
     ).not.toHaveLength(0);
     expect(
-      screen.getAllByRole("heading", { name: "OAuth, token storage, and revocation" }),
+      screen.getAllByRole("heading", { name: "Tool permissions and approvals" }),
     ).not.toHaveLength(0);
-    expect(
-      screen.getAllByRole("heading", { name: "Tool permissions and precedence" }),
-    ).not.toHaveLength(0);
-    expect(
-      screen.getAllByRole("heading", { name: "Remote transport and current limits" }),
-    ).not.toHaveLength(0);
-    expect(screen.getAllByText(/Local stdio processes, SSH-launched servers/i)).not.toHaveLength(0);
+    expect(screen.getAllByText(/Add your own Composio project API key/i)).not.toHaveLength(0);
+    expect(screen.getAllByText(/existing installed connections are retained/i)).not.toHaveLength(0);
+    expect(screen.getAllByText(/do not need to register a callback verifier/i)).not.toHaveLength(0);
     expect(screen.getAllByText(/Always allow/i)).not.toHaveLength(0);
-    expect(screen.getAllByText(/Needs approval/i)).not.toHaveLength(0);
-    expect(screen.getAllByText(/Blocked/i)).not.toHaveLength(0);
     expect(
-      screen.getAllByText(/New, Trending, and Interactive are catalog attributes/i),
-    ).not.toHaveLength(0);
+      screen.queryByRole("heading", { name: "Official and community providers" }),
+    ).not.toBeInTheDocument();
   });
 
   it("documents MCP privacy boundaries and approval controls", () => {
@@ -51,23 +47,27 @@ describe("MCP documentation", () => {
       screen.getAllByRole("heading", { name: "Permission modes and precedence" }),
     ).not.toHaveLength(0);
     expect(
-      screen.getAllByText(/Access tokens, refresh tokens, and client secrets/i),
+      screen.getAllByText(/Each AverQel user supplies their own Composio project API key/i),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getAllByText(/running backend decrypts it to make Composio requests/i),
     ).not.toHaveLength(0);
     expect(screen.getAllByText(/Read-only/i)).not.toHaveLength(0);
   });
 
-  it("separates model providers from MCP providers and explains setup state", () => {
+  it("separates model providers from Composio and explains user-owned setup", () => {
     render(<ProvidersPage />);
 
     expect(
       screen.getAllByRole("heading", { name: "Model providers versus MCP providers" }),
     ).not.toHaveLength(0);
+    expect(screen.getAllByRole("heading", { name: "Composio app setup" })).not.toHaveLength(0);
     expect(
-      screen.getAllByRole("heading", { name: "Google and GitHub MCP connections" }),
+      screen.getAllByRole("heading", { name: "OAuth and callback requirements" }),
     ).not.toHaveLength(0);
+    expect(screen.getAllByText(/encrypts each user's Composio project key/i)).not.toHaveLength(0);
     expect(
-      screen.getAllByRole("heading", { name: "Why AverQel does not clone MCP repositories" }),
-    ).not.toHaveLength(0);
-    expect(screen.getAllByText(/Setup pending/i)).not.toHaveLength(0);
+      screen.queryByRole("heading", { name: "Google and GitHub MCP connections" }),
+    ).not.toBeInTheDocument();
   });
 });

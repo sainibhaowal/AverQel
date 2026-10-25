@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import cast
 
 from celery import Task  # type: ignore[import-untyped]
-from sqlalchemy import select, text
+from sqlalchemy import delete, or_, select, text
 from sqlalchemy.engine import CursorResult
 
 from app.auth.models.tenant import Tenant
@@ -24,7 +24,11 @@ from app.documents.models.collection import CollectionChatMedia
 from app.documents.services.deletion_service import DeletionService
 from app.platform.database.session import get_session_factory
 from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
+from app.system.models.app_feedback import AppFeedback
 from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_ticket import SupportTicket
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
+from app.system.models.user_notification import UserNotification
 from app.system.services.audit_service import AuditService
 from app.system.services.cache_service import get_redis_client
 from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
@@ -303,6 +307,9 @@ def retention_cleanup() -> dict[str, int]:
     cleaned_transient_total = 0
     cleaned_auth_session_total = 0
     cleaned_auth_token_total = 0
+    cleaned_feedback_total = 0
+    cleaned_support_ticket_total = 0
+    queued_support_attachment_total = 0
 
     try:
         session.execute(text("SET ROLE aks_app"))
@@ -330,6 +337,83 @@ def retention_cleanup() -> dict[str, int]:
                 {"tenant_id": str(tenant_id)},
             )
 
+            feedback_cutoff = retention_now - timedelta(days=settings.feedback_retention_days)
+            expired_feedback = list(
+                session.execute(
+                    select(AppFeedback)
+                    .where(
+                        AppFeedback.tenant_id == tenant_id,
+                        AppFeedback.updated_at < feedback_cutoff,
+                    )
+                    .order_by(AppFeedback.updated_at.asc())
+                    .limit(500)
+                    .with_for_update(skip_locked=True)
+                )
+                .scalars()
+                .all()
+            )
+            for feedback in expired_feedback:
+                feedback_prefix = f"{feedback.id}:"
+                session.execute(
+                    delete(UserNotification).where(
+                        UserNotification.tenant_id == tenant_id,
+                        UserNotification.event_domain == "feedback",
+                        or_(
+                            UserNotification.resource_id == str(feedback.id),
+                            UserNotification.resource_id.like(f"{feedback_prefix}%"),
+                        ),
+                    )
+                )
+                session.delete(feedback)
+                cleaned_feedback_total += 1
+
+            support_cutoff = retention_now - timedelta(days=settings.support_ticket_retention_days)
+            ticket_retention_age = SupportTicket.updated_at
+            expired_tickets = list(
+                session.execute(
+                    select(SupportTicket)
+                    .where(
+                        SupportTicket.tenant_id == tenant_id,
+                        ticket_retention_age < support_cutoff,
+                    )
+                    .order_by(ticket_retention_age.asc())
+                    .limit(500)
+                    .with_for_update(skip_locked=True)
+                )
+                .scalars()
+                .all()
+            )
+            for ticket in expired_tickets:
+                ticket_prefix = f"{ticket.id}:"
+                session.execute(
+                    delete(UserNotification).where(
+                        UserNotification.tenant_id == tenant_id,
+                        UserNotification.event_domain == "support",
+                        or_(
+                            UserNotification.resource_id == str(ticket.id),
+                            UserNotification.resource_id.like(f"{ticket_prefix}%"),
+                        ),
+                    )
+                )
+                attachments = session.execute(
+                    select(SupportTicketAttachment).where(
+                        SupportTicketAttachment.tenant_id == tenant_id,
+                        SupportTicketAttachment.ticket_id == ticket.id,
+                    )
+                ).scalars()
+                for attachment in attachments:
+                    session.add(
+                        StorageCleanupJob(
+                            tenant_id=tenant_id,
+                            owner_user_id=None,
+                            bucket=attachment.storage_bucket,
+                            object_key=attachment.storage_key,
+                        )
+                    )
+                    queued_support_attachment_total += 1
+                session.delete(ticket)
+                cleaned_support_ticket_total += 1
+
             cleaned = AuditService(session).purge_old_events(
                 tenant_id=tenant_id,
                 retention_days=settings.audit_log_retention_days,
@@ -349,7 +433,7 @@ def retention_cleanup() -> dict[str, int]:
                     DELETE FROM data_deletions
                     WHERE tenant_id = :tenant_id
                       AND requested_at < :cutoff
-                      AND status IN ('completed', 'failed')
+                      AND status IN ('completed', 'failed', 'cancelled')
                     """),
                 {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
             )
@@ -435,6 +519,10 @@ def retention_cleanup() -> dict[str, int]:
                 else 0
             )
 
+        session.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
+        cleaned_audit_total += AuditService(session).purge_platform_events(
+            retention_days=settings.audit_log_retention_days,
+        )
         session.commit()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="retention_cleanup", status="ok").inc()
 
@@ -445,6 +533,9 @@ def retention_cleanup() -> dict[str, int]:
                 "transient_records_deleted": cleaned_transient_total,
                 "auth_sessions_deleted": cleaned_auth_session_total,
                 "auth_refresh_tokens_deleted": cleaned_auth_token_total,
+                "feedback_submissions_deleted": cleaned_feedback_total,
+                "support_tickets_deleted": cleaned_support_ticket_total,
+                "support_attachments_queued": queued_support_attachment_total,
                 "duration_seconds": round(time.perf_counter() - start, 4),
             },
         )
@@ -454,6 +545,9 @@ def retention_cleanup() -> dict[str, int]:
             "transient_records_deleted": cleaned_transient_total,
             "auth_sessions_deleted": cleaned_auth_session_total,
             "auth_refresh_tokens_deleted": cleaned_auth_token_total,
+            "feedback_submissions_deleted": cleaned_feedback_total,
+            "support_tickets_deleted": cleaned_support_ticket_total,
+            "support_attachments_queued": queued_support_attachment_total,
         }
 
     except Exception:  # noqa: BLE001
@@ -525,12 +619,14 @@ def storage_cleanup() -> dict[str, int]:
                     object_key=job.object_key,
                     raise_on_error=True,
                 )
-                job.status = "completed"
-                job.last_error = None
+                # Once the object is gone, discard its locator and the retry row. Storage paths
+                # can contain tenant- or user-identifying IDs and are no longer needed.
+                session.delete(job)
                 succeeded += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 job.attempts += 1
-                job.last_error = str(exc)[:2000]
+                job.owner_user_id = None
+                job.last_error = "storage_delete_failed"
                 if job.attempts >= STORAGE_CLEANUP_MAX_ATTEMPTS:
                     job.status = "failed"
                 else:

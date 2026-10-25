@@ -78,7 +78,7 @@ const trustPillars = [
   {
     icon: Fingerprint,
     title: "Provider secrets stay protected",
-    body: "Provider secrets and connector OAuth credentials remain encrypted, masked in responses, and protected by the existing provider and connector security boundaries.",
+    body: "Model-provider secrets and each user's Composio project key are encrypted at rest and scoped to their owner. The running server uses each secret with its respective provider; connected-app access remains subject to ownership and tool policy.",
   },
   {
     icon: Database,

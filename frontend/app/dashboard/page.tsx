@@ -35,6 +35,7 @@ import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import ParticleAccelerator from "@/app/components/dashboard/ParticleAccelerator";
 import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
 import QelConnectMark from "@/app/components/ui/QelConnectMark";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { QEL_CONNECT_NAME } from "@/lib/brand";
 import { hasAdminRole, hasProviderAccess } from "@/lib/roles";
 import { fetchWithAuth } from "../../lib/api";
@@ -43,17 +44,10 @@ import { useTheme } from "../context/ThemeContext";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 import { useRealtimeEvents, type RealtimeConnectionState } from "@/lib/realtime";
 
-const DASHBOARD_DEEPSPACE_LOGO_SOURCE =
-  "/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg";
+const DASHBOARD_DEEPSPACE_LOGO_SOURCE = "/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg";
 
 function DashboardDeepSpaceMark({ size = 24 }: { size?: number }) {
-  return (
-    <DeepSpaceMark
-      size={size}
-      visualScale={1.3}
-      source={DASHBOARD_DEEPSPACE_LOGO_SOURCE}
-    />
-  );
+  return <DeepSpaceMark size={size} visualScale={1.3} source={DASHBOARD_DEEPSPACE_LOGO_SOURCE} />;
 }
 
 interface DashboardStats {
@@ -536,7 +530,11 @@ export default function DashboardPage() {
                       theme === "dark" ? "text-white" : "text-primary"
                     }`}
                   >
-                    {loading ? "..." : stat.value}
+                    {loading ? (
+                      <AverQelLoading size="inline" label="Loading statistic" />
+                    ) : (
+                      stat.value
+                    )}
                   </div>
                   <p
                     className={`mt-0.5 text-[9px] leading-relaxed font-semibold transition-colors ${
@@ -597,7 +595,11 @@ export default function DashboardPage() {
             {
               title: "Documents Hub",
               detail: "Upload, process, and inspect your files",
-              count: loading ? "…" : `${stats.total_documents} documents`,
+              count: loading ? (
+                <AverQelLoading size="inline" label="Loading document count" />
+              ) : (
+                `${stats.total_documents} documents`
+              ),
               href: "/dashboard/documents",
               icon: FileText,
               accent: "border-cyan-500/20 bg-cyan-500/10 text-cyan-800 dark:text-cyan-300",
@@ -605,7 +607,11 @@ export default function DashboardPage() {
             {
               title: QEL_CONNECT_NAME,
               detail: "Keep related documents together",
-              count: loading ? "…" : `${overview.collections.length} spaces`,
+              count: loading ? (
+                <AverQelLoading size="inline" label="Loading space count" />
+              ) : (
+                `${overview.collections.length} spaces`
+              ),
               href: "/dashboard/collections",
               icon: QelConnectMark,
               accent: "border-violet-500/20 bg-violet-500/10 text-violet-800 dark:text-violet-300",
@@ -613,7 +619,11 @@ export default function DashboardPage() {
             {
               title: "Query",
               detail: "Get answers grounded in your documents",
-              count: loading ? "…" : `${stats.total_queries} queries`,
+              count: loading ? (
+                <AverQelLoading size="inline" label="Loading query count" />
+              ) : (
+                `${stats.total_queries} queries`
+              ),
               href: "/dashboard/query",
               icon: FileSearch,
               accent:
@@ -752,7 +762,11 @@ export default function DashboardPage() {
                           .filter((c) => c.includes("text-"))
                           .join(" ")}`}
                       >
-                        {loading ? "…" : item.value}
+                        {loading ? (
+                          <AverQelLoading size="inline" label="Loading workspace metric" />
+                        ) : (
+                          item.value
+                        )}
                       </span>
                     </div>
                     <p className="text-muted-foreground mt-0.5 text-xs font-medium">
@@ -1510,7 +1524,13 @@ function DashboardTelemetry({
               })}
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-black">{loading ? "..." : pipelineTotal}</span>
+              <span className="text-2xl font-black">
+                {loading ? (
+                  <AverQelLoading size="inline" label="Loading pipeline total" />
+                ) : (
+                  pipelineTotal
+                )}
+              </span>
               <span className="text-muted-foreground text-[9px] font-bold tracking-widest uppercase">
                 tracked
               </span>
@@ -1523,7 +1543,13 @@ function DashboardTelemetry({
                   <span className={`h-2 w-2 rounded-full ${item.tone}`} />
                   {item.label}
                 </span>
-                <span className={`font-black ${item.text}`}>{loading ? "..." : item.value}</span>
+                <span className={`font-black ${item.text}`}>
+                  {loading ? (
+                    <AverQelLoading size="inline" label="Loading pipeline metric" />
+                  ) : (
+                    item.value
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -1553,13 +1579,25 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
         <SectionHeader
           eyebrow="Last 7 days"
           title="Workspace pulse"
-          chip={loading ? "Loading" : activityTotal > 0 ? "Live telemetry" : "No activity yet"}
+          chip={
+            loading ? (
+              <AverQelLoading size="inline" label="Loading activity" />
+            ) : activityTotal > 0 ? (
+              "Live telemetry"
+            ) : (
+              "No activity yet"
+            )
+          }
         />
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
           <TrendLegend color="bg-[#0e7490] dark:bg-cyan-400" label="Documents" />
           <TrendLegend color="bg-[#047857] dark:bg-emerald-400" label="Queries" />
           <span className="text-muted-foreground ml-auto">
-            {loading ? "Loading telemetry" : `${activityTotal} actions recorded`}
+            {loading ? (
+              <AverQelLoading size="inline" label="Loading telemetry" />
+            ) : (
+              `${activityTotal} actions recorded`
+            )}
           </span>
         </div>
         <TrendChart points={activity} loading={loading} />
@@ -1573,23 +1611,33 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <PulseStat
             label="Health checks"
-            value={loading ? "..." : checks}
+            value={
+              loading ? <AverQelLoading size="inline" label="Loading provider checks" /> : checks
+            }
             detail="Recorded checks"
           />
           <PulseStat
             label="Check failures"
-            value={loading ? "..." : providerFailures}
+            value={
+              loading ? (
+                <AverQelLoading size="inline" label="Loading provider failures" />
+              ) : (
+                providerFailures
+              )
+            }
             detail={providerFailures ? "Review provider health" : "No failed checks recorded"}
             tone={providerFailures ? "risk" : "healthy"}
           />
           <PulseStat
             label="Latest latency"
             value={
-              loading
-                ? "..."
-                : latestLatency
-                  ? `${latestLatency.average_latency_ms} ms`
-                  : "Not measured"
+              loading ? (
+                <AverQelLoading size="inline" label="Loading provider latency" />
+              ) : latestLatency ? (
+                `${latestLatency.average_latency_ms} ms`
+              ) : (
+                "Not measured"
+              )
             }
             detail="Most recent recorded average"
           />
@@ -1604,7 +1652,7 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
                   : "font-bold text-emerald-700 dark:text-emerald-300"
               }
             >
-              {loading ? "..." : failures}
+              {loading ? <AverQelLoading size="inline" label="Loading failure count" /> : failures}
             </span>
           </div>
           <p className="text-muted-foreground/70 mt-2 text-[11px]">
@@ -1633,7 +1681,7 @@ function PulseStat({
   tone = "neutral",
 }: {
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   detail: string;
   tone?: "neutral" | "healthy" | "risk";
 }) {
@@ -1672,9 +1720,13 @@ function TrendChart({ points, loading }: { points: DashboardTrendPoint[]; loadin
     <div className="border-foreground/5 mt-3 overflow-hidden rounded-xl border bg-black/10 px-2 py-3 dark:border-white/5">
       {loading || points.length === 0 || !hasActivity ? (
         <div className="flex h-[150px] flex-col items-center justify-center gap-2 text-center">
-          <span className="text-foreground/70 text-xs font-bold">
-            {loading ? "Loading workspace activity..." : "No activity recorded in the last 7 days"}
-          </span>
+          {loading ? (
+            <AverQelLoading size="compact" label="Loading workspace activity" />
+          ) : (
+            <span className="text-foreground/70 text-xs font-bold">
+              No activity recorded in the last 7 days
+            </span>
+          )}
           {!loading && (
             <span className="text-muted-foreground max-w-sm text-[11px]">
               Upload a document or run a grounded query to start your workspace pulse.
@@ -1770,7 +1822,7 @@ function SectionHeader({
 }: {
   eyebrow: string;
   title: string;
-  chip: string;
+  chip: React.ReactNode;
   accent?: boolean;
 }) {
   return (

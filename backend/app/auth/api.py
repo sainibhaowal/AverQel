@@ -125,10 +125,11 @@ def _oauth_error_reason(code: str) -> str:
 def _audit_and_commit(
     *,
     db: Session,
-    tenant_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
     action: str,
     actor_user_id: uuid.UUID | None,
     details: dict[str, str] | None = None,
+    status: str = "success",
 ) -> None:
     try:
         AuditService(db).write_event(
@@ -136,6 +137,7 @@ def _audit_and_commit(
             action=action,
             resource_type="auth",
             actor_user_id=actor_user_id,
+            status=status,
             details=details or {},
         )
         db.commit()
@@ -182,9 +184,14 @@ def login(
     _audit_and_commit(
         db=db,
         tenant_id=result.user.tenant_id,
-        action="auth.login",
+        action="auth.login.challenge" if result.requires_2fa else "auth.login",
         actor_user_id=result.user.id,
-        details={"email": payload.email},
+        status="pending" if result.requires_2fa else "success",
+        details={
+            "auth_method": "password",
+            "mfa_verified": str(result.mfa_verified),
+            **({"second_factor": result.mfa_method} if result.mfa_method else {}),
+        },
     )
 
     if result.requires_2fa:
@@ -275,6 +282,14 @@ def oauth_callback(
     except ApiError:
         frontend_url = "/auth/login"
     if error:
+        _audit_and_commit(
+            db=db,
+            tenant_id=None,
+            action="auth.login.cancelled",
+            actor_user_id=None,
+            status="cancelled",
+            details={"auth_method": "oauth", "provider": provider.strip().lower()[:64]},
+        )
         redirect = RedirectResponse(
             url=f"{frontend_url}?oauth=error&provider={provider}&reason=cancelled", status_code=303
         )
@@ -291,6 +306,19 @@ def oauth_callback(
         )
     except ApiError as exc:
         db.rollback()
+        if exc.code.startswith("OAUTH_"):
+            _audit_and_commit(
+                db=db,
+                tenant_id=None,
+                action="auth.login.failed",
+                actor_user_id=None,
+                status="failure",
+                details={
+                    "auth_method": "oauth",
+                    "provider": provider.strip().lower()[:64],
+                    "failure_reason": exc.code.lower()[:64],
+                },
+            )
         logger.warning(
             "OAuth callback rejected.",
             extra={"provider": provider, "error_code": exc.code},
@@ -304,6 +332,19 @@ def oauth_callback(
     redirect = RedirectResponse(
         url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}&provider={provider}",
         status_code=303,
+    )
+    _audit_and_commit(
+        db=db,
+        tenant_id=result.user.tenant_id,
+        action="auth.login.challenge" if result.requires_2fa else "auth.login",
+        actor_user_id=result.user.id,
+        status="pending" if result.requires_2fa else "success",
+        details={
+            "auth_method": "oauth",
+            "provider": provider.strip().lower()[:64],
+            "mfa_verified": str(result.mfa_verified),
+            **({"second_factor": result.mfa_method} if result.mfa_method else {}),
+        },
     )
     _clear_oauth_state_cookies(redirect, request, settings)
     if result.requires_2fa:
@@ -350,8 +391,13 @@ def verify_oauth_2fa(
     _audit_and_commit(
         db=db,
         tenant_id=result.user.tenant_id,
-        action="auth.oauth_2fa_verify",
+        action="auth.login",
         actor_user_id=result.user.id,
+        details={
+            "auth_method": "oauth",
+            "mfa_verified": str(result.mfa_verified),
+            **({"second_factor": result.mfa_method} if result.mfa_method else {}),
+        },
     )
     _set_refresh_cookie(response, settings, result.refresh_token)
     response.delete_cookie(OAUTH_2FA_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
@@ -378,14 +424,6 @@ def register(
         tenant_id=tenant_id,
         email=payload.email,
         password=payload.password,
-    )
-
-    _audit_and_commit(
-        db=db,
-        tenant_id=user.tenant_id,
-        action="auth.register",
-        actor_user_id=user.id,
-        details={"email": payload.email},
     )
 
     return UserRegisterResponse(
@@ -805,8 +843,13 @@ def verify_2fa(
     _audit_and_commit(
         db=db,
         tenant_id=result.user.tenant_id,
-        action="auth.2fa_verify",
+        action="auth.login",
         actor_user_id=result.user.id,
+        details={
+            "auth_method": "password",
+            "mfa_verified": str(result.mfa_verified),
+            **({"second_factor": result.mfa_method} if result.mfa_method else {}),
+        },
     )
 
     _set_refresh_cookie(response, settings, result.refresh_token)

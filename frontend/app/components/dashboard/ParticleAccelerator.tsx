@@ -39,11 +39,13 @@ export default function ParticleAccelerator() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animationFrameId: number;
+    let animationFrameId = 0;
     let particles: OrganicParticle[] = [];
     let clouds: CloudBlob[] = [];
     const particleCount = 200;
     let time = 0;
+    let isDocumentVisible = !document.hidden;
+    let isInViewport = true;
 
     // Mouse tracking
     const mouse = { x: 0, y: 0, active: false, targetX: 0, targetY: 0 };
@@ -168,7 +170,15 @@ export default function ParticleAccelerator() {
       parent.addEventListener("click", handleMouseClick);
     }
 
+    const scheduleAnimation = () => {
+      if (animationFrameId || !isDocumentVisible || !isInViewport) return;
+      animationFrameId = window.requestAnimationFrame(animate);
+    };
+
     const animate = () => {
+      animationFrameId = 0;
+      if (!isDocumentVisible || !isInViewport) return;
+
       resizeCanvas();
       const w = canvas.width;
       const h = canvas.height;
@@ -298,18 +308,45 @@ export default function ParticleAccelerator() {
         ctx.fill();
       });
 
-      animationFrameId = requestAnimationFrame(animate);
+      scheduleAnimation();
     };
 
-    animate();
+    const handleVisibilityChange = () => {
+      isDocumentVisible = !document.hidden;
+      if (!isDocumentVisible && animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
+      } else {
+        scheduleAnimation();
+      }
+    };
+
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            isInViewport = entry?.isIntersecting ?? true;
+            if (!isInViewport && animationFrameId) {
+              window.cancelAnimationFrame(animationFrameId);
+              animationFrameId = 0;
+            } else {
+              scheduleAnimation();
+            }
+          });
+
+    observer?.observe(canvas);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    scheduleAnimation();
 
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      observer?.disconnect();
       if (parent) {
         parent.removeEventListener("mousemove", handleMouseMove);
         parent.removeEventListener("mouseleave", handleMouseLeave);
         parent.removeEventListener("click", handleMouseClick);
       }
-      cancelAnimationFrame(animationFrameId);
+      window.cancelAnimationFrame(animationFrameId);
     };
   }, [theme]);
 

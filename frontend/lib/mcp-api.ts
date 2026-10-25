@@ -81,6 +81,48 @@ export type MCPMarketplaceFacets = {
   trust_statuses: string[];
 };
 
+export type MCPComposioStatus = {
+  configured: boolean;
+  oauth_callback_ready: boolean;
+};
+
+export type MCPComposioToolkit = {
+  slug: string;
+  name: string;
+  description: string;
+  logo_url?: string | null;
+  app_url?: string | null;
+  auth_guide_url?: string | null;
+  version?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  categories: string[];
+  tool_count: number;
+  auth_schemes: string[];
+  no_auth: boolean;
+};
+
+export type MCPComposioToolkitPage = {
+  items: MCPComposioToolkit[];
+  next_cursor?: string | null;
+  current_page: number;
+  total_items: number;
+};
+
+export type MCPComposioTool = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  risk_labels: string[];
+  version?: string | null;
+};
+
+export type MCPComposioToolkitDetail = MCPComposioToolkit & {
+  tools: MCPComposioTool[];
+  tools_loaded: number;
+  tools_next_cursor?: string | null;
+};
+
 export type MCPSafeAccountIdentity = {
   email?: string;
   display_name?: string;
@@ -227,7 +269,12 @@ export function safeExternalUrl(value?: string | null): string | null {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type MCPRequestOptions = RequestInit & {
+  timeoutMs?: number;
+  silentTimeout?: boolean;
+};
+
+async function request<T>(path: string, init?: MCPRequestOptions): Promise<T> {
   const response = await fetchWithAuth(path, {
     ...init,
     headers: {
@@ -253,6 +300,88 @@ export function getMarketplaceFacets(): Promise<MCPMarketplaceFacets> {
 
 export function getMarketplaceEntry(entryId: string): Promise<MCPMarketplaceEntry> {
   return request<MCPMarketplaceEntry>(`/mcp/marketplace/${encodeURIComponent(entryId)}`);
+}
+
+export function getComposioStatus(
+  options: Pick<MCPRequestOptions, "signal"> = {},
+): Promise<MCPComposioStatus> {
+  return request<MCPComposioStatus>("/mcp/composio/status", {
+    ...options,
+    timeoutMs: 20_000,
+    silentTimeout: true,
+  });
+}
+
+export function saveComposioApiKey(apiKey: string): Promise<MCPComposioStatus> {
+  return request<MCPComposioStatus>("/mcp/composio/credential", {
+    method: "PUT",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export function removeComposioApiKey(): Promise<void> {
+  return request<void>("/mcp/composio/credential", { method: "DELETE" });
+}
+
+export function getComposioToolkits(
+  params: {
+    q?: string;
+    category?: string;
+    cursor?: string | null;
+    limit?: number;
+  } = {},
+  options: Pick<MCPRequestOptions, "signal"> = {},
+): Promise<MCPComposioToolkitPage> {
+  const query = new URLSearchParams();
+  if (params.q?.trim()) query.set("q", params.q.trim());
+  if (params.category) query.set("category", params.category);
+  if (params.cursor) query.set("cursor", params.cursor);
+  if (params.limit) query.set("limit", String(params.limit));
+  return request<MCPComposioToolkitPage>(`/mcp/composio/toolkits?${query.toString()}`, {
+    ...options,
+    timeoutMs: 20_000,
+    silentTimeout: true,
+  });
+}
+
+export function getComposioToolkit(
+  slug: string,
+  cursor?: string | null,
+  options: Pick<MCPRequestOptions, "signal"> = {},
+): Promise<MCPComposioToolkitDetail> {
+  const query = new URLSearchParams();
+  if (cursor) query.set("cursor", cursor);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<MCPComposioToolkitDetail>(
+    `/mcp/composio/toolkits/${encodeURIComponent(slug)}${suffix}`,
+    { ...options, timeoutMs: 20_000, silentTimeout: true },
+  );
+}
+
+export function connectComposioToolkit(slug: string): Promise<{
+  server: MCPConnection;
+  authorization_url?: string | null;
+  already_connected: boolean;
+  authorization_required: boolean;
+}> {
+  return request(`/mcp/composio/toolkits/${encodeURIComponent(slug)}/connect`, {
+    method: "POST",
+  });
+}
+
+export function completeComposioOAuth(input: {
+  toolkitSlug: string;
+  connectedAccountId: string;
+  status: "success" | "failed";
+}): Promise<{ status: "connecting" | "failed"; server_id: string }> {
+  return request("/mcp/composio/oauth/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      toolkit_slug: input.toolkitSlug,
+      connected_account_id: input.connectedAccountId,
+      status: input.status,
+    }),
+  });
 }
 
 export function connectMarketplaceEntry(

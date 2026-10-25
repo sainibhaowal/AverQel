@@ -19,7 +19,6 @@ import { useTheme } from "@/app/context/ThemeContext";
 import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
 import QelConnectMark from "@/app/components/ui/QelConnectMark";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
-import NeoSISMark from "@/app/components/ui/NeoSISMark";
 import ProfileIdentityEditor, {
   type ProfileIdentityDraft,
 } from "@/app/components/profile/ProfileIdentityEditor";
@@ -41,7 +40,7 @@ async function responseError(response: Response, fallback: string): Promise<stri
   }
 }
 
-export default function WelcomeFlow({ neosisAvailable }: { neosisAvailable: boolean }) {
+export default function WelcomeFlow() {
   const router = useRouter();
   const { user, profileReady, updateUserProfile } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -210,11 +209,6 @@ export default function WelcomeFlow({ neosisAvailable }: { neosisAvailable: bool
                       </p>
                     </div>
                   </div>
-                  {neosisAvailable ? (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/[0.08] px-3 py-2 text-xs text-slate-400">
-                      <NeoSISMark size={16} /> NeoSIS is included in this desktop app.
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
 

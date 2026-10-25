@@ -16,6 +16,7 @@ import type { QueryThreadMessage } from "../_lib/stream-protocol";
 
 import AssistantMessage from "./AssistantMessage";
 import UserMessage from "./UserMessage";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useAuth } from "../../../context/AuthContext";
 
 interface MessageThreadProps {
@@ -131,11 +132,15 @@ export default function MessageThread({
 
   if (messages.length === 0) {
     const indexHealth = realTimeStats ? realTimeStats.indexHealth.toFixed(1) + "%" : "99.8%";
-    const latency = realTimeStats
-      ? realTimeStats.latencyMs === null
-        ? "Not measured"
-        : realTimeStats.latencyMs + "ms"
-      : "Loading";
+    const latency = realTimeStats ? (
+      realTimeStats.latencyMs === null ? (
+        "Not measured"
+      ) : (
+        realTimeStats.latencyMs + "ms"
+      )
+    ) : (
+      <AverQelLoading size="inline" label="Loading retrieval latency" />
+    );
     const totalDocuments = realTimeStats ? realTimeStats.totalDocuments : 0;
     const activeJobs = realTimeStats ? realTimeStats.activeJobs : 0;
     const storageBytes = realTimeStats ? realTimeStats.storageBytes : 0;

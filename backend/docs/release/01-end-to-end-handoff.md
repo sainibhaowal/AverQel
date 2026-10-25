@@ -4,17 +4,23 @@
 **Scope:** backend, workers, frontend DeepSpace, database migrations, optional
 capability services, tests, and operational documentation.
 
-> **Release-state notice (2026-10-05):** This is a dated verification snapshot,
-> not current deployment evidence. The source migration graph now has head
-> `20261012_0012` (checked with `alembic heads`). The latest recorded Docker
-> database observation in `platform/05-feedback-support-notifications.md` is
-> head `20261012_0011` on 2026-10-03. This checkout does not establish that
-> `0012` has been applied to staging or production, or that the current app has
-> been deployed and smoke-tested there. Complete those checks before release.
+> **Current-state pointer (2026-10-20):** The following 2026-10-05 release
+> notice and the 2026-09-27 report are historical snapshots. For the current
+> source migration graph, implementation links, and evidence limits, use the
+> [current worktree change index](03-current-worktree-change-index.md). Its
+> `20261019_0004` result comes from source migration files only; no current
+> database or deployment state is inferred from it.
+
+> **Historical release-state notice (2026-10-05):** At that time, the source
+> migration graph had head `20261012_0012` and the latest recorded Docker
+> database observation was `20261012_0011` on 2026-10-03. This statement is
+> historical, not current deployment evidence. See the current-state pointer
+> above for newer source status. Neither source history nor that old database
+> observation confirms the current staging or production migration/deployment.
 
 The numbered capability documents describe individual features; this
-snapshot records the release state observed on its date. Use the notice above
-and the current-worktree index before using it for a release decision.
+snapshot records the release state observed on its date. Use the current-state
+pointer and current-worktree index above before using it for a release decision.
 
 ## 1. End-to-end request path
 

@@ -148,7 +148,7 @@ export function createQuantumArchitectureTarget(
   const segment = QUANTUM_ARCHITECTURE_SEGMENTS[segmentIndex];
   const segmentProgress = Math.min(1, segmentPosition - segmentIndex);
   const pulse = 1 + Math.sin(time * 0.7 + segmentIndex * 0.09) * 0.006;
-  const rotation = time * 0.055;
+  const rotation = time * 0.1;
   const baseX =
     (segment.start.x + (segment.end.x - segment.start.x) * segmentProgress) * radius * pulse;
   const baseY =

@@ -21,6 +21,7 @@ describe("audit logs page", () => {
         items: [
           {
             id: "log-1",
+            tenant_id: "tenant-1",
             action: "documents.upload",
             actor_user_id: "user-1",
             resource_type: "document",
@@ -56,6 +57,7 @@ describe("audit logs page", () => {
         items: [
           {
             id: "log-1",
+            tenant_id: "tenant-1",
             action: "documents.upload",
             actor_user_id: "user-1",
             resource_type: "document",
@@ -79,6 +81,7 @@ describe("audit logs page", () => {
         items: [
           {
             id: "log-2",
+            tenant_id: "tenant-2",
             action: "admin.audit_logs.read",
             actor_user_id: "user-2",
             resource_type: "admin",

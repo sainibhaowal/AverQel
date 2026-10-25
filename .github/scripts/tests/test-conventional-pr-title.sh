@@ -9,7 +9,7 @@ valid_titles=(
   'fix: prevent startup crash'
   'feat(api)!: remove the legacy endpoint'
   'docs(release): explain manual version overrides'
-  'fix(NeoSIS runtime): recover local sessions'
+  'fix(desktop runtime): recover local sessions'
 )
 
 invalid_titles=(

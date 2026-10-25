@@ -26,7 +26,7 @@ export default function ArchitectureDocsPage() {
           },
           {
             title: "External providers",
-            body: "OAuth providers, model providers, SearXNG, and approved remote MCP servers are reached by the backend through bounded and policy checked integrations.",
+            body: "OAuth and model providers, SearXNG, and Composio-hosted MCP apps are reached by the backend through bounded, account-scoped, policy-checked integrations.",
           },
           {
             title: "Evidence-first web research",
@@ -84,8 +84,9 @@ export default function ArchitectureDocsPage() {
         <p>
           The backend is the authorization boundary for authenticated requests, tenant access,
           provider credentials, Qel Connect sharing, and tool calls. Some product areas process
-          content server-side. Assigned Support Managers can read support tickets, assigned Feedback
-          Managers can read submitted feedback, and tenant moderators can read Qel Connect report
+          content server-side. Allowlisted platform administrators can read support tickets and
+          submitted feedback to respond to requests; legacy Support Manager and Feedback Manager
+          assignments do not grant queue access. Tenant moderators can read Qel Connect report
           details. Do not infer a client-only or end-to-end encryption guarantee from tenant
           isolation or encrypted storage.
         </p>

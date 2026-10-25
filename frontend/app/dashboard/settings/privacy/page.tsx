@@ -21,6 +21,7 @@ import {
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 interface ActivityItem {
   id: string;
@@ -329,13 +330,13 @@ export default function PrivacySettingsPage() {
           {
             icon: <FileLock2 className="text-emerald-500" size={18} />,
             title: "What should remain private",
-            body: "Documents, prompts, answers, and chat history are product content. Assigned support staff, feedback managers, or tenant moderators can read the content needed for their specific workflow; those reads are audited.",
+            body: "Documents, prompts, answers, and chat history are product content. Allowlisted platform administrators can read support tickets and submitted feedback; existing staff assignments and tenant moderators retain access to their specific workflows. Those reads are audited.",
             accent: "border-emerald-500/15",
           },
           {
             icon: <Eye className="text-amber-300" size={18} />,
             title: "Owner access model",
-            body: "The standard administrator view shows account and security metadata. Content workflows require separate staff roles, and support also requires platform-admin allowlisting.",
+            body: "The standard administrator view shows account and security metadata. Allowlisted platform administrators can review support tickets and feedback; Qel Connect moderation remains tenant-scoped.",
             accent: "border-amber-500/15",
           },
         ].map((panel, idx) => (
@@ -409,10 +410,11 @@ export default function PrivacySettingsPage() {
           </h3>
           <div className="mt-4 max-h-[32rem] space-y-3 overflow-y-auto pr-2">
             {loadingActivity ? (
-              <div className="text-muted-foreground flex items-center gap-3 text-sm">
-                <Loader2 size={16} className="text-primary animate-spin" />
-                Loading account activity...
-              </div>
+              <AverQelLoading
+                label="Loading account activity…"
+                size="compact"
+                className="justify-start"
+              />
             ) : activity.length ? (
               activity.slice(0, 8).map((item, idx) => (
                 <motion.div

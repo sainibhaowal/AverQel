@@ -12,6 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import OpenAICodexLoginPanel from "@/app/components/providers/OpenAICodexLoginPanel";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import {
   createProvider,
   listSupportedProviderTypes,
@@ -307,9 +308,7 @@ export default function QuickProviderSetup({ onConfigured, onOpenSettings, onBus
 
   if (loadingCatalog) {
     return (
-      <div className="flex min-h-36 items-center justify-center gap-2 text-sm text-slate-400">
-        <LoaderCircle size={16} className="animate-spin" /> Loading available providers…
-      </div>
+      <AverQelLoading label="Loading available providers…" size="section" className="min-h-36" />
     );
   }
 

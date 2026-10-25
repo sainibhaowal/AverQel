@@ -1,4 +1,5 @@
 import toast from "react-hot-toast";
+import { clearSupportEncryptionSessions } from "./supportEncryptionSession";
 
 export function isElectronEnvironment(): boolean {
   return typeof window !== "undefined" && window.electron?.isElectron === true;
@@ -114,6 +115,7 @@ export function clearStoredSession() {
     return;
   }
   clearSessionStorage();
+  clearSupportEncryptionSessions();
 }
 
 export function resetAuthSessionState() {
@@ -216,6 +218,7 @@ function createUnauthorizedResponse(): Response {
 export function invalidateAuthSession({ broadcast = true, notify = true } = {}) {
   authSessionInvalidated = true;
   clearSessionStorage();
+  clearSupportEncryptionSessions();
   onTokenRefreshed(null);
 
   if (typeof window !== "undefined" && notify) {
@@ -435,6 +438,7 @@ export async function fetchWithAuth(
     _serviceBusyRetryCount?: number;
     timeoutMs?: number;
     silentTimeout?: boolean;
+    suppressErrorToast?: boolean;
   } = {},
 ) {
   const endpointPath = normalizeEndpointPath(endpoint);
@@ -444,6 +448,7 @@ export async function fetchWithAuth(
     _serviceBusyRetryCount = 0,
     timeoutMs,
     silentTimeout,
+    suppressErrorToast,
     ...requestInit
   } = options;
   let token = localStorage.getItem("averqel_token");
@@ -513,7 +518,13 @@ export async function fetchWithAuth(
   ) {
     const refreshedToken = await refreshAccessToken(tenantId);
     if (refreshedToken) {
-      return fetchWithAuth(endpoint, { ...requestInit, timeoutMs, _isRetry: true });
+      return fetchWithAuth(endpoint, {
+        ...requestInit,
+        timeoutMs,
+        silentTimeout,
+        suppressErrorToast,
+        _isRetry: true,
+      });
     }
 
     // If refresh fails, the session is already invalidated; redirect the current tab.
@@ -560,13 +571,14 @@ export async function fetchWithAuth(
           _serviceBusyRetryCount: _serviceBusyRetryCount + 1,
           timeoutMs,
           silentTimeout,
+          suppressErrorToast,
         });
       }
     }
   }
 
   // Global Error Interceptor for 4xx and 5xx
-  if (!response.ok && response.status !== 401) {
+  if (!suppressErrorToast && !response.ok && response.status !== 401) {
     try {
       const errorData = await response.clone().json();
 

@@ -24,6 +24,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useRealtimeEvents } from "@/lib/realtime";
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import DocumentInspector from "@/app/components/dashboard/documents/DocumentInspector";
@@ -895,7 +896,10 @@ export default function DocumentsPage() {
       <div className="theme-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         {savedViewId ? (
           <div className="bg-primary/10 text-primary border-primary/20 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs font-bold sm:w-auto sm:shrink-0">
-            <span>Live view: {activeSavedViewName ?? "Loading…"}</span>
+            <span className="inline-flex items-center gap-2">
+              Live view:{" "}
+              {activeSavedViewName ?? <AverQelLoading size="inline" label="Loading saved view" />}
+            </span>
             <button
               type="button"
               onClick={() => router.replace("/dashboard/documents")}
@@ -1571,9 +1575,11 @@ export default function DocumentsPage() {
                             ))}
                           </div>
                           <p className="text-foreground/40 text-[10px] font-bold tracking-widest uppercase">
-                            {rawLoadingPhase === "secure"
-                              ? "Fetching original file securely"
-                              : "Loading extracted text without reloading the page"}
+                            {rawLoadingPhase === "secure" ? (
+                              "Fetching original file securely"
+                            ) : (
+                              <AverQelLoading size="inline" label="Loading extracted text" />
+                            )}
                           </p>
                         </div>
                       </div>
@@ -1596,7 +1602,11 @@ export default function DocumentsPage() {
                               onClick={() => void loadPagePreview(pagePreviewNumber + 1)}
                               className="rounded-md px-3 py-1.5 disabled:opacity-40"
                             >
-                              {pagePreviewLoading ? "Loading…" : "Next"}
+                              {pagePreviewLoading ? (
+                                <AverQelLoading size="inline" label="Loading next page" />
+                              ) : (
+                                "Next"
+                              )}
                             </button>
                           </div>
                           {/* Server-rendered PDF/Office page; never the source file itself. */}

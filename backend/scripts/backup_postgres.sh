@@ -10,6 +10,7 @@ POSTGRES_SERVICE="postgres"
 DB_NAME="knowledge"
 DB_USER="postgres"
 DRY_RUN="false"
+BACKUP_RETENTION_DAYS="${AKS_BACKUP_RETENTION_DAYS:-30}"
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,7 @@ Options:
   --postgres-service <name>     Docker compose service name (default: postgres)
   --db-name <name>              Database name (default: knowledge)
   --db-user <name>              Database user (default: postgres)
+  --retention-days <days>       Retain managed backups for this many days (default: 30)
   --dry-run                     Print backup commands without executing
   -h, --help                    Show help
 EOF
@@ -41,6 +43,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --db-user)
       DB_USER="${2:-}"
+      shift 2
+      ;;
+    --retention-days)
+      BACKUP_RETENTION_DAYS="${2:-}"
       shift 2
       ;;
     --dry-run)
@@ -73,6 +79,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY RUN: $DUMP_CMD"
   echo "DRY RUN: sha256sum '$BACKUP_FILE' > '$SHA_FILE'"
   echo "DRY RUN: write metadata to '$META_FILE'"
+  echo "DRY RUN: prune managed backups older than $BACKUP_RETENTION_DAYS days in '$OUTPUT_DIR'"
   exit 0
 fi
 
@@ -97,3 +104,7 @@ JSON
 echo "Backup created: $BACKUP_FILE"
 echo "Checksum file: $SHA_FILE"
 echo "Metadata file: $META_FILE"
+python3 "$SCRIPT_DIR/prune_backups.py" \
+  --output-dir "$OUTPUT_DIR" \
+  --retention-days "$BACKUP_RETENTION_DAYS" \
+  --apply

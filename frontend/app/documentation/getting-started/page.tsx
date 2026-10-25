@@ -74,14 +74,11 @@ export default function GettingStartedPage() {
           its provider settings.
         </p>
       </DocsSection>
-      <DocsSection title="Open NeoSIS from the desktop app">
+      <DocsSection title="Google and GitHub sign-in on desktop">
         <p>
-          The packaged Linux and Windows desktop apps show a NeoSIS switch in the center of the
-          signed-in dashboard header and directly below DeepSpace in the sidebar when the NeoSIS
-          runtime is included. Select either control to open NeoSIS in the same app window. The
-          AverQel-to-NeoSIS switches are not shown in a browser, while signed out, or in the desktop
-          development build. The window&apos;s top strip contains only minimize, maximize, and close
-          controls. Use the AverQel control in the NeoSIS page to return to the last AverQel page.
+          AverQel Desktop opens Google or GitHub sign-in in a compact separate window and returns
+          to the AverQel login page when sign-in finishes. Closing that window cancels sign-in; you
+          can retry or use email and password.
         </p>
       </DocsSection>
     </DocsShell>

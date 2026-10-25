@@ -1866,7 +1866,11 @@ class AnswerService:
         structured_output: bool = True,
         response_directive: str | None = None,
     ) -> list[dict[str, str]]:
-        sys_prompt = PromptTemplates.get_template(query_type).format(context=context)
+        # Templates contain literal JSON examples with braces. `str.format`
+        # treats those as fields and raises KeyError (for example on `"title"`)
+        # before any provider request is made. Only replace the one supported
+        # placeholder so JSON and user document text remain literal.
+        sys_prompt = PromptTemplates.get_template(query_type).replace("{context}", context)
         sys_prompt += (
             "\nIMPORTANT: You must respond in the exact same language that the user's Question is written in."
             "\nIMPORTANT: Prefer clean markdown with headings, bullets, and tables when helpful."

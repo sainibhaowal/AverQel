@@ -96,6 +96,8 @@ def resolve_request_priority(path: str) -> str:
     # may slow background jobs, but must not reject the dashboard or alerts.
     if "/overview" in path or "/notifications" in path:
         return "INTERACTIVE"
+    if "/metrics/summary" in path:
+        return "INTERACTIVE"
     if "/metrics" in path:
         return "BACKGROUND"
     return "INTERACTIVE"

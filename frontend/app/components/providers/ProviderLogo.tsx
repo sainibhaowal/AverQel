@@ -8,8 +8,8 @@ export type ProviderLogoDefinition =
 
 /**
  * Provider marks are local assets so they also render in offline desktop builds.
- * Groq and Tavily use neutral CPU/search symbols because their published brand
- * terms restrict vendor-logo use in application interfaces without permission.
+ * Providers without a suitable local mark use neutral symbols so offline builds
+ * do not substitute the AverQel product logo for a provider brand.
  */
 export const providerLogoRegistry: Record<string, ProviderLogoDefinition> = {
   anthropic: { kind: "asset", src: "/providers/anthropic.svg", appearance: "monochrome" },
@@ -29,11 +29,7 @@ export const providerLogoRegistry: Record<string, ProviderLogoDefinition> = {
   openai: { kind: "asset", src: "/providers/openai.svg", appearance: "monochrome" },
   "opencode-zen": { kind: "asset", src: "/providers/opencode.svg", appearance: "monochrome" },
   openrouter: { kind: "asset", src: "/providers/openrouter-color.svg", appearance: "brand" },
-  "sentence-transformers": {
-    kind: "asset",
-    src: "/brand/AverQel_Icon.svg",
-    appearance: "brand",
-  },
+  "sentence-transformers": { kind: "endpoint" },
   searxng: { kind: "asset", src: "/providers/searxng-color.svg", appearance: "brand" },
   tavily: { kind: "wordmark", text: "TAVILY" },
   zai: { kind: "asset", src: "/providers/zai.svg", appearance: "monochrome" },

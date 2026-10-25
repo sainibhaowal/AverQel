@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -44,6 +44,7 @@ UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 class DeletionRequestResult:
     deletion_id: uuid.UUID
     status: str
+    self_approval_not_before: datetime | None = None
 
 
 class DeletionService:
@@ -61,12 +62,18 @@ class DeletionService:
         requested_by_user_id: uuid.UUID,
         reason: str,
     ) -> DeletionRequestResult:
+        now = datetime.now(UTC)
+        self_approval_not_before = now + timedelta(
+            hours=self.settings.admin_single_owner_deletion_delay_hours
+        )
         row = DataDeletion(
             id=generate_uuid7_with_fallback(),
             tenant_id=tenant_id,
             requested_by_user_id=requested_by_user_id,
             status="awaiting_approval",
             scope="tenant_data",
+            approval_mode="two_admin",
+            self_approval_not_before=self_approval_not_before,
             reason=reason,
             result_counts={},
         )
@@ -78,12 +85,17 @@ class DeletionService:
             resource_type="data_deletion",
             resource_id=str(row.id),
             actor_user_id=requested_by_user_id,
+            details={"self_approval_not_before": self_approval_not_before.isoformat()},
         )
 
         deletion_id = row.id
         status = row.status
         self.db.commit()
-        return DeletionRequestResult(deletion_id=deletion_id, status=status)
+        return DeletionRequestResult(
+            deletion_id=deletion_id,
+            status=status,
+            self_approval_not_before=self_approval_not_before,
+        )
 
     def approve_deletion(
         self,
@@ -113,6 +125,7 @@ class DeletionService:
             )
 
         row.status = "queued"
+        row.approval_mode = "two_admin"
         row.approved_by_user_id = approved_by_user_id
         row.approved_at = datetime.now(UTC)
         self.audit.write_event(
@@ -121,6 +134,92 @@ class DeletionService:
             resource_type="data_deletion",
             resource_id=str(row.id),
             actor_user_id=approved_by_user_id,
+        )
+        self.db.commit()
+        return DeletionRequestResult(deletion_id=row.id, status=row.status)
+
+    def self_approve_deletion(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        deletion_id: uuid.UUID,
+        approved_by_user_id: uuid.UUID,
+    ) -> DeletionRequestResult:
+        row = self.repo.get_by_id(tenant_id=tenant_id, deletion_id=deletion_id, for_update=True)
+        if row is None:
+            raise ApiError(
+                code="DATA_DELETION_NOT_FOUND",
+                message="Deletion request was not found for tenant.",
+                status_code=404,
+            )
+        if row.requested_by_user_id != approved_by_user_id:
+            raise ApiError(
+                code="DELETION_REQUESTER_ONLY",
+                message="Only the original administrator can use delayed single-owner approval.",
+                status_code=403,
+            )
+        if row.status != "awaiting_approval":
+            raise ApiError(
+                code="DATA_DELETION_NOT_AWAITING_APPROVAL",
+                message="This deletion request is no longer awaiting approval.",
+                status_code=409,
+            )
+        now = datetime.now(UTC)
+        if row.self_approval_not_before is None or row.self_approval_not_before > now:
+            raise ApiError(
+                code="DELETION_SELF_APPROVAL_DELAY_ACTIVE",
+                message="This deletion can be approved by its requester after the configured safety delay.",
+                status_code=409,
+            )
+
+        row.status = "queued"
+        row.approval_mode = "single_admin_delayed"
+        row.approved_by_user_id = approved_by_user_id
+        row.approved_at = now
+        self.audit.write_event(
+            tenant_id=tenant_id,
+            action="deletion.self_approved",
+            resource_type="data_deletion",
+            resource_id=str(row.id),
+            actor_user_id=approved_by_user_id,
+            details={"approval_mode": "single_admin_delayed"},
+        )
+        self.db.commit()
+        return DeletionRequestResult(deletion_id=row.id, status=row.status)
+
+    def cancel_deletion(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        deletion_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+    ) -> DeletionRequestResult:
+        row = self.repo.get_by_id(tenant_id=tenant_id, deletion_id=deletion_id, for_update=True)
+        if row is None:
+            raise ApiError(
+                code="DATA_DELETION_NOT_FOUND",
+                message="Deletion request was not found for tenant.",
+                status_code=404,
+            )
+        if row.requested_by_user_id != actor_user_id:
+            raise ApiError(
+                code="DELETION_REQUESTER_ONLY",
+                message="Only the administrator who requested deletion can cancel it.",
+                status_code=403,
+            )
+        if row.status != "awaiting_approval":
+            raise ApiError(
+                code="DATA_DELETION_NOT_AWAITING_APPROVAL",
+                message="Only a deletion that is still awaiting approval can be cancelled.",
+                status_code=409,
+            )
+        row.status = "cancelled"
+        self.audit.write_event(
+            tenant_id=tenant_id,
+            action="deletion.cancelled",
+            resource_type="data_deletion",
+            resource_id=str(row.id),
+            actor_user_id=actor_user_id,
         )
         self.db.commit()
         return DeletionRequestResult(deletion_id=row.id, status=row.status)
@@ -166,11 +265,25 @@ class DeletionService:
     def process_deletion(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> None:
         row = self.get_status(tenant_id=tenant_id, deletion_id=deletion_id)
 
-        if row.status in {"completed", "processing", "awaiting_approval"}:
+        if row.status in {"completed", "processing", "awaiting_approval", "cancelled"}:
             return
 
-        if row.status == "queued" and (
-            row.approved_by_user_id is None or row.approved_by_user_id == row.requested_by_user_id
+        now = datetime.now(UTC)
+        second_admin_approval_valid = (
+            row.approval_mode == "two_admin"
+            and row.approved_by_user_id is not None
+            and row.approved_by_user_id != row.requested_by_user_id
+        )
+        delayed_self_approval_valid = (
+            row.approval_mode == "single_admin_delayed"
+            and row.approved_by_user_id == row.requested_by_user_id
+            and row.approved_at is not None
+            and row.self_approval_not_before is not None
+            and row.approved_at >= row.self_approval_not_before
+            and now >= row.self_approval_not_before
+        )
+        if row.status == "queued" and not (
+            second_admin_approval_valid or delayed_self_approval_valid
         ):
             row.status = "awaiting_approval"
             row.approved_by_user_id = None

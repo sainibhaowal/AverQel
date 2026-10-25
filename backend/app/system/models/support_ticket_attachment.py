@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,10 @@ class SupportTicketAttachment(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    encrypted_metadata: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_encrypted: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
     storage_bucket: Mapped[str] = mapped_column(String(128), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(

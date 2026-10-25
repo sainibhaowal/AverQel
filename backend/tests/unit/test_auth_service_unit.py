@@ -102,6 +102,11 @@ class _RevokedAccessTokens:
         self._exists = True
 
 
+class _Audit:
+    def write_event(self, **kwargs):  # type: ignore[no-untyped-def]
+        _ = kwargs
+
+
 @pytest.fixture
 def settings():
     get_settings.cache_clear()
@@ -114,12 +119,14 @@ def _service(settings):  # type: ignore[no-untyped-def]
     svc.roles = _Roles(["admin"])
     svc.refresh_tokens = _RefreshTokens()
     svc.revoked_access_tokens = _RevokedAccessTokens()
+    svc.audit = _Audit()
     return svc
 
 
 def _user(active: bool = True, locked: bool = False):
     return SimpleNamespace(
         id=uuid4(),
+        tenant_id=uuid4(),
         email="user@example.com",
         password_hash="hash",
         is_active=active,

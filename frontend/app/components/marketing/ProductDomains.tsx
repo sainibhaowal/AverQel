@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -33,8 +33,9 @@ import {
 } from "lucide-react";
 import DeepSpaceMark from "../ui/DeepSpaceMark";
 import QelConnectMark from "../ui/QelConnectMark";
+import ProviderLogo from "../providers/ProviderLogo";
 import styles from "./LandingVisuals.module.css";
-import { useLandingSectionMotion } from "./landingMotion";
+import { useLandingReducedMotion, useLandingSectionMotion } from "./landingMotion";
 
 type Accent = "cyan" | "blue" | "emerald" | "violet" | "amber";
 
@@ -57,6 +58,32 @@ type ProductDomain = {
   description: string;
   cards: DomainCard[];
 };
+
+// Keep this public landing-page list in sync with the backend provider catalog.
+const supportedProviderCatalog = [
+  { providerType: "anthropic", label: "Anthropic" },
+  { providerType: "sentence-transformers", label: "AverQel Server Retrieval" },
+  { providerType: "cline", label: "Cline API" },
+  { providerType: "cohere", label: "Cohere" },
+  { providerType: "deepseek", label: "DeepSeek" },
+  { providerType: "google", label: "Google" },
+  { providerType: "groq", label: "Groq" },
+  { providerType: "groq-openai-compatible", label: "Groq OpenAI-Compatible" },
+  { providerType: "lmstudio", label: "LM Studio" },
+  { providerType: "manus", label: "Manus Agent API" },
+  { providerType: "meta", label: "Meta AI" },
+  { providerType: "mistral", label: "Mistral AI" },
+  { providerType: "moonshot", label: "Moonshot AI (Kimi)" },
+  { providerType: "nvidia-nim", label: "NVIDIA NIM" },
+  { providerType: "ollama", label: "Ollama" },
+  { providerType: "openai", label: "OpenAI API" },
+  { providerType: "custom", label: "OpenAI-Compatible" },
+  { providerType: "opencode-zen", label: "OpenCode Zen" },
+  { providerType: "openrouter", label: "OpenRouter" },
+  { providerType: "searxng", label: "SearXNG (Self-hosted)" },
+  { providerType: "tavily", label: "Tavily Web Search" },
+  { providerType: "zai", label: "Z.AI (GLM)" },
+] as const;
 
 const productDomains: ProductDomain[] = [
   {
@@ -416,17 +443,18 @@ const productDomains: ProductDomain[] = [
     id: "mcp",
     name: "MCP Servers",
     eyebrow: "06 · Approved external tools",
-    title: "Connect supported tools with explicit access and action controls.",
+    title: "Connect apps from Composio's live catalog with clear action controls.",
     description:
-      "MCP manages approved server connections and their tools. A catalog entry, supported authorization, connection policy, and any required action approval are part of the flow.",
+      "Bring your own Composio project key, connect the external accounts you choose, and use their available tools in DeepSpace. The catalog and supported authorization methods come from Composio; AverQel enforces account ownership, tool policy, and action approval.",
     cards: [
       {
-        title: "Curated marketplace",
+        title: "Live Composio app catalog",
         description:
-          "Discover reviewed catalog entries and inspect the available server and tool information.",
+          "Browse current app and tool listings, then inspect the available descriptions, input fields, and authentication details.",
         points: [
-          "Connections start from approved catalog entries",
-          "Inspect supported tools and connection requirements",
+          "Catalog metadata and counts can change over time",
+          "Add your own Composio project key under Providers → MCP",
+          "A listing does not guarantee an app is enabled for your project",
           "Arbitrary endpoint registration is not part of this release",
         ],
         icon: Cable,
@@ -435,13 +463,13 @@ const productDomains: ProductDomain[] = [
         linkLabel: "MCP guide",
       },
       {
-        title: "Authorization and connection health",
+        title: "Your app connections",
         description:
-          "Authorize a supported server and manage the user-owned connection from the MCP area.",
+          "Connect only the external app accounts you choose, using the authentication method supported by each app.",
         points: [
-          "Provider-specific OAuth or setup requirements apply",
-          "Inspect tools in the MCP Inspector; refresh or disconnect connections",
-          "Live use depends on deployment credentials and external service health",
+          "Each AverQel account owns its project key and app sessions",
+          "Inspect tools in MCP Inspector; refresh or disconnect connections",
+          "OAuth apps need the deployment's public callback origin",
         ],
         icon: KeyRound,
         accent: "blue",
@@ -450,12 +478,11 @@ const productDomains: ProductDomain[] = [
       },
       {
         title: "Tool policies and approvals",
-        description:
-          "Review what a connected tool can do before making it available to an AI workflow.",
+        description: "Review tool policies before making a connected app available to DeepSpace.",
         points: [
-          "Server and tool policies control availability",
-          "Read-only restrictions and approvals apply to side-effecting actions",
-          "Connections can be scoped to DeepSpace or a supported conversation",
+          "The broker checks connection ownership and current tool definitions",
+          "Writes, deletions, and external messages require approval",
+          "Always allow cannot bypass the side-effect approval check",
         ],
         icon: ShieldCheck,
         accent: "amber",
@@ -551,7 +578,7 @@ function ProductDomainSection({
   domain: ProductDomain;
   domainIndex: number;
 }) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
   const { ref, style } = useLandingSectionMotion<HTMLElement>({
     depth: domain.id === "qel-connect" ? 12 : 16,
     scaleRange: [0.998, 1.003],
@@ -674,8 +701,39 @@ function ProductDomainSection({
             );
           })}
         </div>
+        {domain.id === "providers" && <SupportedProviderCatalog />}
       </motion.div>
     </motion.section>
+  );
+}
+
+function SupportedProviderCatalog() {
+  return (
+    <div className={styles.providerCatalog}>
+      <div className={styles.providerCatalogHeader}>
+        <h3 className={styles.providerCatalogHeading} id="supported-provider-catalog-heading">
+          Supported providers
+        </h3>
+        <p className={styles.providerCatalogNote}>
+          Hosted and local models, retrieval, and web search
+        </p>
+      </div>
+      <ul
+        aria-labelledby="supported-provider-catalog-heading"
+        className={styles.providerCatalogList}
+      >
+        {supportedProviderCatalog.map(({ providerType, label }) => (
+          <li className={styles.providerCatalogItem} key={providerType}>
+            <ProviderLogo
+              className={styles.providerCatalogLogo}
+              providerType={providerType}
+              size={24}
+            />
+            <span>{label}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
