@@ -201,6 +201,16 @@ services:
         condition: service_healthy
     expose:
       - "1030"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:1030/').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   worker:
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}

@@ -225,6 +225,14 @@ protected `main`:
    workflow checks internal and public health/readiness and release version;
    it attempts to restore the prior application images if deployment fails.
 
+The VPS workflow checks that images still match the current `main` SHA after
+building, verifies the deployed frontend version and health, and cleans up
+only AverQel-owned images after successful public health checks. It does not
+prune data volumes. Its Compose update is in-place; the separately managed VPS
+gateway is not switched between parallel app slots, so the workflow does not
+guarantee zero downtime. See the [VPS deployment guide](backend/docs/release/04-vps-deployment.md)
+for the exact deployment and cleanup behavior.
+
 Before relying on a release, review migration compatibility, keep a matching
 PostgreSQL and object-storage backup, deploy and smoke-test in isolated
 staging, and verify the required workers and feature-specific providers. The
