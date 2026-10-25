@@ -400,8 +400,13 @@ function containsChartFence(content: string): boolean {
 
 function isFunctionalCard(block: Extract<StructuredBlock, { type: "card" }>): boolean {
   return Boolean(
+    block.layout === "feature" ||
+    block.layout === "place" ||
     block.href ||
     block.image_url ||
+    block.icon ||
+    (block.details && block.details.length > 0) ||
+    (block.sources && block.sources.length > 0) ||
     (block.metrics && block.metrics.length > 0) ||
     (block.actions && block.actions.length > 0),
   );

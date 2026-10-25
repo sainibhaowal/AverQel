@@ -146,10 +146,7 @@ describe("query block actions", () => {
 
     await waitFor(() => {
       expect(execCommand).toHaveBeenCalledWith("copy");
-      expect(screen.getByRole("button", { name: "Copy table" })).toHaveAttribute(
-        "title",
-        "Copied",
-      );
+      expect(screen.getByRole("button", { name: "Copy table" })).toHaveAttribute("title", "Copied");
     });
   });
 
@@ -179,7 +176,24 @@ describe("query block actions", () => {
       />,
     );
 
+    const table = screen.getByRole("table");
+    const tableWrapper = table.closest(".table-wrapper");
+    const actions = screen.getByRole("group", { name: "Table actions" });
+    const toolbar = actions.parentElement;
+    expect(toolbar).toHaveClass(
+      "flex",
+      "min-h-8",
+      "justify-end",
+      "group-hover/structured-table:opacity-100",
+    );
+    expect(toolbar?.nextElementSibling).toBe(tableWrapper);
+
     fireEvent.click(screen.getByRole("button", { name: "Export table" }));
+    const exportMenu = screen.getByRole("button", { name: "CSV" }).parentElement;
+    expect(exportMenu).toHaveClass("theme-panel", "grid", "min-w-28", "fixed", "z-[1000]");
+    expect(exportMenu).toHaveStyle({ position: "fixed" });
+    expect(exportMenu?.parentElement).toBe(document.body);
+    expect(tableWrapper).not.toContainElement(exportMenu);
     fireEvent.click(screen.getByRole("button", { name: "Excel (.xlsx)" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Workbook generation failed");

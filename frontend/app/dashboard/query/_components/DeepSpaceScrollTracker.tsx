@@ -101,6 +101,26 @@ function buildActiveAnswerContent(msg: TrackerMessage): string {
         baseContent += tableStr + "\n";
       }
     }
+
+    const infographicBlocks = msg.blocks.filter((b) => b.type === "infographic");
+    for (const infographic of infographicBlocks) {
+      if (!baseContent.includes("```infographic")) {
+        const payload = Object.fromEntries(
+          Object.entries(infographic).filter(([key]) => key !== "type"),
+        );
+        baseContent += `\n\n\`\`\`infographic\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n`;
+      }
+    }
+
+    const imageCards = msg.blocks.filter(
+      (b) => b.type === "card" && (b.layout === "feature" || b.layout === "place"),
+    );
+    for (const card of imageCards) {
+      if (!baseContent.includes("```card")) {
+        const payload = Object.fromEntries(Object.entries(card).filter(([key]) => key !== "type"));
+        baseContent += `\n\n\`\`\`card\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n`;
+      }
+    }
   }
 
   return baseContent;

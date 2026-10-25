@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -35,7 +35,7 @@ import DeepSpaceMark from "../ui/DeepSpaceMark";
 import QelConnectMark from "../ui/QelConnectMark";
 import ProviderLogo from "../providers/ProviderLogo";
 import styles from "./LandingVisuals.module.css";
-import { useLandingReducedMotion, useLandingSectionMotion } from "./landingMotion";
+import { useLandingSectionMotion } from "./landingMotion";
 
 type Accent = "cyan" | "blue" | "emerald" | "violet" | "amber";
 
@@ -69,6 +69,7 @@ const supportedProviderCatalog = [
   { providerType: "google", label: "Google" },
   { providerType: "groq", label: "Groq" },
   { providerType: "groq-openai-compatible", label: "Groq OpenAI-Compatible" },
+  { providerType: "larprouter", label: "LarpRouter" },
   { providerType: "lmstudio", label: "LM Studio" },
   { providerType: "manus", label: "Manus Agent API" },
   { providerType: "meta", label: "Meta AI" },
@@ -578,7 +579,7 @@ function ProductDomainSection({
   domain: ProductDomain;
   domainIndex: number;
 }) {
-  const reduceMotion = useLandingReducedMotion();
+  const reduceMotion = useReducedMotion();
   const { ref, style } = useLandingSectionMotion<HTMLElement>({
     depth: domain.id === "qel-connect" ? 12 : 16,
     scaleRange: [0.998, 1.003],

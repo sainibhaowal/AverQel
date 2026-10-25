@@ -9,6 +9,7 @@ import MarkdownRenderer from "../app/dashboard/query/_components/MarkdownRendere
 import {
   inferVisualFenceKind,
   normalizePersistedRichContent,
+  repairMismatchedVisualFences,
   unwrapPersistedVisualFence,
 } from "../app/dashboard/query/_lib/visual-fences";
 
@@ -23,6 +24,149 @@ vi.mock("mermaid", () => ({
 }));
 
 describe("diagram block rendering", () => {
+  it("renders place details and source aliases from a mismatched fence while streaming", () => {
+    const payload = JSON.stringify({
+      title: "Berlin Welcome Center",
+      content: "Visitor information at the airport.",
+      layout: "place",
+      details: ["**Hours:** 08:00–20:00"],
+      sources: [{ label: "Official visitor page", href: "https://example.com/visit" }],
+    });
+    const shortFence = String.fromCharCode(96).repeat(3);
+    const longFence = `${shortFence}${String.fromCharCode(96)}`;
+
+    render(
+      <MarkdownRenderer
+        content={`${longFence}json\n${payload}\n${shortFence}\n\nDetails follow.`}
+        streaming
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Berlin Welcome Center" })).toBeInTheDocument();
+    expect(screen.getByText("08:00–20:00")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Official visitor page" })).toHaveAttribute(
+      "href",
+      "https://example.com/visit",
+    );
+    expect(screen.getByText("Details follow.")).toBeInTheDocument();
+  });
+
+  it("leaves unrelated JSON inside a mismatched code fence as code", () => {
+    const shortFence = String.fromCharCode(96).repeat(3);
+    const longFence = `${shortFence}${String.fromCharCode(96)}`;
+    const content = `${longFence}json\n{"ok":true}\n${shortFence}\n\nKeep this as code.`;
+
+    expect(repairMismatchedVisualFences(content)).toBe(content);
+  });
+
+  it("recovers a valid infographic and following prose from a mismatched JSON fence", () => {
+    const source = JSON.stringify(
+      {
+        title: "Cloud Provider Comparison",
+        layout: "comparison",
+        items: [
+          { title: "AWS", description: "Broad service catalog." },
+          { title: "Azure", description: "Strong Microsoft integration." },
+          { title: "Google Cloud", description: "Transparent pricing." },
+        ],
+      },
+      null,
+      2,
+    );
+    const shortFence = String.fromCharCode(96).repeat(3);
+    const longFence = `${shortFence}${String.fromCharCode(96)}`;
+
+    render(
+      <MarkdownRenderer
+        content={`${longFence}json\n${source}\n${shortFence}\n\nComparison notes follow.`}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Cloud Provider Comparison" })).toBeInTheDocument();
+    expect(screen.getByText("Broad service catalog.")).toBeInTheDocument();
+    const providerCards = screen.getAllByRole("article");
+    expect(providerCards).toHaveLength(3);
+    expect(providerCards[2]).toHaveClass("sm:col-span-2");
+    expect(screen.getByText("Comparison notes follow.")).toBeInTheDocument();
+    expect(screen.queryByText(/"layout": "comparison"/)).not.toBeInTheDocument();
+  });
+
+  it("recognizes and round-trips an infographic visual fence", () => {
+    const source = JSON.stringify({
+      title: "Launch steps",
+      layout: "steps",
+      items: [{ title: "Research" }, { title: "Ship" }],
+    });
+
+    expect(inferVisualFenceKind("json", source)).toBe("infographic");
+    expect(unwrapPersistedVisualFence(`\`\`\`infographic\n${source}\n\`\`\``)).toEqual({
+      kind: "infographic",
+      source,
+    });
+  });
+
+  it.each(["LR", "RL", "TD", "DT"] as const)(
+    "renders process infographics in the requested %s direction",
+    (direction) => {
+      const source = JSON.stringify({
+        title: "Prepare a local model",
+        layout: "steps",
+        direction,
+        items: [
+          { title: "Check hardware", description: "Confirm memory and storage." },
+          { title: "Choose a model", description: "Match the model to the machine." },
+        ],
+      });
+      const { container } = render(
+        <MarkdownRenderer content={`\`\`\`infographic\n${source}\n\`\`\``} />,
+      );
+      const list = container.querySelector("ol[data-flow-direction]");
+
+      expect(list).toHaveAttribute("data-flow-direction", direction);
+      expect(list).toHaveAttribute("dir", direction === "RL" ? "rtl" : "ltr");
+      expect(
+        Array.from(list?.querySelectorAll("li h4") ?? []).map((heading) => heading.textContent),
+      ).toEqual(["Check hardware", "Choose a model"]);
+      if (direction === "TD") expect(list).toHaveClass("flex", "flex-col");
+      else if (direction === "DT") expect(list).toHaveClass("flex", "flex-col-reverse");
+      else expect(list).toHaveClass("sm:grid-cols-2", "xl:grid-cols-4");
+    },
+  );
+
+  it("does not draw a horizontal connector across a wrapped row", () => {
+    const source = JSON.stringify({
+      title: "Five steps",
+      layout: "steps",
+      direction: "LR",
+      items: Array.from({ length: 5 }, (_, index) => ({ title: `Step ${index + 1}` })),
+    });
+    const { container } = render(
+      <MarkdownRenderer content={`\`\`\`infographic\n${source}\n\`\`\``} />,
+    );
+    const fourthStep = container.querySelectorAll("ol[data-flow-direction] > li")[3];
+
+    expect(fourthStep?.querySelector('[data-flow-connector="row"]')).toHaveClass(
+      "sm:hidden",
+      "xl:hidden",
+    );
+  });
+
+  it("renders a closed infographic while the Query answer continues streaming", () => {
+    const source = JSON.stringify({
+      title: "Query launch",
+      layout: "steps",
+      items: [{ title: "Plan" }, { title: "Ship" }],
+    });
+    const partial = `\`\`\`infographic\n${source}`;
+    const { rerender } = render(<MarkdownRenderer content={partial} streaming />);
+
+    expect(screen.queryByRole("heading", { name: "Query launch" })).not.toBeInTheDocument();
+    rerender(<MarkdownRenderer content={`${partial}\n\`\`\`\n\nSummary follows.`} streaming />);
+
+    expect(screen.getByRole("heading", { name: "Query launch" })).toBeInTheDocument();
+    expect(screen.getByText("Summary follows.")).toBeInTheDocument();
+  });
+
   it("normalizes unambiguous and persisted Gantt aliases without reclassifying JSON", () => {
     const source = "gantt\n  title Launch";
 
@@ -136,6 +280,33 @@ describe("diagram block rendering", () => {
         syntax: expect.stringContaining("Public API :api, 2026-01-01, 3d"),
       }),
     );
+  });
+
+  it("keeps structured diagram edits open when the revision save is rejected", async () => {
+    const onChange = vi.fn().mockResolvedValue(false);
+    render(
+      <DiagramBlock
+        block={{
+          id: "gantt-conflict",
+          type: "diagram",
+          diagram_type: "mermaid_gantt",
+          source: "mermaid",
+          syntax:
+            "gantt\n  title Launch\n  dateFormat YYYY-MM-DD\n  section Build\n  API :api, 2026-01-01, 3d",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /edit structured/i }));
+    fireEvent.change(screen.getByDisplayValue("API"), { target: { value: "Public API" } });
+    fireEvent.click(screen.getByRole("button", { name: /save structured/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This diagram changed in another session.",
+    );
+    expect(screen.getByRole("button", { name: /save structured/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Public API")).toBeInTheDocument();
   });
 
   it("renders inline mermaid code with an on-demand view action", async () => {
@@ -712,7 +883,7 @@ describe("diagram block rendering", () => {
     const svgMarkup = container.querySelector('[data-testid="diagram-stage"] svg')?.outerHTML ?? "";
     expect(svgMarkup).toContain("<style>");
     expect(svgMarkup).toContain(".classTitle");
-    expect(svgMarkup).toContain("fill: #f8fafc");
+    expect(svgMarkup).toContain("fill: #102a43");
     expect(svgMarkup).not.toContain("dominant-baseline: hanging");
     expect(svgMarkup).not.toContain("font-size:");
     expect(svgMarkup).not.toContain("font-weight:");

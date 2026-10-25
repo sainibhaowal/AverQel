@@ -857,6 +857,7 @@ export default function DocumentsPage() {
           title="Documents Hub"
           subtitle="Secure document ingestion and intelligence"
           icon={FileText}
+          actionsLayout="below"
           accentClassName="bg-emerald-500 text-emerald-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.35)]"
           actions={

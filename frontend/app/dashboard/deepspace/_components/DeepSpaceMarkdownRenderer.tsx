@@ -12,6 +12,8 @@ import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
 import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
 import ChartBlock from "../../query/_components/ChartBlock";
 import GraphBlock from "../../query/_components/GraphBlock";
+import InfographicBlock from "../../query/_components/InfographicBlock";
+import { isVisualIconName } from "../../query/_components/VisualIcon";
 import GalleryBlock, {
   parseGalleryPayload,
   type GalleryAssetRef,
@@ -21,7 +23,10 @@ import VisualBlockExport from "./VisualBlockExport";
 import { parseVisualChart } from "../../query/_lib/chart-parser";
 import {
   inferVisualFenceKind,
+  markCompletedVisualFences,
   normalizePersistedRichContent,
+  repairMismatchedVisualFences,
+  STREAMING_VISUAL_FENCE_PREFIX,
   unwrapPersistedVisualFence,
 } from "../../query/_lib/visual-fences";
 import type {
@@ -29,6 +34,7 @@ import type {
   StreamCardBlock,
   StreamDiagramBlock,
   StreamGalleryBlock,
+  StreamInfographicBlock,
   StructuredBlock,
 } from "../_lib/deepspace-stream";
 import { exportDiagramPdf, exportDiagramPng, exportDiagramSvg } from "@/lib/client-export";
@@ -58,6 +64,7 @@ function MermaidPreview({ source }: { source: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -104,12 +111,16 @@ function MermaidPreview({ source }: { source: string }) {
   }, [id, sanitizedSource, theme]);
 
   const copySource = async () => {
+    setCopyError(null);
     try {
       await navigator.clipboard.writeText(sanitizedSource);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
-    } catch {
+    } catch (caught) {
       setCopied(false);
+      setCopyError(
+        caught instanceof Error ? caught.message : "Mermaid source could not be copied.",
+      );
     }
   };
 
@@ -217,6 +228,11 @@ function MermaidPreview({ source }: { source: string }) {
           {exportError}
         </p>
       ) : null}
+      {copyError ? (
+        <p className="mt-3 text-xs text-rose-600 dark:text-rose-300" role="alert">
+          {copyError}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -235,14 +251,19 @@ function isAsciiDiagram(source: string): boolean {
 
 function AsciiDiagramPreview({ source }: { source: string }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const copySource = async () => {
+    setCopyError(null);
     try {
       await navigator.clipboard.writeText(source);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
-    } catch {
+    } catch (caught) {
       setCopied(false);
+      setCopyError(
+        caught instanceof Error ? caught.message : "Diagram source could not be copied.",
+      );
     }
   };
 
@@ -264,6 +285,11 @@ function AsciiDiagramPreview({ source }: { source: string }) {
           <code>{source}</code>
         </pre>
       </div>
+      {copyError ? (
+        <p className="px-5 pb-4 text-xs text-rose-600 dark:text-rose-300" role="alert">
+          {copyError}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -273,7 +299,7 @@ type MarkdownVisualCallbacks = {
   onVisualBlockChange?: (
     messageId: string,
     block: StructuredBlock,
-  ) => void | boolean | Promise<void | boolean>;
+  ) => void | boolean | StructuredBlock | Promise<void | boolean | StructuredBlock>;
   onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
   onImportGalleryAsset?: (
     messageId: string,
@@ -328,18 +354,18 @@ function ChartPreview({
     <VisualBlockExport block={block}>
       <ChartBlock
         block={block as never}
-        onChange={(next) =>
-          callbacks.messageId && callbacks.onVisualBlockChange
-            ? callbacks.onVisualBlockChange(callbacks.messageId, {
-                ...block,
-                ...next,
-              } as StructuredBlock)
+        onChange={async (next) => {
+          if (!callbacks.messageId || !callbacks.onVisualBlockChange) return undefined;
+          const saved = await callbacks.onVisualBlockChange(callbacks.messageId, {
+            ...block,
+            ...next,
+          } as StructuredBlock);
+          return saved === false || typeof saved === "boolean" ? saved : undefined;
+        }}
+        onSaveArtifact={
+          callbacks.onSaveVisualArtifact
+            ? (next) => callbacks.onSaveVisualArtifact!({ ...block, ...next } as StructuredBlock)
             : undefined
-        }
-        onSaveArtifact={(next) =>
-          void Promise.resolve(
-            callbacks.onSaveVisualArtifact?.({ ...block, ...next } as StructuredBlock),
-          ).catch(() => undefined)
         }
       />
     </VisualBlockExport>
@@ -365,13 +391,60 @@ function CardPreview({
     <VisualBlockExport block={block}>
       <RichInfoCard
         block={block}
-        onChange={(next) => {
+        onChange={
+          callbacks.messageId && callbacks.onVisualBlockChange
+            ? async (next) => {
+                const saved = await callbacks.onVisualBlockChange!(callbacks.messageId!, next);
+                if (saved === false || saved === undefined || typeof saved === "boolean") {
+                  return saved;
+                }
+                return saved.type === "card" ? saved : next;
+              }
+            : undefined
+        }
+        onSaveArtifact={
+          callbacks.onSaveVisualArtifact
+            ? (next) => callbacks.onSaveVisualArtifact!(next)
+            : undefined
+        }
+      />
+    </VisualBlockExport>
+  );
+}
+
+function InfographicPreview({
+  source,
+  callbacks,
+}: {
+  source: string;
+  callbacks: MarkdownVisualCallbacks;
+}) {
+  const block = parseInfographicPayload(source);
+  if (!block) {
+    return (
+      <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-cyan-100">
+        <code>{source}</code>
+      </pre>
+    );
+  }
+  return (
+    <VisualBlockExport block={block}>
+      <InfographicBlock
+        block={block}
+        onChange={async (next) => {
           if (callbacks.messageId && callbacks.onVisualBlockChange) {
-            void callbacks.onVisualBlockChange(callbacks.messageId, next);
+            const saved = await callbacks.onVisualBlockChange(callbacks.messageId, next);
+            if (saved === false || saved === undefined || typeof saved === "boolean") {
+              return saved;
+            }
+            return saved.type === "infographic" ? saved : next;
           }
+          return undefined;
         }}
-        onSaveArtifact={(next) =>
-          void Promise.resolve(callbacks.onSaveVisualArtifact?.(next)).catch(() => undefined)
+        onSaveArtifact={
+          callbacks.onSaveVisualArtifact
+            ? (next) => callbacks.onSaveVisualArtifact!(next)
+            : undefined
         }
       />
     </VisualBlockExport>
@@ -397,14 +470,17 @@ function GraphPreview({
     <VisualBlockExport block={block}>
       <GraphBlock
         block={block as never}
-        onChange={(next) => {
-          if (callbacks.messageId && callbacks.onVisualBlockChange) {
-            void callbacks.onVisualBlockChange(callbacks.messageId, {
-              ...block,
-              ...next,
-            } as StructuredBlock);
-          }
-        }}
+        onChange={
+          callbacks.messageId && callbacks.onVisualBlockChange
+            ? async (next) => {
+                const saved = await callbacks.onVisualBlockChange!(callbacks.messageId!, {
+                  ...block,
+                  ...next,
+                } as StructuredBlock);
+                return saved === false ? false : undefined;
+              }
+            : undefined
+        }
       />
     </VisualBlockExport>
   );
@@ -454,6 +530,36 @@ function parseGraphBlock(source: string): StreamDiagramBlock | null {
   }
 }
 
+function parseCardDetail(value: unknown): { label: string; value: string } | null {
+  if (typeof value === "string") {
+    const match =
+      value.match(/^\s*\*\*([^:*]{1,80}):\*\*\s*(.+?)\s*$/) ??
+      value.match(/^\s*([^:*]{1,80}):\s*(.+?)\s*$/);
+    return match ? { label: match[1]!.trim(), value: match[2]!.trim() } : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const detail = value as Record<string, unknown>;
+  if (typeof detail.label !== "string" || detail.value == null) return null;
+  return { label: detail.label, value: String(detail.value) };
+}
+
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+function parseCardSource(value: unknown): { title: string; url: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const title = typeof source.title === "string" ? source.title : source.label;
+  const url = typeof source.url === "string" ? source.url : source.href;
+  return typeof title === "string" && isWebUrl(url) ? { title, url } : null;
+}
+
 function parseCardPayload(source: string): StreamCardBlock | null {
   try {
     const payload = JSON.parse(source) as Record<string, unknown>;
@@ -465,7 +571,90 @@ function parseCardPayload(source: string): StreamCardBlock | null {
         : "Information card";
     const content =
       typeof payload.content === "string" ? payload.content : String(payload.body ?? "");
-    if (!content.trim()) throw new Error("Card content is empty");
+    const layout =
+      payload.layout === "feature" ||
+      payload.layout === "place" ||
+      payload.layout === "evaluation" ||
+      payload.layout === "referral"
+        ? payload.layout
+        : "standard";
+    if (!content.trim() && layout !== "evaluation" && layout !== "referral") {
+      throw new Error("Card content is empty");
+    }
+    const scorePayload =
+      payload.score && typeof payload.score === "object"
+        ? (payload.score as Record<string, unknown>)
+        : null;
+    const score =
+      scorePayload &&
+      typeof scorePayload.value === "number" &&
+      Number.isFinite(scorePayload.value) &&
+      typeof scorePayload.max === "number" &&
+      Number.isFinite(scorePayload.max) &&
+      scorePayload.max > 0 &&
+      scorePayload.value >= 0 &&
+      scorePayload.value <= scorePayload.max
+        ? {
+            value: scorePayload.value,
+            max: scorePayload.max,
+            tone:
+              scorePayload.tone === "info" ||
+              scorePayload.tone === "success" ||
+              scorePayload.tone === "warning" ||
+              scorePayload.tone === "error" ||
+              scorePayload.tone === "neutral"
+                ? (scorePayload.tone as NonNullable<StreamCardBlock["score"]>["tone"])
+                : "warning",
+          }
+        : null;
+    const primaryPayload =
+      payload.primary_metric && typeof payload.primary_metric === "object"
+        ? (payload.primary_metric as Record<string, unknown>)
+        : null;
+    const primaryMetric =
+      primaryPayload && typeof primaryPayload.label === "string"
+        ? {
+            label: primaryPayload.label,
+            value: String(primaryPayload.value ?? ""),
+            detail: typeof primaryPayload.detail === "string" ? primaryPayload.detail : null,
+          }
+        : null;
+    const metrics = Array.isArray(payload.metrics)
+      ? payload.metrics.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const metric = item as Record<string, unknown>;
+          if (typeof metric.label !== "string") return [];
+          return [
+            {
+              label: metric.label,
+              value: String(metric.value ?? ""),
+              detail: typeof metric.detail === "string" ? metric.detail : null,
+            },
+          ];
+        })
+      : [];
+    const details = Array.isArray(payload.details)
+      ? payload.details.flatMap((item) => {
+          const detail = parseCardDetail(item);
+          if (!detail) return [];
+          const detailRecord =
+            item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          return [
+            {
+              label: detail.label,
+              value: detail.value,
+              icon: isVisualIconName(detailRecord.icon) ? detailRecord.icon : null,
+              href: isWebUrl(detailRecord.href) ? detailRecord.href : null,
+            },
+          ];
+        })
+      : [];
+    if (layout === "evaluation" && (!score || metrics.length === 0)) {
+      throw new Error("Evaluation card data is incomplete");
+    }
+    if (layout === "referral" && (!primaryMetric || details.length === 0)) {
+      throw new Error("Referral card data is incomplete");
+    }
     const block: StreamCardBlock = {
       id: readPersistedBlockId(source) ?? stableBlockId("deepspace-card", source),
       type: "card",
@@ -473,23 +662,16 @@ function parseCardPayload(source: string): StreamCardBlock | null {
       title,
       content,
       tone: normalizeCardTone(payload.tone),
+      layout,
       subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
       image_url: typeof payload.image_url === "string" ? payload.image_url : null,
+      image_alt: typeof payload.image_alt === "string" ? payload.image_alt : null,
+      icon: isVisualIconName(payload.icon) ? payload.icon : null,
       href: typeof payload.href === "string" ? payload.href : null,
-      metrics: Array.isArray(payload.metrics)
-        ? payload.metrics.flatMap((item) => {
-            if (!item || typeof item !== "object") return [];
-            const metric = item as Record<string, unknown>;
-            if (typeof metric.label !== "string") return [];
-            return [
-              {
-                label: metric.label,
-                value: String(metric.value ?? ""),
-                detail: typeof metric.detail === "string" ? metric.detail : null,
-              },
-            ];
-          })
-        : [],
+      metrics,
+      score,
+      primary_metric: primaryMetric,
+      code: typeof payload.code === "string" ? payload.code : null,
       actions: Array.isArray(payload.actions)
         ? payload.actions.flatMap((item) => {
             if (!item || typeof item !== "object") return [];
@@ -503,6 +685,79 @@ function parseCardPayload(source: string): StreamCardBlock | null {
                 content: typeof action.content === "string" ? action.content : null,
               },
             ];
+          })
+        : [],
+      details,
+      sources: Array.isArray(payload.sources)
+        ? payload.sources.flatMap((item) => {
+            const sourceItem = parseCardSource(item);
+            return sourceItem ? [sourceItem] : [];
+          })
+        : [],
+      source_markdown: source,
+    };
+    return block;
+  } catch {
+    return null;
+  }
+}
+
+function parseInfographicPayload(source: string): StreamInfographicBlock | null {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    const layouts = ["steps", "timeline", "comparison", "feature_grid", "stats"] as const;
+    if (
+      !payload ||
+      Array.isArray(payload) ||
+      typeof payload.title !== "string" ||
+      !layouts.includes(payload.layout as (typeof layouts)[number]) ||
+      !Array.isArray(payload.items) ||
+      payload.items.length < 2 ||
+      payload.items.length > 8
+    ) {
+      return null;
+    }
+    const items = payload.items.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const item = entry as Record<string, unknown>;
+      if (typeof item.title !== "string" || !item.title.trim()) return [];
+      return [
+        {
+          title: item.title,
+          description: typeof item.description === "string" ? item.description : null,
+          value:
+            typeof item.value === "string" || typeof item.value === "number" ? item.value : null,
+          date: typeof item.date === "string" ? item.date : null,
+          icon: isVisualIconName(item.icon) ? item.icon : null,
+          image_url: typeof item.image_url === "string" ? item.image_url : null,
+        },
+      ];
+    });
+    const layout = payload.layout as StreamInfographicBlock["layout"];
+    if (
+      items.length < 2 ||
+      (layout === "timeline" && items.some((item) => !item.date?.trim())) ||
+      (layout === "stats" && items.some((item) => item.value == null))
+    ) {
+      return null;
+    }
+    const block: StreamInfographicBlock = {
+      id: readPersistedBlockId(source) ?? stableBlockId("deepspace-infographic", source),
+      type: "infographic",
+      ...readPersistedBlockMetadata(source),
+      title: payload.title,
+      subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
+      layout,
+      direction:
+        payload.direction === "RL" || payload.direction === "TD" || payload.direction === "DT"
+          ? payload.direction
+          : "LR",
+      items,
+      note: typeof payload.note === "string" ? payload.note : null,
+      sources: Array.isArray(payload.sources)
+        ? payload.sources.flatMap((entry) => {
+            const sourceItem = parseCardSource(entry);
+            return sourceItem ? [sourceItem] : [];
           })
         : [],
       source_markdown: source,
@@ -559,7 +814,7 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   onVisualBlockChange?: (
     messageId: string,
     block: StructuredBlock,
-  ) => void | boolean | Promise<void | boolean>;
+  ) => void | boolean | StructuredBlock | Promise<void | boolean | StructuredBlock>;
   onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
   onImportGalleryAsset?: (
     messageId: string,
@@ -589,6 +844,10 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
       pre: ({ children }) => <>{children}</>,
       code: ({ children, className, ...props }) => {
         const language = className?.match(/language-([^\s]+)/i)?.[1]?.toLowerCase() ?? "";
+        const streamingVisual = language.startsWith(STREAMING_VISUAL_FENCE_PREFIX);
+        const fenceLanguage = streamingVisual
+          ? language.slice(STREAMING_VISUAL_FENCE_PREFIX.length)
+          : language;
         const value = String(children).replace(/\n$/, "");
         const inline = !className && !String(children).includes("\n");
         if (inline) {
@@ -599,12 +858,14 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
           );
         }
         const persistedFence = unwrapPersistedVisualFence(value);
-        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(language, value);
+        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(fenceLanguage, value);
         const visualValue = persistedFence?.source ?? value;
         const visualLanguage = visualKind ?? language;
-        // Do not repeatedly mount Mermaid/chart renderers for incomplete stream
-        // fences. The plain code block is stable until the provider is done.
-        if (!streaming && visualLanguage === "mermaid" && visualValue.trim()) {
+        // A complete visual fence can render while later prose is still
+        // streaming. Keep unfinished fences as code so partial JSON/Mermaid
+        // never mounts a broken or flashing visual.
+        const visualReady = !streaming || streamingVisual;
+        if (visualReady && visualLanguage === "mermaid" && visualValue.trim()) {
           const diagramId =
             readPersistedBlockId(visualValue) ?? stableBlockId("deepspace-mermaid", visualValue);
           const diagram: StreamDiagramBlock = {
@@ -626,18 +887,21 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
             </VisualBlockExport>
           );
         }
-        if (!streaming && isAsciiDiagram(value)) return <AsciiDiagramPreview source={value} />;
+        if (visualReady && isAsciiDiagram(value)) return <AsciiDiagramPreview source={value} />;
         if (language === "diff" || language === "patch") return <DiffPreview source={value} />;
-        if (!streaming && visualLanguage === "chart") {
+        if (visualReady && visualLanguage === "chart") {
           return <ChartPreview source={visualValue} callbacks={callbacks} />;
         }
-        if (!streaming && visualLanguage === "card") {
+        if (visualReady && visualLanguage === "card") {
           return <CardPreview source={visualValue} callbacks={callbacks} />;
         }
-        if (!streaming && visualLanguage === "graph") {
+        if (visualReady && visualLanguage === "infographic") {
+          return <InfographicPreview source={visualValue} callbacks={callbacks} />;
+        }
+        if (visualReady && visualLanguage === "graph") {
           return <GraphPreview source={visualValue} callbacks={callbacks} />;
         }
-        if (!streaming && visualLanguage === "gallery") {
+        if (visualReady && visualLanguage === "gallery") {
           const gallery = parseGalleryPayload(visualValue);
           if (gallery) {
             const galleryBlock = toGalleryBlock(gallery) ?? {
@@ -680,10 +944,14 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
                       ? (fileId) => callbacks.onRetainGalleryAsset!(callbacks.messageId!, fileId)
                       : undefined
                   }
-                  onSaveArtifact={(next) => {
-                    const nextBlock = toGalleryBlock(next);
-                    return nextBlock ? callbacks.onSaveVisualArtifact?.(nextBlock) : undefined;
-                  }}
+                  onSaveArtifact={
+                    callbacks.onSaveVisualArtifact
+                      ? (next) => {
+                          const nextBlock = toGalleryBlock(next);
+                          return nextBlock ? callbacks.onSaveVisualArtifact!(nextBlock) : undefined;
+                        }
+                      : undefined
+                  }
                 />
               </VisualBlockExport>
             );
@@ -838,13 +1106,14 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   // onscreen until the provider paused or completed. Render the current live
   // value directly so Markdown structure appears as soon as its marker is
   // complete.
-  const normalizedContent = useMemo(
-    () =>
-      normalizeMarkdown(
+  const normalizedContent = useMemo(() => {
+    const normalized = normalizeMarkdown(
+      repairMismatchedVisualFences(
         normalizePersistedRichContent(compact ? normalizeThinkingDisplay(content) : content),
       ),
-    [compact, content],
-  );
+    );
+    return streaming ? markCompletedVisualFences(normalized) : normalized;
+  }, [compact, content, streaming]);
 
   return (
     <div

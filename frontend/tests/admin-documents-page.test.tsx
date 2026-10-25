@@ -65,6 +65,6 @@ describe("admin document processing health page", () => {
     expect(await screen.findByText("PROVIDER_TIMEOUT")).toBeInTheDocument();
     expect(screen.queryByText("private-document-id")).not.toBeInTheDocument();
     expect(screen.queryByText("private provider response details")).not.toBeInTheDocument();
-    expect(screen.queryByText("55")).not.toBeInTheDocument();
+    expect(screen.queryByText(/55/)).not.toBeInTheDocument();
   });
 });

@@ -32,9 +32,9 @@ User enables Dictate to composer
   -> browser publishes microphone audio
   -> voice-agent receives audio
   -> Silero VAD detects speech
-  -> Faster-Whisper transcribes speech
-  -> voice-agent publishes dictation-result
-  -> browser inserts text into the composer
+  -> Faster-Whisper publishes replaceable interim text and a segment-tagged final
+  -> browser updates the composer draft and commits each final phrase once
+  -> Pause or Finish flushes the current phrase before confirming
   -> user submits the normal DeepSpace chat request
 
 User enables Voice conversation
@@ -49,7 +49,9 @@ User enables Voice conversation
   -> browser plays the track
 ~~~
 
-The Dictate to composer mode does not submit transcripts. Voice conversation
+Dictation has a composer-local waveform and Pause, Resume, and Finish controls.
+It keeps a draft editable and does not submit transcripts; active listening is
+limited to ten minutes per dictation session. Voice conversation
 does submit each final transcript as a normal DeepSpace chat turn. Both modes
 use the same room-scoped authenticated token and the existing DeepSpace
 authorization, provider selection, tool approval, and durable queue behavior.
@@ -123,7 +125,10 @@ flowchart LR
   - Faster-Whisper loading.
   - Kokoro loading.
   - Silero VAD.
-  - Partial and final transcription.
+  - Partial and final transcription with per-room serialization and segment IDs.
+  - Pause/finish commands that flush the current utterance before acknowledgment.
+  - A 24-second maximum recognition chunk so long dictations do not grow one
+    unbounded in-memory speech buffer.
   - TTS audio-track publication.
   - Voice state data messages.
   - Speech playback interruption when new speech begins.
@@ -157,7 +162,7 @@ flowchart LR
   - TTS audio-track attachment and playback.
   - Voice state and status label handling.
 - frontend/app/dashboard/deepspace/_components/DeepSpaceComposer.tsx
-  - Dictation and voice conversation controls.
+  - Dictation and voice conversation controls, elapsed time, and composer-local waveform.
   - Listening, thinking, and speaking presentation.
 - frontend/package.json
   - livekit-client dependency.
@@ -173,6 +178,7 @@ wrapper-library terms.
 | --- | --- |
 | [LiveKit Agents framework](https://github.com/livekit/agents) | Apache-2.0 |
 | [Faster-Whisper source](https://github.com/SYSTRAN/faster-whisper) | MIT |
+| [Systran faster-whisper-small.en model](https://huggingface.co/Systran/faster-whisper-small.en/tree/d1d751a5f8271d482d14ca55d9e2deeebbae577f) | MIT |
 | [Silero VAD source](https://github.com/snakers4/silero-vad/blob/master/LICENSE) | MIT |
 | [Kokoro ONNX source](https://github.com/thewh1teagle/kokoro-onnx/blob/main/LICENSE) | MIT |
 | [Kokoro-82M v1.0 model weights](https://huggingface.co/hexgrad/Kokoro-82M) | Apache-2.0 |
@@ -209,13 +215,18 @@ sequenceDiagram
     API-->>UI: Room-scoped JWT
     UI->>LK: Connect over WSS/WS
     LK->>VA: Agent joins/receives room
-    UI->>VA: Publish set-mode data
+    UI->>UI: Enable microphone and await browser setup
+    UI->>VA: Publish set-mode with request ID
+    VA->>VA: Apply STT/TTS mode
+    VA-->>UI: voice-mode-result acknowledgement
     VA-->>UI: listening/thinking/speaking state
 ~~~
 
 The browser creates a short random DeepSpace room name and uses an identity
 derived from the authenticated user. The API never returns LiveKit API
-credentials to the browser; it returns only a signed room token.
+credentials to the browser; it returns only a signed room token. The composer
+shows dictation as active only after microphone setup succeeds and the agent
+acknowledges the requested mode.
 
 Development defaults exist in configuration. Staging and production must
 override them with deployment secrets and must not use development credentials.
@@ -251,6 +262,9 @@ sequenceDiagram
 Noise and low-amplitude audio are filtered before final transcription.
 Whisper output is also filtered for silence probability, compression-ratio
 hallucinations, low-confidence segments, and known static boilerplate.
+The voice agent retains VAD start frames and incremental speech frames while
+avoiding a second append of Silero's complete end-of-speech buffer, so one
+utterance is not transcribed twice.
 
 ### 4.3 Voice conversation output
 
@@ -316,6 +330,16 @@ Voice must preserve the existing application boundaries:
 - Voice-agent logs record transcription lengths and state, not raw transcript
   text.
 - Model paths are mounted read-only in the voice-agent container.
+- The voice agent defaults to `/app/models/stt/faster-whisper-small.en` using
+  CPU INT8 inference. Operators can override the path with
+  `AVERQEL_STT_MODEL_PATH`; the selected model files must be present in the
+  read-only model mount before the agent starts. If the default small model is
+  missing but the existing tiny model is installed, the agent logs a warning
+  and falls back to tiny so dictation remains available. Provision the pinned model
+  revision `d1d751a5f8271d482d14ca55d9e2deeebbae577f` into
+  `backend/models/stt/faster-whisper-small.en`; the folder is intentionally
+  local model data and is not committed to Git. The MIT model card is stored
+  beside the local weights.
 - The voice-agent is a separate service, not part of the API process.
 - Normal chat history and queue persistence remain unchanged by voice mode.
 
@@ -324,7 +348,7 @@ Voice must preserve the existing application boundaries:
 | Former setup-note idea | Current reality |
 | --- | --- |
 | LiveKit WebRTC transport | Implemented locally |
-| Faster-Whisper streaming-style transcription | Implemented locally with partial/final transcription |
+| Faster-Whisper streaming-style transcription | Implemented locally with ordered interim/final transcription using small.en |
 | Kokoro TTS | Implemented locally |
 | VAD and barge-in | Implemented for speech detection and TTS interruption |
 | Voice state updates | Implemented through LiveKit data messages |
@@ -332,7 +356,7 @@ Voice must preserve the existing application boundaries:
 | Voice transcript submitted to the current DeepSpace chat | Implemented locally |
 | Previous chat history replayed when voice is enabled | Not performed |
 | Hidden reasoning or raw tool results spoken | Not performed |
-| Dictation into DeepSpace composer | Implemented |
+| Dictation into DeepSpace composer | Implemented with editable interim text, pause/resume/finish, and a ten-minute active-listening limit |
 | Full autonomous voice command center | Not the current default flow |
 | Full ReactFlow live execution graph | Not verified in the current frontend |
 | Voice automatically cancels/steers DeepSpace tools | Not implemented by the voice layer |
@@ -362,6 +386,13 @@ This proves local service wiring and browser transport. It does not prove:
 - production certificates and proxy configuration;
 - every browser's autoplay and microphone permission behavior;
 - every provider's live voice configuration.
+
+An additional disposable transport smoke test on 2026-10-22 used LiveKit
+server 1.13.10, the installed JavaScript client, and Chromium's fake microphone.
+The client connected through `/rtc/v1`, published one audio track, and reached
+`connected` publisher and ICE states. It did not exercise the authenticated
+DeepSpace token route, voice-agent STT/TTS, or the already-running application
+container.
 
 ## 8. Production deployment requirements
 
@@ -394,8 +425,9 @@ voice orchestration platform until these are addressed and tested:
 - Bind voice-provider resolution to the authenticated room user and tenant.
   Voice output now uses the selected DeepSpace chat stream; the voice-agent
   does not resolve or call a separate chat provider.
-- Add a dedicated authenticated voice E2E suite to the maintained test tree if
-  the release smoke is currently only an external/scripted check.
+- Run a true isolated LiveKit-agent browser E2E test with fake microphone
+  media. The maintained browser suite covers the controls and a token-failure
+  recovery path, while component tests simulate successful LiveKit messaging.
 - Add an explicit voice-session cleanup and lifecycle metric policy.
 - Define TURN and public-network deployment configuration for staging/VPS.
 - A direct audio-native speech-to-speech model is not part of this deployment.
@@ -409,12 +441,44 @@ silently change them.
 
 ## 10. Operational troubleshooting
 
+The browser log supplied on 2026-10-22 showed `livekit-client` 2.20.0
+connecting to LiveKit server 1.9.0 (protocol 16). Its `/rtc/v1` validation
+request returned 404, so the SDK retried the legacy `/rtc` route; microphone
+track publication then timed out. The log alone cannot distinguish a server
+negotiation problem from a separate WebRTC ICE/network problem. The later
+`InvalidAccessError` while removing that track happened during cleanup after
+the negotiation timeout. It is not a separate microphone-permission error.
+The Compose service now pins LiveKit
+server 1.13.10; its [upstream release notes](https://github.com/livekit/livekit/blob/v1.13.10/CHANGELOG.md)
+include fixes for the v1 RTC path and timed-out pending tracks. Keep this exact
+version pin reviewed when updating the LiveKit client or server.
+
+Signaling and media use different network paths. Caddy forwards WSS signaling
+from `/livekit` to LiveKit port 7880; WebRTC media uses the configured TCP
+port 7881 and UDP mux port 7882 ([LiveKit port guidance](https://docs.livekit.io/transport/self-hosting/ports-firewall/)).
+The Compose mappings already expose these ports. If a room joins but track
+publishing still times out after the server upgrade, inspect the browser's ICE
+candidate pair and host firewall/NAT access to 7881/TCP and 7882/UDP. A 404 on
+`/rtc/v1` after deployment usually means the old container is still running or
+the proxy is not forwarding the stripped RTC path.
+
+Changing the Compose image does not replace a running container. Apply the pin
+only through the approved deployment/maintenance process; recreating LiveKit
+disconnects active voice rooms. Do not use the application stack for a config
+check. Before announcing the fix as active, verify that the LiveKit container
+reports version 1.13.10 and repeat a real microphone publish from a disposable
+browser session.
+
 | Symptom | Check |
 | --- | --- |
 | Voice token returns 403 | Auth session, queries:run permission, and identity format |
+| `/livekit/rtc/v1/validate` returns 404 | Verify the running LiveKit server version and that the `/livekit` proxy path is stripped and forwarded |
 | Browser cannot connect | HTTPS/WSS proxy route, LiveKit URL, certificate, and RTC ports |
+| Room joins but microphone publication times out | LiveKit client/server compatibility and browser ICE connectivity to 7881/TCP and 7882/UDP |
+| `InvalidAccessError` removing a track after negotiation timeout | Treat it as cleanup fallout; diagnose the preceding publish/ICE failure first |
 | Agent retries authentication | LiveKit key/secret match between server and voice-agent |
-| No transcription | Browser microphone permission, room subscription, VAD, and STT model path |
+| Agent audio frames arrive with `max_amp=0` | Browser microphone selection, browser permission, operating-system microphone access, and hardware mute |
+| No transcription despite non-zero incoming audio | Room subscription, VAD thresholds, resampling, and STT model path |
 | No TTS audio | TTS model/voice files, browser autoplay, audio track subscription |
 | Voice works locally but not remotely | TURN, firewall, public hostname, certificates, and deployment environment |
 | Normal chat fails after voice error | Treat as an isolation regression; voice must not own normal chat cancellation |

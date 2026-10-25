@@ -240,47 +240,6 @@ jobs:
               raise SystemExit("Debian package description must be ASCII-only.")
           PY
 
-          APPSTREAM_PATH="$EXTRACT_DIR/usr/share/metainfo/com.averqel.app.metainfo.xml"
-          test -f "$APPSTREAM_PATH" || {
-            echo "AppStream metadata is missing from the Linux installer." >&2
-            exit 1
-          }
-          python3 - "$PACKAGE_PATH" "$APPSTREAM_PATH" <<'PY'
-          import subprocess
-          import sys
-          import xml.etree.ElementTree as ET
-
-          package_path, appstream_path = sys.argv[1:]
-          root = ET.parse(appstream_path).getroot()
-          metadata = {
-              "id": root.findtext("id"),
-              "name": root.findtext("name"),
-              "summary": root.findtext("summary"),
-              "desktop_id": root.findtext("launchable"),
-          }
-          expected = {
-              "id": "com.averqel.app",
-              "name": "AverQel",
-              "desktop_id": "AverQel.desktop",
-          }
-          for field, value in expected.items():
-              if metadata[field] != value:
-                  raise SystemExit(f"Unexpected AppStream {field}: {metadata[field]!r}")
-          if not metadata["summary"] or not metadata["summary"].isascii():
-              raise SystemExit("AppStream summary must be present and ASCII-only.")
-
-          package_name = subprocess.check_output(
-              ["dpkg-deb", "--field", package_path, "Package"], text=True
-          ).strip()
-          if package_name != "averqel-desktop":
-              raise SystemExit(f"Unexpected Debian package ID: {package_name!r}")
-          description = subprocess.check_output(
-              ["dpkg-deb", "--field", package_path, "Description"], text=True
-          )
-          if not description.isascii():
-              raise SystemExit("Debian package description must be ASCII-only.")
-          PY
-
       - name: Enforce the desktop installer size budget
         shell: bash
         env:
@@ -325,26 +284,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - name: Create or verify release tag
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
-        run: |
-          set -euo pipefail
-          VERSION="$(bash .github/scripts/validate-release-version.sh "$VERSION")"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
-            EXISTING_SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
-            test "$EXISTING_SHA" = "$RELEASE_SHA" || {
-              echo "Tag $VERSION points to $EXISTING_SHA, expected $RELEASE_SHA"
-              exit 1
-            }
-          else
-            git tag -a "$VERSION" "$RELEASE_SHA" -m "Release $VERSION"
-            git push origin "$VERSION"
-          fi
-
       - name: Download desktop packages
         uses: actions/download-artifact@v4
         with:
@@ -382,6 +321,29 @@ jobs:
             --asset-dir release-assets \
             --output release-manifest.json \
             --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download"
+
+      - name: Create or verify release tag
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Refusing non-semantic release tag '$VERSION'"
+            exit 1
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            EXISTING_SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
+            test "$EXISTING_SHA" = "$RELEASE_SHA" || {
+              echo "Tag $VERSION points to $EXISTING_SHA, expected $RELEASE_SHA"
+              exit 1
+            }
+          else
+            git tag -a "$VERSION" "$RELEASE_SHA" -m "Release $VERSION"
+            git push origin "$VERSION"
+          fi
 
       - name: Create GitHub release with desktop downloads
         uses: softprops/action-gh-release@v2

@@ -45,6 +45,7 @@ def _chat_request(
 
 def test_provider_catalog_routes_and_capabilities_are_wired() -> None:
     expected = {
+        "larprouter": ("LarpRouter", True, False, True),
         "moonshot": ("Moonshot AI (Kimi)", True, False, True),
         "zai": ("Z.AI (GLM)", True, False, False),
         "nvidia-nim": ("NVIDIA NIM", True, True, True),
@@ -60,10 +61,13 @@ def test_provider_catalog_routes_and_capabilities_are_wired() -> None:
         assert catalog["supports_reranking"] is False
         assert catalog["supports_account_linking"] is False
 
-    assert {"moonshot", "zai", "nvidia-nim"}.issubset(OPENAI_COMPATIBLE_PROVIDER_TYPES)
+    assert {"larprouter", "moonshot", "zai", "nvidia-nim"}.issubset(
+        OPENAI_COMPATIBLE_PROVIDER_TYPES
+    )
     assert "nvidia-nim" in OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES
-    assert {"moonshot", "zai"}.isdisjoint(OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES)
+    assert {"larprouter", "moonshot", "zai"}.isdisjoint(OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES)
     assert {provider: PROVIDER_DEFAULT_BASE_URLS[provider] for provider in expected} == {
+        "larprouter": "https://larprouter.com/v1",
         "moonshot": "https://api.moonshot.ai/v1",
         "zai": "https://api.z.ai/api/paas/v4",
         "nvidia-nim": "https://integrate.api.nvidia.com/v1",
@@ -72,7 +76,7 @@ def test_provider_catalog_routes_and_capabilities_are_wired() -> None:
 
 
 def test_registry_uses_vendor_defaults_and_the_task_api_for_manus() -> None:
-    for provider_type in ("moonshot", "zai", "nvidia-nim"):
+    for provider_type in ("larprouter", "moonshot", "zai", "nvidia-nim"):
         provider = ProviderRegistry._bind_chat_provider(
             provider_type,
             base_url=None,
@@ -93,6 +97,9 @@ def test_openai_compatible_route_defaults_match_documented_provider_surfaces() -
     )
     zai = OpenAICompatibleProvider(provider_name="zai")
     nvidia = OpenAICompatibleProvider(provider_name="nvidia-nim", supports_embeddings=True)
+    larprouter = OpenAICompatibleProvider(
+        provider_name="larprouter", base_url=PROVIDER_DEFAULT_BASE_URLS["larprouter"]
+    )
 
     assert moonshot.endpoint_settings.chat_completions_path == "/chat/completions"
     assert moonshot.endpoint_settings.models_path == "/models"
@@ -101,6 +108,10 @@ def test_openai_compatible_route_defaults_match_documented_provider_surfaces() -
     assert zai.endpoint_settings.embeddings_path is None
     assert nvidia.endpoint_settings.models_path == "/models"
     assert nvidia.endpoint_settings.embeddings_path == "/embeddings"
+    assert larprouter.endpoint_settings.chat_completions_path == "/chat/completions"
+    assert larprouter.endpoint_settings.models_path == "/models"
+    assert larprouter.supports_embeddings is False
+    assert larprouter.supports_model_listing is True
     assert moonshot.supports_model_listing is True
     assert zai.supports_model_listing is False
     assert nvidia.supports_model_listing is True

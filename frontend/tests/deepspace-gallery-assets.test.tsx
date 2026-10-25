@@ -212,4 +212,25 @@ describe("DeepSpace gallery images", () => {
     expect(onImportAsset).toHaveBeenCalledWith(imageUrl, "temporary");
     expect(onChange).toHaveBeenCalledOnce();
   });
+
+  it("reports Library save failures for galleries", async () => {
+    const onSaveArtifact = vi.fn().mockRejectedValue(new Error("The Library is unavailable."));
+    render(
+      <GalleryBlock
+        payload={{
+          id: "gallery-library-error",
+          type: "gallery",
+          title: "Research images",
+          items: [{ src: imageUrl, alt: "Research photo" }],
+        }}
+        onSaveArtifact={onSaveArtifact}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save gallery to Library" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Library is unavailable.");
+    expect(screen.queryByText("Saved to Library.")).not.toBeInTheDocument();
+    expect(onSaveArtifact).toHaveBeenCalledOnce();
+  });
 });

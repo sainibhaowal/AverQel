@@ -8,6 +8,7 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Annotated, Any
 
@@ -35,6 +36,7 @@ from app.auth.rbac import require_permissions, resolve_permissions
 from app.auth.roles import is_admin_role
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.repositories.request_metrics import DeepSpaceRequestMetricsRepository
 from app.deepspace.schemas.chats import (
@@ -48,6 +50,7 @@ from app.deepspace.schemas.chats import (
     ConversationRetentionSchema,
     ConversationSchema,
     ConversationUpdate,
+    EditAndRegenerateRequest,
     MemoryFactSchema,
     MemoryPreferencesSchema,
     MemoryPreferencesUpdateRequest,
@@ -65,7 +68,7 @@ from app.deepspace.schemas.chats import (
     RetryFailedTurnRequest,
     VisualBlockUpdateRequest,
 )
-from app.deepspace.services.chat_service import DeepSpaceChatService, sse
+from app.deepspace.services.chat_service import sse
 from app.deepspace.services.context_cache import DeepSpaceContextCache
 from app.deepspace.services.reasoning_privacy import (
     REASONING_REDACTION_VERSION,
@@ -84,6 +87,7 @@ from app.deepspace.services.run_events import (
 )
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.turn_queue import (
+    QUEUEABLE_STATUSES,
     DeepSpaceTurnQueueStore,
     QueueTurnEditConflictError,
     QueueTurnNotEditableError,
@@ -107,6 +111,183 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+
+async def _client_owned_note_rpc(
+    *,
+    auth: AuthContext,
+    conversation_id: uuid.UUID,
+    method: str,
+    params: dict[str, Any],
+) -> ConversationSchema | None:
+    """Read one authenticated user's note through its connected storage client."""
+    from app.deepspace.integrations.client_proxy import (
+        INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
+        client_proxy_registry,
+    )
+
+    try:
+        data = await client_proxy_registry.db_proxy_call(
+            str(auth.tenant_id),
+            str(auth.user_id),
+            method,
+            params,
+            timeout=INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
+            channel="storage",
+        )
+    except (TimeoutError, RuntimeError, OSError) as exc:
+        raise ApiError(
+            code="STORAGE_UNAVAILABLE",
+            message="Client-owned note storage did not respond. Retry when the storage client is available.",
+            status_code=503,
+        ) from exc
+
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise ApiError(
+            code="STORAGE_UNAVAILABLE",
+            message="Client-owned note storage returned an invalid response.",
+            status_code=502,
+        )
+
+    conversation = ConversationSchema.model_validate(data)
+    if conversation.id != conversation_id or conversation.kind != CONVERSATION_KIND:
+        raise ApiError(
+            code="STORAGE_UNAVAILABLE",
+            message="Client-owned note storage returned a different conversation.",
+            status_code=502,
+        )
+    return conversation
+
+
+async def _write_client_owned_note(
+    *,
+    auth: AuthContext,
+    conversation_id: uuid.UUID,
+    method: str,
+    params: dict[str, Any],
+) -> ConversationSchema | None:
+    """Write a note to its authoritative client store and verify the result."""
+    conversation = await _client_owned_note_rpc(
+        auth=auth,
+        conversation_id=conversation_id,
+        method=method,
+        params=params,
+    )
+    if conversation is None:
+        return None
+
+    if method == "db.chats.update_conversation":
+        if params.get("title") is not None and conversation.title != params["title"]:
+            raise ApiError(
+                code="STORAGE_UNAVAILABLE",
+                message="Client-owned note storage did not confirm the requested title.",
+                status_code=503,
+            )
+        if (
+            params.get("content_html") is not None
+            and conversation.content_html != params["content_html"]
+        ):
+            raise ApiError(
+                code="STORAGE_UNAVAILABLE",
+                message="Client-owned note storage did not confirm the requested content.",
+                status_code=503,
+            )
+    elif method == "db.chats.append_conversation_content":
+        addition = str(params.get("content_html") or "").strip()
+        saved_content = conversation.content_html or ""
+        recovery_content = str(params.get("recovery_content_html") or "").strip()
+        recovered_prefix = (
+            f'{recovery_content}<hr data-averqel-document-separator="true" />'
+            if recovery_content
+            else ""
+        )
+        if (
+            not addition
+            or not saved_content.endswith(addition)
+            or (recovered_prefix and not saved_content.startswith(recovered_prefix))
+        ):
+            raise ApiError(
+                code="STORAGE_UNAVAILABLE",
+                message="Client-owned note storage did not confirm the appended content.",
+                status_code=503,
+            )
+    return conversation
+
+
+def _sync_client_owned_note_mirror(
+    *,
+    db: Session,
+    auth: AuthContext,
+    conversation: ConversationSchema,
+) -> None:
+    """Keep metadata aligned and clear the body only after client confirmation."""
+    repo = DeepSpaceChatRepository(db)
+    mirror = repo.get_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation.id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+    )
+    if mirror is None:
+        return
+    try:
+        mirror.title = conversation.title
+        mirror.content_html = None
+        mirror.updated_at = datetime.now(UTC)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 - keep save status conservative
+        db.rollback()
+        logger.exception("Client-owned note saved but its server mirror could not be synced")
+        raise ApiError(
+            code="STORAGE_UNAVAILABLE",
+            message="The note was saved by its storage client, but confirmation could not be completed. Retry the save.",
+            status_code=503,
+        ) from exc
+
+
+def _include_newer_server_recovery_copy(
+    *,
+    db: Session,
+    auth: AuthContext,
+    conversation: ConversationSchema,
+) -> ConversationSchema:
+    """Expose a legacy server-side draft when the connected client copy is older."""
+    mirror = DeepSpaceChatRepository(db).get_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation.id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+    )
+    if mirror is None or not (mirror.content_html or "").strip():
+        return conversation
+
+    if not _timestamp_is_after(mirror.updated_at, conversation.updated_at):
+        return conversation
+
+    return conversation.model_copy(
+        update={
+            "title": mirror.title,
+            "content_html": mirror.content_html,
+            "updated_at": mirror.updated_at,
+        }
+    )
+
+
+def _timestamp_is_after(left: datetime, right: datetime) -> bool:
+    if left.tzinfo is None:
+        left = left.replace(tzinfo=UTC)
+    if right.tzinfo is None:
+        right = right.replace(tzinfo=UTC)
+    return left > right
+
+
+def _timestamp_milliseconds(value: datetime) -> int:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    delta = value.astimezone(UTC) - datetime(1970, 1, 1, tzinfo=UTC)
+    return delta.days * 86_400_000 + delta.seconds * 1_000 + delta.microseconds // 1_000
 
 
 async def _record_cancellation_marker(
@@ -328,15 +509,71 @@ def _serialize_message(message: Any) -> MessageSchema:
 
 
 _VISUAL_FENCE_CONTENT_RE = re.compile(
-    r"(?P<open>```(?P<kind>chart|card|graph|gallery)[^\r\n]*\r?\n)"
+    r"(?P<open>```(?P<kind>chart|card|graph|gallery|infographic)[^\r\n]*\r?\n)"
+    r"(?P<body>[\s\S]*?)(?P<close>\r?\n```)",
+    re.IGNORECASE,
+)
+_MERMAID_FENCE_CONTENT_RE = re.compile(
+    r"(?P<open>```(?P<kind>mermaid|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|"
+    r"erDiagram|journey|gantt|mindmap|pie|gitGraph|timeline|quadrantChart|requirementDiagram|"
+    r"block-beta|xychart-beta|C4Context|architecture-beta|sankey-beta|packet-beta|kanban)[^\r\n]*\r?\n)"
     r"(?P<body>[\s\S]*?)(?P<close>\r?\n```)",
     re.IGNORECASE,
 )
 
 
+def _nonnegative_revision(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_visual_block_revision(content: str, metadata: dict[str, Any], block_id: str) -> int:
+    revisions: list[int] = []
+    raw_blocks = metadata.get("blocks")
+    if isinstance(raw_blocks, list):
+        for block in raw_blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("id") == block_id or block.get("block_id") == block_id:
+                revisions.append(_nonnegative_revision(block.get("revision")))
+
+    for match in _VISUAL_FENCE_CONTENT_RE.finditer(content):
+        try:
+            block = json.loads(match.group("body"))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(block, dict):
+            continue
+        if block.get("id") == block_id or block.get("block_id") == block_id:
+            revisions.append(_nonnegative_revision(block.get("revision")))
+
+    return max(revisions, default=0)
+
+
 def _replace_visual_fence_content(content: str, *, block_id: str, block: dict[str, Any]) -> str:
     """Refresh the Markdown source for a visual edit so chat reloads its model."""
     source_markdown = block.get("source_markdown")
+
+    if block.get("type") == "diagram" and block.get("source") == "mermaid":
+        source_mermaid = block.get("source_mermaid")
+        syntax = block.get("syntax")
+        if isinstance(syntax, str):
+            for match in _MERMAID_FENCE_CONTENT_RE.finditer(content):
+                original = match.group(0)
+                source_matches = (
+                    isinstance(source_markdown, str) and original.strip() == source_markdown.strip()
+                ) or (
+                    isinstance(source_mermaid, str)
+                    and match.group("body").strip() == source_mermaid.strip()
+                )
+                if not source_matches:
+                    continue
+                replacement = f"{match.group('open')}{syntax}{match.group('close')}"
+                return f"{content[:match.start()]}{replacement}{content[match.end():]}"
 
     def replace(match: re.Match[str]) -> str:
         body = match.group("body")
@@ -416,18 +653,28 @@ async def update_visual_block(
     visual_blocks = dict(stored) if isinstance(stored, dict) else {}
     current = visual_blocks.get(payload.block_id)
     current_record = dict(current) if isinstance(current, dict) else {}
-    current_revision = int(current_record.get("revision") or 0)
+    content = (
+        message.active_version.content if message.active_version is not None else message.content
+    )
+    current_revision = max(
+        _nonnegative_revision(current_record.get("revision")),
+        _source_visual_block_revision(content, metadata, payload.block_id),
+    )
     if payload.expected_revision is not None and payload.expected_revision != current_revision:
         raise ApiError(
             code="VISUAL_BLOCK_EDIT_CONFLICT",
-            message="This visual block changed in another session. Reload and apply your edit again.",
+            message="A newer version of this visual was saved in another session. Your draft is still open; save again to apply it to the latest version.",
             status_code=409,
             details={"revision": current_revision, "block_id": payload.block_id},
         )
-    next_revision = current_revision + 1
+    next_revision = max(
+        current_revision + 1,
+        _nonnegative_revision(payload.block.get("revision")),
+    )
     previous_history = current_record.get("history")
     history = list(previous_history) if isinstance(previous_history, list) else []
     history.append({"revision": next_revision, "source": "chat", "at": str(monotonic())})
+    history = history[-100:]
     next_block = {
         **payload.block,
         "id": payload.block.get("id") or payload.block_id,
@@ -443,9 +690,6 @@ async def update_visual_block(
         "history": history,
     }
     next_metadata = {**metadata, "visual_blocks": visual_blocks}
-    content = (
-        message.active_version.content if message.active_version is not None else message.content
-    )
     content = _replace_visual_fence_content(
         content,
         block_id=payload.block_id,
@@ -687,10 +931,15 @@ async def list_conversations(
             },
             channel="storage",
         )
-        return ConversationListResponse(
-            items=[ConversationSchema.model_validate(item) for item in data],
-            total=len(data),
-        )
+        items = [
+            _include_newer_server_recovery_copy(
+                db=db,
+                auth=auth,
+                conversation=ConversationSchema.model_validate(item),
+            )
+            for item in data
+        ]
+        return ConversationListResponse(items=items, total=len(items))
 
     repo = DeepSpaceChatRepository(db)
     items = repo.list_conversations(
@@ -1209,13 +1458,41 @@ async def update_conversation(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ConversationSchema:
-    repo = DeepSpaceChatRepository(db)
     if payload.title is None and payload.content_html is None:
         raise ApiError(
             code="INVALID_REQUEST",
             message="A title or note body is required.",
             status_code=400,
         )
+
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
+
+    if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
+        conversation = await _write_client_owned_note(
+            auth=auth,
+            conversation_id=conversation_id,
+            method="db.chats.update_conversation",
+            params={
+                "user_id": str(auth.user_id),
+                "conversation_id": str(conversation_id),
+                "title": payload.title,
+                "content_html": payload.content_html,
+                "kind": CONVERSATION_KIND,
+            },
+        )
+        if conversation is None:
+            raise ApiError(
+                code="CONVERSATION_NOT_FOUND",
+                message="Conversation not found",
+                status_code=404,
+            )
+        _sync_client_owned_note_mirror(db=db, auth=auth, conversation=conversation)
+        await _publish_conversation_event(
+            auth=auth, event_type="conversation.updated", conversation_id=conversation_id
+        )
+        return conversation
+
+    repo = DeepSpaceChatRepository(db)
     updated = repo.update_conversation(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
@@ -1262,6 +1539,68 @@ async def append_conversation_content(
     db: Session = Depends(get_db),
 ) -> ConversationSchema:
     """Append document text to the current user's active DeepSpace note."""
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
+
+    if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
+        rpc_params = {
+            "user_id": str(auth.user_id),
+            "conversation_id": str(conversation_id),
+            "kind": CONVERSATION_KIND,
+        }
+        remote_conversation = await _client_owned_note_rpc(
+            auth=auth,
+            conversation_id=conversation_id,
+            method="db.chats.get_conversation",
+            params=rpc_params,
+        )
+        if remote_conversation is None:
+            raise ApiError(
+                code="CONVERSATION_NOT_FOUND",
+                message="Conversation not found",
+                status_code=404,
+            )
+
+        mirror = DeepSpaceChatRepository(db).get_conversation(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
+        )
+        if (
+            mirror is not None
+            and (mirror.content_html or "").strip()
+            and _timestamp_is_after(mirror.updated_at, remote_conversation.updated_at)
+        ):
+            rpc_params["recovery_content_html"] = mirror.content_html
+            rpc_params["recovery_title"] = mirror.title
+            rpc_params["recovery_expected_updated_at"] = _timestamp_milliseconds(
+                remote_conversation.updated_at
+            )
+
+        rpc_params.update(
+            {
+                "content_html": payload.content_html,
+                "title": payload.title,
+            }
+        )
+        conversation = await _write_client_owned_note(
+            auth=auth,
+            conversation_id=conversation_id,
+            method="db.chats.append_conversation_content",
+            params=rpc_params,
+        )
+        if conversation is None:
+            raise ApiError(
+                code="CONVERSATION_NOT_FOUND",
+                message="Conversation not found",
+                status_code=404,
+            )
+        _sync_client_owned_note_mirror(db=db, auth=auth, conversation=conversation)
+        await _publish_conversation_event(
+            auth=auth, event_type="conversation.updated", conversation_id=conversation_id
+        )
+        return conversation
+
     repo = DeepSpaceChatRepository(db)
     conversation = repo.append_conversation_content(
         tenant_id=auth.tenant_id,
@@ -1478,6 +1817,11 @@ def get_deepspace_queue_state(
             code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
         )
     queue_store = DeepSpaceTurnQueueStore(db)
+    recovered = queue_store.recover_stale_claims(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
     resumed_legacy_failure = queue_store.resume_after_failure(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
@@ -1488,7 +1832,7 @@ def get_deepspace_queue_state(
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
-    if resumed_legacy_failure and next_request_id:
+    if (recovered or resumed_legacy_failure) and next_request_id:
         _dispatch_deepspace_queue(
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
@@ -2625,64 +2969,160 @@ async def regenerate_message_stream(
 async def edit_and_regenerate_stream(
     conversation_id: uuid.UUID,
     message_id: uuid.UUID,
+    payload: EditAndRegenerateRequest,
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    raw_payload = await request.json()
-    content = str(raw_payload.get("content", ""))
-    client_request_id = str(raw_payload.get("client_request_id") or "").strip() or None
-    repo = DeepSpaceChatRepository(db)
-    edited = repo.create_message_version(
-        tenant_id=auth.tenant_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        user_id=auth.user_id,
-        content=content,
+    RateLimitService(settings).enforce_deepspace_user_limit(
+        request=request, user_id=str(auth.user_id)
     )
-    if edited is None:
+    client_request_id = str(payload.client_request_id or "").strip() or str(uuid.uuid4())
+    repo = DeepSpaceChatRepository(db)
+    conversation = repo.get_conversation(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        kind=CONVERSATION_KIND,
+        for_update=True,
+    )
+    if conversation is None:
         raise ApiError(
-            code="MESSAGE_NOT_FOUND",
-            message="DeepSpace message not found.",
-            status_code=404,
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found.", status_code=404
         )
+
     latest_user, assistant = repo.get_latest_turn_pair(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
         user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
     )
-    if latest_user is None or assistant is None or latest_user.id != message_id:
+    if (
+        latest_user is None
+        or assistant is None
+        or latest_user.id != message_id
+        or latest_user.role != "user"
+    ):
         raise ApiError(
             code="MESSAGE_EDIT_NOT_ALLOWED",
             message="Only the latest user message can be edited.",
             status_code=409,
         )
-    repo.create_message_version(
-        tenant_id=auth.tenant_id,
-        conversation_id=conversation_id,
-        message_id=assistant.id,
-        user_id=auth.user_id,
-        content="",
-        source_type="edit_regenerate",
-        activate=True,
-    )
-    db.commit()
-    service = DeepSpaceChatService(db=db, settings=settings)
 
-    async def iterator() -> AsyncIterator[str]:
-        async for chunk in service.stream_turn(
+    existing_turn = db.execute(
+        select(DeepSpaceQueuedTurn)
+        .where(
+            DeepSpaceQueuedTurn.tenant_id == auth.tenant_id,
+            DeepSpaceQueuedTurn.user_id == auth.user_id,
+            DeepSpaceQueuedTurn.conversation_id == conversation_id,
+            DeepSpaceQueuedTurn.client_request_id == client_request_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if existing_turn is not None:
+        if (
+            existing_turn.regenerate_message_id != assistant.id
+            or existing_turn.prompt != payload.content
+        ):
+            raise ApiError(
+                code="IDEMPOTENCY_CONFLICT",
+                message="This edit request id was already used for a different prompt.",
+                status_code=409,
+            )
+    else:
+        pending_turn = db.execute(
+            select(DeepSpaceQueuedTurn.id)
+            .where(
+                DeepSpaceQueuedTurn.tenant_id == auth.tenant_id,
+                DeepSpaceQueuedTurn.user_id == auth.user_id,
+                DeepSpaceQueuedTurn.conversation_id == conversation_id,
+                DeepSpaceQueuedTurn.status.in_(QUEUEABLE_STATUSES),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if pending_turn is not None:
+            raise ApiError(
+                code="DEEPSPACE_QUEUE_STILL_RUNNING",
+                message="Wait for the current conversation turn to finish before editing this prompt.",
+                status_code=409,
+            )
+        _, attachment_file_ids = _regeneration_source_snapshot(
+            db,
             auth=auth,
             conversation_id=conversation_id,
-            prompt=content,
-            existing_assistant_message_id=assistant.id,
-            client_request_id=client_request_id,
-            thinking_enabled=bool(raw_payload.get("thinking_enabled", True)),
-            request=request,
-        ):
-            yield chunk
+            assistant_message_id=assistant.id,
+        )
+        try:
+            edited = repo.create_message_version(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                user_id=auth.user_id,
+                content=payload.content,
+                metadata_json=latest_user.metadata_json,
+                source_type="user_edit",
+                activate=True,
+            )
+            if edited is None:
+                raise ApiError(
+                    code="MESSAGE_NOT_FOUND",
+                    message="DeepSpace message not found.",
+                    status_code=404,
+                )
+            DeepSpaceTurnQueueStore(db).enqueue(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                client_request_id=client_request_id,
+                prompt=payload.content,
+                regenerate_message_id=assistant.id,
+                thinking_enabled=payload.thinking_enabled,
+                reasoning_effort=payload.reasoning_effort,
+                roles=sorted(auth.roles),
+                permissions=sorted(auth.permissions),
+                attachment_file_ids=attachment_file_ids,
+            )
+        except StorageQuotaExceededError as exc:
+            db.rollback()
+            raise ApiError(
+                code="STORAGE_QUOTA_EXCEEDED",
+                message="Your workspace storage limit has been reached.",
+                status_code=413,
+                details={
+                    "plan": exc.plan.id,
+                    "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                    "usage_bytes": exc.usage_bytes,
+                    "requested_bytes": exc.requested_bytes,
+                },
+            ) from exc
+        except OverflowError as exc:
+            db.rollback()
+            raise ApiError(
+                code="DEEPSPACE_QUEUE_FULL",
+                message="The DeepSpace queue is full for this conversation.",
+                status_code=409,
+            ) from exc
 
-    return StreamingResponse(iterator(), media_type="text/event-stream", headers=SSE_HEADERS)
+    _dispatch_deepspace_queue(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    return await _stream_deepspace_chat_payload(
+        raw_payload={
+            "message": payload.content,
+            "conversation_id": str(conversation_id),
+            "client_request_id": client_request_id,
+            "regenerate_message_id": str(assistant.id),
+            "thinking_enabled": payload.thinking_enabled,
+            "reasoning_effort": payload.reasoning_effort,
+            "reconnect": True,
+        },
+        request=request,
+        auth=auth,
+        settings=settings,
+    )
 
 
 @router.get("/memory/search", response_model=dict[str, Any])

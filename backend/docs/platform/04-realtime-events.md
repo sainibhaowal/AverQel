@@ -10,11 +10,19 @@ DeepSpace response SSE and collection WebSockets remain unchanged.
 The gateway is:
 
 - `WS /api/v1/realtime/ws`
-- authenticated with the existing JWT/API-key WebSocket authentication helper;
 - authorized with the existing `queries:run` permission;
 - scoped to the authenticated tenant and user;
 - backed by a bounded Redis Stream at
   `averqel:realtime:v1:{tenant_id}:{user_id}`.
+
+Browser clients call `POST /api/v1/realtime/ticket` with their normal
+authenticated API session. The endpoint returns an opaque ticket that expires
+after 60 seconds. The WebSocket consumes it once from Redis before accepting
+the connection. The authenticated API client refreshes a near-expiry access
+token before requesting a ticket, so reconnects do not reuse stale JWTs and
+access JWTs do not appear in browser WebSocket URLs. Direct JWT/API-key
+WebSocket authentication remains available for compatibility with existing
+non-browser clients.
 
 Each event contains `event_id`, `type`, `resource`, `data`, and
 `occurred_at`. The Redis Stream ID is the replay cursor. The browser stores the
@@ -52,11 +60,30 @@ low-volume application state events.
 
 ## Reconnect and failure behavior
 
-The frontend reconnects with exponential backoff up to ten seconds. A missed
-or trimmed cursor is handled by the affected REST snapshot; the application
-does not delete local state or display an empty list during a transient
-connection failure. A browser refresh remains an emergency recovery action,
-not a normal synchronization step.
+The frontend reconnects with exponential backoff up to ten seconds and obtains
+a fresh one-use ticket for each attempt. The affected REST snapshot handles a
+missed or trimmed cursor; the application does not delete local state or
+display an empty list during a transient connection failure. A browser refresh
+remains an emergency recovery action, not a normal synchronization step.
+
+## Admin service metrics stream
+
+`GET /api/v1/metrics/summary/stream` is restricted to allowlisted platform
+administrators. API and instrumented worker processes atomically update a fixed
+set of low-cardinality counters in Redis and publish a change signal. The stream
+sends an initial snapshot, then checks for updated totals at one-second
+intervals; it sends a heartbeat while idle and closes after five minutes so the
+browser can reconnect and reauthenticate. It is separate from the user-scoped
+workspace event gateway.
+
+The JSON summary endpoint reads the same counters. Totals are service-wide and
+cumulative from `metrics_started_at`; they reset if the Redis metrics hash is
+lost or cleared. `metrics_complete=false` means a process observed a failed
+counter write, so the UI labels the snapshot as partial. A Redis read or
+invalid stored value is reported as unavailable; it must never be displayed as
+a successful zero snapshot. The database count covers explicitly instrumented
+repository operations, not every SQL statement. Detailed per-process samples
+remain available through the internal Prometheus scrape endpoint.
 
 ## Admin service metrics stream
 
@@ -80,10 +107,10 @@ remain available through the internal Prometheus scrape endpoint.
 ## Security requirements
 
 The gateway never accepts tenant or user identity as authority from event
-payloads. The server derives both from the authenticated token and subscribes
-only to that exact stream. Event payloads are invalidated data, not commands,
-and must not contain access tokens, encrypted secrets, raw provider content,
-or cross-tenant identifiers.
+payloads or query parameters. The server derives both from the authenticated
+session used to mint the ticket and subscribes only to that exact stream. Event
+payloads are invalidated data, not commands, and must not contain access
+tokens, encrypted secrets, raw provider content, or cross-tenant identifiers.
 
 ## Scope note
 

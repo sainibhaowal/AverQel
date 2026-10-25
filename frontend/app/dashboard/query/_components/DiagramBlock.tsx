@@ -13,7 +13,10 @@ import GraphBlock from "./GraphBlock";
 interface DiagramBlockProps {
   block: StreamDiagramBlock;
   isStreaming?: boolean;
-  onChange?: (block: StreamDiagramBlock) => void | Promise<void>;
+  fillHeight?: boolean;
+  onChange?: (
+    block: StreamDiagramBlock,
+  ) => void | boolean | StreamDiagramBlock | Promise<void | boolean | StreamDiagramBlock>;
   onSaveArtifact?: (block: StreamDiagramBlock) => void | Promise<void>;
 }
 
@@ -209,6 +212,7 @@ function useMermaidTheme(): "dark" | "default" {
 export default function DiagramBlock({
   block,
   isStreaming = false,
+  fillHeight = false,
   onChange,
   onSaveArtifact,
 }: DiagramBlockProps) {
@@ -217,6 +221,9 @@ export default function DiagramBlock({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [savingArtifact, setSavingArtifact] = useState(false);
   const [editingSyntax, setEditingSyntax] = useState(false);
   const [editingStructured, setEditingStructured] = useState(false);
   const [canvasOpen, setCanvasOpen] = useState(false);
@@ -231,6 +238,50 @@ export default function DiagramBlock({
     [activeSyntax, isMermaid],
   );
   const mountedRef = useRef(true);
+
+  const persistChange = async (next: StreamDiagramBlock): Promise<boolean> => {
+    if (!onChange) return true;
+    setActionError(null);
+    setActionStatus(null);
+    try {
+      const saved = await onChange(next);
+      if (saved === false) {
+        throw new Error(
+          "This diagram changed in another session. Your edits are still open; retry after reviewing the latest version.",
+        );
+      }
+      return true;
+    } catch (caught) {
+      setActionError(
+        caught instanceof Error ? caught.message : "The diagram changes could not be saved.",
+      );
+      return false;
+    }
+  };
+
+  const saveArtifact = async (artifact: StreamDiagramBlock) => {
+    if (!onSaveArtifact || savingArtifact) return;
+    setSavingArtifact(true);
+    setActionError(null);
+    setActionStatus(null);
+    try {
+      await onSaveArtifact(artifact);
+      setActionStatus("Saved to Library.");
+    } catch (caught) {
+      setActionError(
+        caught instanceof Error ? caught.message : "The diagram could not be saved to Library.",
+      );
+    } finally {
+      setSavingArtifact(false);
+    }
+  };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setDraftSyntax(block.syntax);
+      setEditingSyntax(false);
+    });
+  }, [block.id, block.syntax]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -401,41 +452,54 @@ export default function DiagramBlock({
       await navigator.clipboard.writeText(source);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
-    } catch {
+      setActionError(null);
+    } catch (caught) {
       setCopied(false);
+      setActionError(
+        caught instanceof Error ? caught.message : "The diagram source could not be copied.",
+      );
     }
   };
 
-  const commitSyntax = () => {
+  const commitSyntax = async () => {
     if (editingSyntax) {
-      void onChange?.({
+      const saved = await persistChange({
         ...block,
         syntax: draftSyntax,
         revision: (block.revision ?? 0) + 1,
       });
+      if (!saved) return;
+    } else {
+      setActionError(null);
+      setActionStatus(null);
     }
-    setEditingSyntax((current) => !current);
+    setEditingSyntax(!editingSyntax);
   };
 
   const openStructuredEditor = () => {
     const parsed = parseStructuredDraft(block.diagram_type, draftSyntax || block.syntax);
     if (!parsed) return;
     setStructuredDraft(parsed);
+    setActionError(null);
+    setActionStatus(null);
     setEditingStructured(true);
     setEditingSyntax(false);
   };
 
-  const commitStructured = () => {
+  const commitStructured = async () => {
     if (!structuredDraft) return;
     const syntax = generateStructuredSyntax(structuredDraft);
+    const saved = await persistChange({ ...block, syntax, revision: (block.revision ?? 0) + 1 });
+    if (!saved) return;
     setDraftSyntax(syntax);
-    void onChange?.({ ...block, syntax, revision: (block.revision ?? 0) + 1 });
     setEditingStructured(false);
   };
 
   if (isMermaid) {
     return (
-      <section className="theme-panel rounded-[1.6rem] p-4">
+      <section
+        className={`theme-panel rounded-[1.6rem] p-4 ${fillHeight ? "flex h-full min-h-0 flex-1 flex-col" : ""}`}
+      >
         <div className="mb-3 flex items-center justify-between gap-3">
           <span className="text-foreground/65 text-xs font-semibold tracking-[0.14em] uppercase">
             {formatDiagramLabel(block.diagram_type)} editor
@@ -445,6 +509,8 @@ export default function DiagramBlock({
               <button
                 type="button"
                 onClick={() => {
+                  setActionError(null);
+                  setActionStatus(null);
                   if (!canvasOpen && !structuredDraft) {
                     setStructuredDraft(
                       parseStructuredDraft(block.diagram_type, draftSyntax || block.syntax),
@@ -460,10 +526,12 @@ export default function DiagramBlock({
             {onSaveArtifact ? (
               <button
                 type="button"
-                onClick={() => void onSaveArtifact({ ...block, syntax: draftSyntax })}
-                className="visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px]"
+                onClick={() => void saveArtifact({ ...block, syntax: draftSyntax })}
+                disabled={savingArtifact}
+                aria-busy={savingArtifact}
+                className="visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] disabled:opacity-50"
               >
-                Save artifact
+                {savingArtifact ? "Saving…" : actionStatus ? "Saved" : "Save artifact"}
               </button>
             ) : null}
             {(block.diagram_type === "mermaid_gantt" || block.diagram_type === "mermaid_class") && (
@@ -486,6 +554,20 @@ export default function DiagramBlock({
             </button>
           </div>
         </div>
+        {actionError ? (
+          <p className="mb-3 text-xs text-rose-600 dark:text-rose-300" role="alert">
+            {actionError}
+          </p>
+        ) : null}
+        {actionStatus ? (
+          <p
+            className="mb-3 text-xs text-emerald-700 dark:text-emerald-300"
+            role="status"
+            aria-live="polite"
+          >
+            {actionStatus}
+          </p>
+        ) : null}
         {canvasOpen && structuredDraft ? (
           <NativeDiagramCanvas
             draft={structuredDraft}
@@ -494,7 +576,7 @@ export default function DiagramBlock({
               const syntax = generateStructuredSyntax(nextDraft);
               setStructuredDraft(nextDraft);
               setDraftSyntax(syntax);
-              void onChange?.({
+              void persistChange({
                 ...block,
                 syntax,
                 visual_model: visualModel,
@@ -543,10 +625,12 @@ export default function DiagramBlock({
           {onSaveArtifact ? (
             <button
               type="button"
-              onClick={() => void onSaveArtifact(block)}
-              className="visual-block-action rounded-lg px-3 py-1 text-[11px] font-semibold"
+              onClick={() => void saveArtifact(block)}
+              disabled={savingArtifact}
+              aria-busy={savingArtifact}
+              className="visual-block-action rounded-lg px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
             >
-              Save artifact
+              {savingArtifact ? "Saving…" : actionStatus ? "Saved" : "Save artifact"}
             </button>
           ) : null}
           <button
@@ -556,6 +640,20 @@ export default function DiagramBlock({
           >
             {copied ? "Copied" : "Copy"}
           </button>
+          {actionError ? (
+            <p className="basis-full text-xs text-rose-600 dark:text-rose-300" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+          {actionStatus ? (
+            <p
+              className="basis-full text-xs text-emerald-700 dark:text-emerald-300"
+              role="status"
+              aria-live="polite"
+            >
+              {actionStatus}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsExpanded(true)}

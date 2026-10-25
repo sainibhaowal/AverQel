@@ -13,7 +13,7 @@ RUN printf 'Refreshing OS package indexes for build %s\n' "$APT_REFRESH_ID" \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc curl libmagic1 poppler-utils libgl1 libglib2.0-0 \
-        libreoffice-writer libreoffice-calc libreoffice-impress \
+        libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw \
     && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 

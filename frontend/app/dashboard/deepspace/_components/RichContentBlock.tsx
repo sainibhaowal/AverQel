@@ -1,12 +1,12 @@
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { BarChart3, CreditCard, GitBranch, Pencil, Save, X } from "lucide-react";
+import { BarChart3, CreditCard, GitBranch, Pencil, Save, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 
-export type RichContentKind = "chart" | "card" | "mermaid" | "graph" | "gallery";
+export type RichContentKind = "chart" | "card" | "mermaid" | "graph" | "gallery" | "infographic";
 
 type RichContentBlockProps = {
   block: { id: string; props: { kind: RichContentKind; source: string } };
@@ -96,7 +96,8 @@ export const RichContentBlock = createReactBlockSpec(
           kind !== "card" &&
           kind !== "mermaid" &&
           kind !== "graph" &&
-          kind !== "gallery") ||
+          kind !== "gallery" &&
+          kind !== "infographic") ||
         !source
       )
         return undefined;
@@ -159,6 +160,19 @@ export const RICH_CONTENT_SLASH_ITEMS = [
         { id: "next", label: "Next", category: "step", x: 520, y: 180 },
       ],
       edges: [{ source: "start", target: "next", label: "connect" }],
+    }),
+  },
+  {
+    title: "Infographic",
+    aliases: ["infographic", "process", "timeline", "comparison", "features"],
+    group: "Rich content",
+    icon: <Sparkles size={16} />,
+    hint: "Insert an editable process, timeline, comparison, feature grid, or stats visual",
+    kind: "infographic" as const,
+    source: JSON.stringify({
+      title: "New infographic",
+      layout: "steps",
+      items: [{ title: "First step" }, { title: "Next step" }],
     }),
   },
   {

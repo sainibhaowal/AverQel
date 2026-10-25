@@ -21,7 +21,30 @@ export default function DeepSpaceLibraryDocsPage() {
             Browse folders and files, upload working material, and attach authorized files to a
             conversation.
           </li>
+          <li>
+            Files added from the composer get their own Library ID. If a composer upload repeats a
+            name already in that folder, DeepSpace adds a suffix such as <code>(2)</code> so both
+            files can be kept and attached separately.
+          </li>
           <li>Use supported preview and extraction flows to inspect content.</li>
+          <li>
+            PDF files open in the in-app viewer. When LibreOffice is installed, Writer, Calc,
+            Impress, and Draw files can be converted to a visual PDF preview. Small XLSX files keep
+            the interactive table view; other supported spreadsheet formats use the PDF preview.
+            PNG, JPEG, BMP, GIF, TIFF, and WebP images are resized for preview, while SVG and AVIF
+            use browser image rendering. GIF and multi-page TIFF previews show their first frame or
+            page.
+          </li>
+          <li>
+            Image OCR is processed in the background for PNG, JPG/JPEG, TIFF, WebP, BMP, and GIF.
+            AVIF and SVG can be previewed but are not in the image OCR extractor. Very large files
+            or images can exceed safe preview limits; in that case, use the original download or any
+            extracted text that is available.
+          </li>
+          <li>
+            If a file or preview cannot be loaded, use the Retry action shown in the Library. The
+            file list also refreshes periodically while the Library is open and the tab is visible.
+          </li>
           <li>Move or organize files within the Library and review available versions.</li>
           <li>
             Save generated artifacts to an authenticated, user-scoped Library record when the

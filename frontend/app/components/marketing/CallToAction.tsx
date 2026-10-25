@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   Bot,
@@ -13,7 +13,7 @@ import {
   Workflow,
 } from "lucide-react";
 import styles from "./LandingVisuals.module.css";
-import { useLandingReducedMotion, useLandingSectionMotion } from "./landingMotion";
+import { useLandingSectionMotion } from "./landingMotion";
 
 const workspaceAreas = [
   { label: "Documents Hub", detail: "SOURCE FILES", icon: Database },
@@ -23,7 +23,7 @@ const workspaceAreas = [
 ];
 
 export default function CallToAction() {
-  const reduceMotion = useLandingReducedMotion();
+  const reduceMotion = useReducedMotion();
   const { ref, style } = useLandingSectionMotion<HTMLElement>({
     depth: 12,
     scaleRange: [0.998, 1.003],

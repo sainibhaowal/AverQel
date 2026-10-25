@@ -94,6 +94,9 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
   const [equationInput, setEquationInput] = useState(block.equation ?? "");
   const [equationError, setEquationError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [artifactError, setArtifactError] = useState<string | null>(null);
+  const [artifactStatus, setArtifactStatus] = useState<string | null>(null);
+  const [savingArtifact, setSavingArtifact] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const draftSeries = draftState.blockId === block.id ? draftState.series : block.series;
   const activeGroups =
@@ -287,6 +290,23 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
     setIsEditing(false);
   };
 
+  const saveArtifact = async () => {
+    if (!onSaveArtifact || savingArtifact) return;
+    setArtifactError(null);
+    setArtifactStatus(null);
+    setSavingArtifact(true);
+    try {
+      await onSaveArtifact(withSynchronizedChartSource(activeBlock));
+      setArtifactStatus("Saved to Library.");
+    } catch (caught) {
+      setArtifactError(
+        caught instanceof Error ? caught.message : "The chart could not be saved to Library.",
+      );
+    } finally {
+      setSavingArtifact(false);
+    }
+  };
+
   return (
     <section className="theme-panel relative w-full min-w-0 overflow-hidden rounded-[1.8rem] shadow-[0_24px_70px_-44px_rgba(8,47,73,0.16)] dark:shadow-[0_24px_70px_-44px_rgba(8,47,73,0.82)]">
       <div className="border-b border-black/5 px-5 py-4 sm:px-6 dark:border-white/8">
@@ -325,17 +345,23 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
               {onSaveArtifact ? (
                 <button
                   type="button"
-                  onClick={() => void onSaveArtifact(withSynchronizedChartSource(activeBlock))}
-                  className="visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
+                  onClick={() => void saveArtifact()}
+                  disabled={savingArtifact}
+                  aria-busy={savingArtifact}
+                  className="visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium disabled:opacity-50"
                   aria-label="Save chart artifact"
                 >
-                  Save artifact
+                  {savingArtifact ? "Saving…" : artifactStatus ? "Saved" : "Save artifact"}
                 </button>
               ) : null}
               {!block.is_streaming ? (
                 <button
                   type="button"
-                  onClick={editingCurrentBlock ? () => void commitEditing() : toggleEditing}
+                  onClick={() => {
+                    setArtifactStatus(null);
+                    if (editingCurrentBlock) void commitEditing();
+                    else toggleEditing();
+                  }}
                   disabled={isSaving}
                   aria-busy={isSaving}
                   className={`visual-block-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium ${editingCurrentBlock ? "visual-block-action--active" : ""}`}
@@ -373,6 +399,31 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
               ) : null}
             </div>
           </div>
+          {saveError ? (
+            <p
+              className="mt-2 text-right text-[11px] text-rose-600 dark:text-rose-300"
+              role="alert"
+            >
+              {saveError}
+            </p>
+          ) : null}
+          {artifactError ? (
+            <p
+              className="mt-2 text-right text-[11px] text-rose-600 dark:text-rose-300"
+              role="alert"
+            >
+              {artifactError}
+            </p>
+          ) : null}
+          {artifactStatus ? (
+            <p
+              className="mt-2 text-right text-[11px] text-emerald-700 dark:text-emerald-300"
+              role="status"
+              aria-live="polite"
+            >
+              {artifactStatus}
+            </p>
+          ) : null}
           <div className="text-foreground/60 flex flex-wrap items-center gap-3 text-xs sm:ml-[3.25rem]">
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="text-primary h-3.5 w-3.5" />
@@ -617,11 +668,6 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
                 Recalculate
               </button>
             </div>
-            {saveError ? (
-              <p className="mb-3 text-[11px] text-rose-500" role="alert">
-                {saveError}
-              </p>
-            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
               {draftSeries.map((point, index) => (
                 <div
@@ -812,6 +858,8 @@ function MultiSeriesChart({
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(groups.filter((group) => group.visible === false).map((group) => group.name)),
   );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savingVisibility, setSavingVisibility] = useState(false);
   const chartId = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   const width = 680;
@@ -829,6 +877,35 @@ function MultiSeriesChart({
   const rightValues = visibleGroups
     .filter((group) => group.axis === "right")
     .flatMap((group) => group.points.map((point) => point.value));
+  const toggleSeriesGroup = async (groupName: string) => {
+    if (savingVisibility) return;
+    const previousHidden = hidden;
+    const nextHidden = new Set(hidden);
+    if (nextHidden.has(groupName)) nextHidden.delete(groupName);
+    else nextHidden.add(groupName);
+    setHidden(nextHidden);
+    setSaveError(null);
+    setSavingVisibility(true);
+    try {
+      const saved = await onChange?.({
+        ...block,
+        series_groups: (block.series_groups ?? []).map((item) =>
+          item.name === groupName ? { ...item, visible: !nextHidden.has(groupName) } : item,
+        ),
+        revision: (block.revision ?? 0) + 1,
+      });
+      if (saved === false) throw new Error("Chart visibility could not be saved. Try again.");
+    } catch (caught) {
+      setHidden(previousHidden);
+      setSaveError(
+        caught instanceof Error
+          ? caught.message
+          : "Chart visibility could not be saved. Try again.",
+      );
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
   const leftMax = Math.max(...leftValues, mode === "bar" ? 0 : 1);
   const leftMin = Math.min(...leftValues, 0);
   const leftSpan = Math.max(leftMax - leftMin, 0.1);
@@ -1071,25 +1148,20 @@ function MultiSeriesChart({
           </svg>
         </div>
       </div>
+      {saveError ? (
+        <p className="mb-3 text-xs text-rose-600 dark:text-rose-300" role="alert">
+          {saveError}
+        </p>
+      ) : null}
       {block.legend !== false ? (
         <div className="flex flex-wrap gap-2">
           {groups.map((group) => (
             <button
               key={group.name}
               type="button"
-              onClick={() => {
-                const next = new Set(hidden);
-                if (next.has(group.name)) next.delete(group.name);
-                else next.add(group.name);
-                setHidden(next);
-                void onChange?.({
-                  ...block,
-                  series_groups: (block.series_groups ?? []).map((item) =>
-                    item.name === group.name ? { ...item, visible: !next.has(group.name) } : item,
-                  ),
-                  revision: (block.revision ?? 0) + 1,
-                });
-              }}
+              onClick={() => void toggleSeriesGroup(group.name)}
+              disabled={savingVisibility}
+              aria-busy={savingVisibility}
               className={`visual-block-action inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${hidden.has(group.name) ? "opacity-40" : ""}`}
             >
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />

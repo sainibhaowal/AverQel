@@ -96,6 +96,34 @@ function makeVisualState(): VisualState {
     content: "Revenue grew through Q2 and held near that level in Q3.",
     metrics: [{ label: "Peak quarter", value: "Q2" }],
   };
+  const evaluationCard = {
+    id: "visual-workflow-evaluation",
+    title: "LarpRouter API evaluation",
+    subtitle: "Tests from August 17 to September 21, 2026",
+    layout: "evaluation",
+    score: { value: 51, max: 100, tone: "error" },
+    metrics: [
+      { label: "Valid scored tests", value: 15 },
+      { label: "Claude signature checks passed", value: "0/10" },
+    ],
+    content: "Source: Veridrop's publicly reported testing results.",
+    sources: [{ title: "Veridrop", url: "https://example.com/veridrop" }],
+  };
+  const referralCard = {
+    id: "visual-workflow-referral",
+    title: "LarpRouter referral",
+    layout: "referral",
+    code: "81D9-627A-11",
+    primary_metric: { label: "Gift tokens advertised", value: "10,000,000" },
+    details: [
+      { label: "Free cash", value: "No" },
+      { label: "Credit card required initially", value: "No, according to site" },
+      { label: "Inviter's commission", value: "5% first top-up, 2% later" },
+      { label: "Gift-token restrictions", value: "Three specified models" },
+    ],
+    content: "These terms are published by LarpRouter, not independently verified benefits.",
+    sources: [{ title: "LarpRouter", url: "https://example.com/referral" }],
+  };
   const graph = {
     id: "visual-workflow-graph",
     title: "Release architecture",
@@ -140,7 +168,9 @@ function makeVisualState(): VisualState {
   };
   const answer = [
     generated.answer,
-    "```card\n" + JSON.stringify(card, null, 2) + "\n```",
+    codeFence + "card\n" + JSON.stringify(card, null, 2) + "\n" + codeFence,
+    codeFence + "card\n" + JSON.stringify(evaluationCard, null, 2) + "\n" + codeFence,
+    codeFence + "card\n" + JSON.stringify(referralCard, null, 2) + "\n" + codeFence,
     "```graph\n" + JSON.stringify(graph, null, 2) + "\n```",
     "```gantt\n" + mermaidSource + "\n```",
     "```gallery\n" + JSON.stringify(gallery, null, 2) + "\n```",
@@ -152,6 +182,8 @@ function makeVisualState(): VisualState {
     noteHtml: [
       generated.noteHtml,
       richNoteHtml("card", card),
+      richNoteHtml("card", evaluationCard),
+      richNoteHtml("card", referralCard),
       richNoteHtml("gallery", gallery),
       richNoteHtml("graph", graph),
       richNoteHtmlSource("mermaid", mermaidSource),
@@ -315,9 +347,14 @@ async function installVisualApi(page: Page, state: VisualState) {
       });
     }
     if (pathname === `/deepspace/chats/${conversationId}` && method === "PATCH") {
-      const payload = request.postDataJSON() as { content_html?: string };
+      const payload = request.postDataJSON() as { content_html?: string; title?: string };
       if (typeof payload.content_html === "string") state.noteHtml = payload.content_html;
-      return json({ id: conversationId, content_html: state.noteHtml });
+      return json({
+        id: conversationId,
+        content_html: state.noteHtml,
+        title: payload.title ?? "Visual acceptance conversation",
+        updated_at: "2026-10-16T10:00:00Z",
+      });
     }
     if (pathname === "/deepspace/chats/operational-summary") return json(null);
     if (pathname === `/deepspace/chats/${conversationId}/messages` && method === "GET") {
@@ -448,6 +485,16 @@ test.describe("DeepSpace visual workflow", () => {
     await expect(authenticatedPage.getByRole("heading", { name: state.block.title })).toBeVisible({
       timeout: 30_000,
     });
+    const evaluationSummary = authenticatedPage.getByTestId("evaluation-card-summary");
+    await expect(evaluationSummary).toBeVisible();
+    await expect(evaluationSummary.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "51");
+    await expect(evaluationSummary.getByTestId("evaluation-card-metric")).toHaveCount(2);
+    const referralSummary = authenticatedPage.getByTestId("referral-card-summary");
+    await expect(referralSummary).toBeVisible();
+    await expect(referralSummary.getByTestId("referral-card-detail")).toHaveCount(4);
+    await expect(
+      authenticatedPage.getByRole("button", { name: "Copy referral code" }),
+    ).toBeVisible();
     const chartTitle = authenticatedPage.getByRole("heading", { name: state.block.title });
     const chartDataAction = authenticatedPage.getByRole("button", { name: "Download chart data" });
     const [chartTitleBounds, chartActionBounds] = await Promise.all([
@@ -519,10 +566,14 @@ test.describe("DeepSpace visual workflow", () => {
         new RegExp(`quarterly-revenue\\.${format.toLowerCase()}$`),
       );
     }
+    const executiveSummaryCard = authenticatedPage.locator(
+      '[data-visual-block-id="visual-workflow-card"]',
+    );
+    await expect(executiveSummaryCard).toHaveCount(1);
     for (const format of ["SVG", "PNG", "PDF"] as const) {
       await expectVisualDownload(
         authenticatedPage,
-        authenticatedPage.getByRole("button", { name: `Export card as ${format}` }),
+        executiveSummaryCard.getByRole("button", { name: `Export card as ${format}` }),
         new RegExp(`executive-summary\\.${format.toLowerCase()}$`),
       );
     }

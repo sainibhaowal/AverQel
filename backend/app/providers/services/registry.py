@@ -50,6 +50,7 @@ OPENAI_COMPATIBLE_PROVIDER_TYPES = {
     "perplexity",
     "vllm",
     "custom",
+    "larprouter",
 }
 
 OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES = OPENAI_COMPATIBLE_PROVIDER_TYPES - {
@@ -57,9 +58,11 @@ OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES = OPENAI_COMPATIBLE_PROVIDER_TYPES - 
     "cline",
     "moonshot",
     "zai",
+    "larprouter",
 }
 
 PROVIDER_DEFAULT_BASE_URLS = {
+    "larprouter": "https://larprouter.com/v1",
     "moonshot": "https://api.moonshot.ai/v1",
     "zai": "https://api.z.ai/api/paas/v4",
     "nvidia-nim": "https://integrate.api.nvidia.com/v1",
@@ -411,6 +414,7 @@ class ProviderRegistry:
                 api_key=api_key,
                 provider_name=provider_config.provider_type,
                 provider_metadata=dict(provider_config.metadata_json or {}),
+                model_listing_timeout_seconds=float(provider_config.timeout_seconds),
             )
         if provider_config.provider_type == "anthropic":
             return AnthropicProvider().bind(

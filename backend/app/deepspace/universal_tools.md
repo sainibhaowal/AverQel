@@ -35,7 +35,7 @@ explicit discovery selection.
 | `delete` | Remove an authorized Library file or memory when the user clearly requests it. |
 | `analyze` | Compare two or more authorized Library documents by their extracted text. |
 | `todo_write` | Manage the persisted task plan: `replace`, `read`, `update`, and `check` operations create/edit, retrieve, update with evidence, and verify the plan. |
-| `web_search`, `url_read`, `image_read` | Search current web sources, read a page, or inspect a verified raster/SVG image. Document/data URLs belong to `url_read` or `sandbox_execute`; unavailable images return a recoverable source status. |
+| `web_search`, `url_read`, `image_read` | Search current web sources, read a page (including safe, page-declared image URL candidates), or verify and inspect a raster/SVG image. Document/data URLs belong to `url_read` or `sandbox_execute`; unavailable images return a recoverable source status. |
 | `sandbox_execute` | Run bounded Python or SQL against explicitly authorized inputs. |
 | `artifact_create` | Save a named document, table, chart, diagram, or code artifact. |
 | `ask_user` | Ask for information that is required to continue. |
@@ -116,9 +116,31 @@ fenced blocks when the information benefits from a visual surface:
 - `card`: JSON with `title` and Markdown `content`. Optional `tone` must be one
   of `info`, `success`, `warning`, `error`, or `neutral`; common model aliases
   such as `positive`, `caution`, and `negative` are normalized to those values.
-  Optional `subtitle`, `image_url`, `href`, `metrics`, and `actions` create an
-  actionable information card. URLs must come from authorized web or Library
-  results.
+  Optional `layout` (`standard`, `feature`, `place`, `evaluation`, or
+  `referral`), `subtitle`,
+  `image_url`, `image_alt`, `icon`, `href`, `metrics`, `actions`, `details`,
+  and `sources` create a richer information card. Feature cards can highlight
+  a sourced image or logo; place cards require at least one source entry and
+  can show structured contact/location details. Use `url_read.image_urls` to
+  discover page-declared image candidates and verify them with `image_read`
+  before including a photo. Include only details confirmed by the authorized
+  result and omit unavailable fields. Never invent image or source URLs.
+  Evaluation cards require a bounded `score` with a positive maximum and at
+  least one supporting metric; they display an accessible progress bar.
+  Referral cards require a `primary_metric` and at least one structured detail
+  row, and can include a provided, copyable `code`. These two layouts may omit
+  `content` when their required structured fields are present.
+- `infographic`: JSON with `title`, `layout` (`steps`, `timeline`,
+  `comparison`, `feature_grid`, or `stats`), and 2–8 `items`. Each item has a
+  `title` and can include `description`, `value`, `date`, `icon`, or
+  `image_url`. Timeline items require a date/period label of at most 300
+  characters; keep labels concise and put explanations in `description`.
+  Statistics items require a value. For `steps`, optional `direction` is `LR`,
+  `RL`, `TD`, or `DT` and defaults to `LR`; use vertical directions when
+  descriptions need more room. Keep titles concise and descriptions to one
+  short paragraph. Optional `subtitle`, `note`, and `sources` add context and
+  visible references. Icons use the bounded visual icon set in the DeepSpace
+  policy.
 - `mermaid`: renderable Mermaid syntax for flow, UML, architecture, business
   model, timeline, or Gantt diagrams.
 - `graph`: JSON with `nodes`, `edges`, and `layout` for the interactive canvas.
@@ -127,11 +149,14 @@ fenced blocks when the information benefits from a visual surface:
 - `gallery`: JSON with a `title` and at least one `{src, alt, caption, href}`
   item for a clickable, downloadable image sequence.
 
-The server validates every `chart`, `card`, `graph`, and `gallery` fence against
-the visual block schemas before it is sent to the client. Invalid visual JSON is
-demoted to a plain `text` fence. The browser renders valid blocks with React
-components and never executes raw HTML or scripts. Completed chart, card,
-gallery, graph, and diagram edits use the authenticated visual-block endpoint,
+The server validates every `chart`, `card`, `graph`, `gallery`, and
+`infographic` fence against bounded visual block schemas before it is sent to
+the client. Invalid visual JSON is demoted to a plain `text` fence. The browser
+renders valid blocks with React components and never executes raw HTML or scripts.
+If valid visual JSON is accidentally enclosed by a longer opening fence and a
+shorter closing fence, the server repairs the mismatch and keeps following
+Markdown outside the visual. Unrelated JSON remains code.
+Completed chart, card, infographic, gallery, graph, and diagram edits use the authenticated visual-block endpoint,
 optimistic revision guards, immutable message versions, and realtime
 conversation events. Gallery fields can be edited, reordered, added, or removed;
 each change uses the same revisioned save path. When the edited block originated
@@ -145,8 +170,10 @@ artifacts. Visual blocks carry a canonical `block_id`, `schema_version`,
 `revision`, source, assets, and bounded history envelope. Note-origin edits can
 address the originating chat block by stable ID. Save a revised block through
 `POST /deepspace/library/{conversation_id}/visual-artifacts` to create or
-version an editable JSON Library source; the existing version list/restore and
-export routes then apply. Gallery images are imported through the authenticated
+version an editable JSON Library source; Library file versions are guarded by
+`expected_version`, independently of the chat visual revision. Repeating an
+unchanged save does not create an extra Library version. The existing
+version list/restore and export routes then apply. Gallery images are imported through the authenticated
 `POST /deepspace/library/{conversation_id}/assets/import` endpoint. The server
 rejects non-image data, unsupported active SVGs, mismatched file signatures,
 oversized responses, private destinations, and redirects. Small galleries are

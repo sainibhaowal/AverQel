@@ -8,6 +8,7 @@ credentials, or private-network URL is accepted from a user/model.
 from __future__ import annotations
 
 import importlib
+from dataclasses import replace
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -186,7 +187,7 @@ def read_url_with_browser_fallback(
                     403,
                     "The public page blocked automated access with an anti-bot challenge.",
                 )
-            return rendered
+            return replace(rendered, image_urls=rendered.image_urls or result.image_urls)
         except ProviderRequestError:
             if result.text.strip() and not _is_automated_access_challenge(result):
                 return result

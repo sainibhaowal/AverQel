@@ -21,8 +21,17 @@ def test_prompt_rich_output_routing_prefers_expected_artifacts() -> None:
         query="Summarize the risks and next steps from these findings",
         query_type=QueryType.SYNTHESIS,
     )
+    cards = AnswerService._build_structured_output_instruction(
+        query="Create an evaluation scorecard and a referral card from these provided facts.",
+        query_type=QueryType.FACTUAL,
+    )
 
     assert "comparison_table must be filled" in comparison
     assert "chart must be filled" in trend
     assert "graph_json" in architecture and "graph_canvas" in architecture
     assert "follow_up_suggestions" in synthesis
+    assert "layout evaluation" in cards
+    assert "layout referral" in cards
+    assert AnswerService._open_chat_wants_structured_output(
+        "Create an evaluation scorecard and a referral card from these provided facts."
+    )

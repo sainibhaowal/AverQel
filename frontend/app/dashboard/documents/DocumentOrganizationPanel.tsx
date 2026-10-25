@@ -9,7 +9,7 @@ import { fetchWithAuth } from "@/lib/api";
 import toast from "react-hot-toast";
 import { averqelAlert, averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
 import { useAuth } from "@/app/context/AuthContext";
-import { hasAdminRole, normalizeRole } from "@/lib/roles";
+import { hasAdminRole, hasDocumentOrganizationAdvancedAccess } from "@/lib/roles";
 
 type Item = {
   id: string;
@@ -29,7 +29,7 @@ export default function DocumentOrganizationPanel() {
   const { user } = useAuth();
   const roles = user?.roles ?? [];
   const isAdmin = hasAdminRole(roles);
-  const isEditor = isAdmin || roles.some((role) => normalizeRole(role) === "editor");
+  const isEditor = hasDocumentOrganizationAdvancedAccess(roles);
   const [tags, setTags] = useState<Item[]>([]);
   const [folders, setFolders] = useState<Item[]>([]);
   const [views, setViews] = useState<Item[]>([]);

@@ -210,6 +210,7 @@ _REASONING_METADATA_KEYS: Final[frozenset[str]] = frozenset(
         "reasoning_visibility",
         "supports_thinking_summary_stream",
         "supported_reasoning_efforts",
+        "default_reasoning_effort",
         "supports_thinking_toggle",
         "request_controls_on",
         "request_controls_off",
@@ -343,13 +344,15 @@ class ReasoningProfile:
     reasoning_visibility: str = "hidden"
     supports_thinking_summary_stream: bool = False
     supported_reasoning_efforts: tuple[str, ...] = ()
+    default_reasoning_effort: str | None = None
+    reasoning_effort_values: tuple[tuple[str, str], ...] = ()
     supports_thinking_toggle: bool = False
     request_controls_on: tuple[str, ...] = ()
     request_controls_off: tuple[str, ...] = ()
     response_formats: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "supports_reasoning": self.supports_reasoning,
             "reasoning_capabilities_known": (
                 self.reasoning_capabilities_known
@@ -365,6 +368,11 @@ class ReasoningProfile:
             "request_controls_off": list(self.request_controls_off),
             "response_formats": list(self.response_formats),
         }
+        if self.default_reasoning_effort:
+            result["default_reasoning_effort"] = self.default_reasoning_effort
+        if self.reasoning_effort_values:
+            result["reasoning_effort_values"] = dict(self.reasoning_effort_values)
+        return result
 
 
 def uses_groq_reasoning_api(
@@ -495,6 +503,42 @@ def resolve_reasoning_profile(
                 supports_thinking_toggle=True,
                 request_controls_on=("thinking_enabled",),
                 request_controls_off=("thinking_disabled",),
+                response_formats=("reasoning_content",),
+            )
+        return ReasoningProfile()
+    if provider == "larprouter":
+        lowered_model = (model_name or "").casefold().replace("_", "-")
+        if "deepseek-v4.1-flash" in lowered_model or "deepseek-v4-flash" in lowered_model:
+            return ReasoningProfile(
+                supports_reasoning=True,
+                reasoning_visibility="provider_exposed",
+                supports_thinking_summary_stream=True,
+                supported_reasoning_efforts=("low", "high", "extreme_high"),
+                default_reasoning_effort="high",
+                reasoning_effort_values=(
+                    ("low", "low"),
+                    ("high", "high"),
+                    ("extreme_high", "max"),
+                ),
+                supports_thinking_toggle=True,
+                request_controls_on=("thinking_enabled", "reasoning_effort"),
+                request_controls_off=("thinking_disabled",),
+                response_formats=("reasoning_content",),
+            )
+        if "glm-5.3" in lowered_model:
+            return ReasoningProfile(
+                supports_reasoning=True,
+                reasoning_visibility="provider_exposed",
+                supports_thinking_summary_stream=True,
+                supported_reasoning_efforts=("low", "high", "extreme_high"),
+                default_reasoning_effort="extreme_high",
+                reasoning_effort_values=(
+                    ("low", "low"),
+                    ("high", "high"),
+                    ("extreme_high", "max"),
+                ),
+                supports_thinking_toggle=False,
+                request_controls_on=("reasoning_effort",),
                 response_formats=("reasoning_content",),
             )
         return ReasoningProfile()
@@ -784,6 +828,7 @@ def merge_reasoning_capabilities(
 
     selected: dict[str, Any] = {}
     efforts_raw: object | None = None
+    default_effort: str | None = None
     effort_values: dict[str, str] = {}
     for source in sources:
         for key in _REASONING_METADATA_KEYS:
@@ -799,6 +844,9 @@ def merge_reasoning_capabilities(
             if key == "supported_reasoning_efforts":
                 if isinstance(value, list | tuple):
                     efforts_raw = value[:32]
+                continue
+            if key == "default_reasoning_effort":
+                default_effort = normalize_reasoning_effort_value(value)
                 continue
             if key == "reasoning_effort_values" and isinstance(value, Mapping):
                 for name, native_value in value.items():
@@ -854,7 +902,13 @@ def merge_reasoning_capabilities(
     if effort_values:
         native_values.update(effort_values)
     if native_values:
-        selected["reasoning_effort_values"] = native_values
+        profile_values = result.get("reasoning_effort_values")
+        selected["reasoning_effort_values"] = {
+            **(profile_values if isinstance(profile_values, dict) else {}),
+            **native_values,
+        }
+    if default_effort and (not normalized_efforts or default_effort in normalized_efforts):
+        selected["default_reasoning_effort"] = default_effort
 
     if selected.get("reasoning_capabilities_known") is False:
         advertised_is_explicit = bool(selected.get("supported_reasoning_efforts"))

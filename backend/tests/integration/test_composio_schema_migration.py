@@ -35,7 +35,6 @@ def test_schema_repair_preserves_legacy_key_and_creates_isolated_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     connection = db_session.connection()
-    connection.exec_driver_sql("DROP TABLE IF EXISTS composio_legacy_platform_credentials")
     connection.exec_driver_sql("DROP TABLE composio_credentials")
     connection.exec_driver_sql("""
         CREATE TABLE composio_credentials (

@@ -15,3 +15,7 @@ def test_deepseek_v4_models_have_official_one_million_token_context_windows() ->
         result = resolve_verified_context_window(model_name, provider_type="deepseek")
         assert result.context_window == 1_048_576
         assert result.source == "official_docs:deepseek"
+
+    routed_result = resolve_verified_context_window("deepseek-v4-pro", provider_type="larprouter")
+    assert routed_result.context_window == 1_048_576
+    assert routed_result.source == "official_docs:deepseek"

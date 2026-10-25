@@ -5,6 +5,7 @@ import base64
 import copy
 import difflib
 import hashlib
+import inspect
 import itertools
 import json
 import logging
@@ -36,7 +37,8 @@ from app.deepspace.services.context_cache import DeepSpaceContextCache
 from app.deepspace.services.context_epoch import DeepSpaceContextEpochStore
 from app.deepspace.services.conversation_retrieval import ConversationRetrievalService
 from app.deepspace.services.execution_batches import ExecutionBatch, plan_execution_batches
-from app.deepspace.services.library_storage import safe_extraction_status
+from app.deepspace.services.library_storage import LibraryStorageService, safe_extraction_status
+from app.deepspace.services.library_uploads import is_extraction_supported
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
 from app.deepspace.services.mcp_result_store import MCPResultStore
 from app.deepspace.services.mcp_tool_broker import (
@@ -144,6 +146,7 @@ MAX_ATTACHMENT_VISION_BYTES = 12 * 1024 * 1024
 MAX_ATTACHMENT_VISION_IMAGES = 10
 MAX_ATTACHMENT_OCR_TEXT_CHARS = 6_000
 MAX_ATTACHMENT_OCR_CONTEXT_CHARS = 16_000
+MAX_ATTACHMENT_OCR_FALLBACK_TOTAL_BYTES = 25 * 1024 * 1024
 _PRIVATE_PROVIDER_CONTINUATIONS_KEY = "_deepspace_provider_continuations"
 _PRIVATE_PROVIDER_CONTINUATION_LAST_TURN_KEY = "_deepspace_provider_continuation_last_turn"
 _PRIVATE_PROVIDER_CONTINUATION_REF = "__deepspace_provider_continuation_ref"
@@ -188,7 +191,7 @@ Planning and execution
 - For substantial work with independently verifiable steps, discover and create a persisted todo_write plan before doing the work. List plan tasks in execution order and give each task an id, success_criteria, verification, and only the dependencies it truly needs. Keep a one-step answer direct; do not force a plan just because the wording sounds formal or difficult.
 - Tool schemas are discovered on demand. First call discover_tools with a natural-language description and no tool_names; inspect the returned compact authorized catalog, then call discover_tools again with exact selected names from that catalog. Use only the returned callable schemas. If the task changes or a required capability is missing, discover again. Do not guess tool names or assume an undiscovered tool is callable.
 - When the user requests web research, use web_search when available before url_read. Read only the few most relevant primary sources needed for the current task; do not fetch every search result. A Library miss is only a miss in that Library; continue with other requested sources unless the user explicitly limited the task to the Library. Never invent filenames or sources.
-- Use image_read only for URLs verified as raster or SVG images. CSV, JSON, HTML, Markdown, and other document URLs belong to url_read or sandbox_execute; an unavailable image result is evidence that the image was not inspected.
+- Use image_read only for URLs returned in a source page's `image_urls` list or otherwise verified as raster or SVG images. This tool verifies the media before it is used; CSV, JSON, HTML, Markdown, and other document URLs belong to url_read or sandbox_execute. An unavailable image result is evidence that the image was not inspected.
 - Never call ask_user merely to ask permission to perform work the user already requested.
 - Cite web evidence accurately: distinguish pages read in full, search snippets, and blocked pages. Never describe a search result or blocked URL as a page you opened, and never invent research counts.
 - When continuing after a user clarification or answer, proceed immediately with the relevant search or answer; do not re-ask the same question or emit placeholder messages.
@@ -255,13 +258,19 @@ Response quality
 - State assumptions only when they materially affect the result.
 - Use clear headings, short lists, tables, or steps only when they improve understanding.
 - Choose the representation from the information shape: short prose for an explanation; bullets for grouped facts; numbered lists only for sequences or rankings; tables only for compact, genuinely tabular comparisons; fenced code for code; Mermaid for relationships or flows.
-- DeepSpace Markdown supports rich, functional blocks. When the user asks for a visual, emit exactly one fenced `chart` block with valid JSON containing `title`, `chart_type` (`line`, `bar`, `area`, `scatter`, or `pie`), and a `series` array of at least two `{label, value}` points. You may add `equation`, `x_label`, and `y_label` for quantitative work. Do not invent values: label estimates and cite the source.
-- Use a fenced `card` block for a compact decision, finding, recommendation, source, or media summary. Its JSON must contain `title` and Markdown `content`; if present, `tone` must be `info`, `success`, `warning`, `error`, or `neutral`. The server also normalizes common aliases such as `positive` and `caution`. Cards may include `subtitle`, `image_url`, `href`, `metrics`, and `actions`. Only use URLs returned by an authorized search/read tool; never fabricate image or source URLs. Card content must remain safe Markdown, never raw HTML or scripts.
+- DeepSpace Markdown supports rich, functional blocks. Choose a visual dynamically from the user's goal, the shape of the evidence, and the tools available; use ordinary prose for simple answers and do not add decoration for its own sake. Keep the answer readable if a visual block cannot be rendered.
+- Use a fenced `chart` block for quantitative values or trends. Its JSON must contain `title`, `chart_type` (`line`, `bar`, `area`, `scatter`, or `pie`), and a `series` array of at least two `{label, value}` points. You may add `equation`, `x_label`, and `y_label`. Never invent values; distinguish estimates from measured data and cite the source.
+- Use a fenced `infographic` block for a visual explanation of a process, timeline, comparison, set of features, or a small set of sourced statistics. Its JSON must contain `title`, `layout` (`steps`, `timeline`, `comparison`, `feature_grid`, or `stats`), and 2–8 `items`, each with a `title` and only the applicable `description`, `value`, `date`, `icon`, or `image_url` fields. For `steps`, optionally set `direction` to `LR`, `RL`, `TD`, or `DT` (default `LR`). Choose `LR`/`RL` for short steps and `TD`/`DT` when descriptions need more room; keep item order meaningful. Use concise titles and one short, readable description per item. Timeline items need a source-backed `date` or period label of at most 300 characters; keep labels concise and put explanations in `description`. Stats items need source-backed `value`s. Optional `subtitle`, `note`, and `sources` add context and visible references. Verify any image URL with `image_read` using a page-declared URL from `url_read.image_urls`. Use a chart for detailed numeric series, Mermaid for relationships and architecture, and an infographic for concise visual storytelling; do not repeat the same information in several blocks.
+- Use a fenced `card` block for a compact decision, finding, recommendation, source, product/logo, or place summary. Its JSON must contain `title` and Markdown `content`, except evaluation and referral layouts may omit content when their structured fields are complete; if present, `tone` must be `info`, `success`, `warning`, `error`, or `neutral`. Cards may include `subtitle`, `image_url`, `image_alt`, `icon`, `href`, `metrics`, `actions`, `details`, and `sources`. Use `layout: "evaluation"` for sourced scores with `score: {value, max, tone}` and supporting `metrics`; the score value must be between zero and its positive maximum. Use `layout: "referral"` for referral terms with `primary_metric: {label, value}`, at least one `details` row, and an optional provided `code`. Put caveats in `content` and include only supported facts and real source URLs. Use `layout: "feature"` for a prominent source-backed logo or image. Use `layout: "place"` only after web research confirms the place; include at least one visible `sources` entry and only details explicitly returned by a source. For place/product photos, use `image_read` to verify an image URL returned by `url_read.image_urls` before including it. Omit unavailable hours, contact details, and images rather than guessing. Never fabricate image or source URLs. Card content must remain safe Markdown, never raw HTML or scripts.
+- Icon names in visual blocks must be selected from the supported icon set (`sparkles`, `lightbulb`, `target`, `shield`, `layers`, `zap`, `globe`, `chart`, `check`, `clock`, `map-pin`, `building`, `users`, `database`, `cloud`, `code`, `star`, `heart`, `phone`, `calendar`, `landmark`, `compass`, `info`).
 - Use Mermaid fences for `flowchart`, `sequenceDiagram`, `stateDiagram`, `classDiagram`, `erDiagram`, `gantt`, `timeline`, `mindmap`, `quadrantChart`, `xychart-beta`, and other supported semantic diagrams. Keep syntax balanced and renderable. Use charts for numeric series and Mermaid for relationships, process, architecture, UML, business-model, and schedule diagrams.
 - For web research, turn the most useful evidence into a small set of source cards or a chart only when the returned data supports it. Keep source links visible and explain whether numbers are observed, calculated, or illustrative.
 - Never use a table for long descriptions, multi-paragraph records, job/result listings, or cells containing several bullets. Use one `###` heading per record with concise labeled bullets instead.
 - When a compact table is appropriate, use standard GFM: one header row, one matching hyphen separator row, at most 5 columns, and exactly one physical line per data row. Every row must have the same cell count. Never put lists, paragraph breaks, `<br>` tags, or notes inside cells.
-- Keep Markdown delimiters balanced. Do not wrap an entire table row or multiple cells in one bold marker. Do not wrap the complete answer in a Markdown code fence.
+- Keep Markdown delimiters balanced; use exactly three backticks to open and close fenced blocks.
+- Close diagram fences before following Markdown prose.
+- Do not wrap an entire table row or multiple cells in one bold marker. Do not wrap the complete answer in a Markdown code fence.
+- For visual JSON, use exactly three backticks on both the opening and closing fence, and close the visual fence before any follow-up prose. Never put an infographic or card inside an outer code fence.
 - For completed actions, report: what was done, the result, and any important limitation.
 - For blocked work, report: what is blocked, why, what was not changed, and the smallest safe next action.
 - Do not overpromise. Reliability comes from verification, retries, authorization controls, observability, and correct tool results—not from unsupported guarantees.
@@ -312,7 +321,9 @@ URL_READ_TOOL = {
         "description": (
             "Read a public HTTPS web URL for source-backed research. Prefer this on URLs "
             "returned by web_search so the answer is based on fetched page text, not only a snippet. "
-            "Returns the final source URL, title, extracted text, and links."
+            "Returns the final source URL, title, extracted text, links, and up to three "
+            "public page-declared image_urls candidates. Verify an image candidate with image_read "
+            "before using it in a card."
         ),
         "parameters": {
             "type": "object",
@@ -346,7 +357,7 @@ IMAGE_READ_TOOL = {
     "type": "function",
     "function": {
         "name": "image_read",
-        "description": "Inspect a public raster or SVG image URL for dimensions and visual context. Call this only for a URL verified as an image; use url_read for HTML/CSV/JSON/text documents. The image is passed to compatible vision models; this never accesses local files.",
+        "description": "Verify and inspect a public raster or SVG image URL for dimensions and visual context. Use URLs listed in url_read.image_urls or another source-confirmed image URL. This rejects non-image documents and never accesses local files.",
         "parameters": {
             "type": "object",
             "additionalProperties": False,
@@ -695,6 +706,27 @@ access from a search snippet alone.
 For connected MCP services, use the broker sequence `mcp_search_tools`,
 `mcp_get_tool_schema`, then `mcp_call_tool` with the exact returned `tool_ref`;
 never invent a direct upstream MCP tool name.
+Choose the answer format dynamically from the request and verified evidence:
+answer simple questions in prose; use a chart for sourced quantitative series,
+Mermaid/graph for relationships or architecture, and a concise infographic for
+steps, timelines, comparisons, feature sets, or a small sourced set of stats.
+Use a feature card for a source-backed product/logo or image, and a place card
+only when authorized web research confirms the place. Place cards require a
+visible source URL; include images, addresses, hours, and contact details only
+when the authorized result supplies them. Never guess facts or URLs. Infographic
+blocks use a fenced `infographic` JSON object with a title, one of `steps`,
+`timeline`, `comparison`, `feature_grid`, or `stats`, and 2–8 titled items;
+step items may set `direction` to `LR`, `RL`, `TD`, or `DT` (default `LR`); use
+vertical directions when descriptions need more room and keep titles and
+descriptions concise. Timeline items need source-backed dates/periods and stats
+items need source-backed values. Card blocks use fenced `card` JSON; icons must use the
+allowlisted visual icon names: `sparkles`, `lightbulb`, `target`, `shield`,
+`layers`, `zap`, `globe`, `chart`, `check`, `clock`, `map-pin`, `building`,
+`users`, `database`, `cloud`, `code`, `star`, `heart`, `phone`, `calendar`,
+`landmark`, `compass`, and `info`. For images, use only `url_read.image_urls`
+and verify a candidate with image_read before including it. Prefer ordinary
+prose when a visual adds no clarity, and keep the answer useful if visual
+rendering is unavailable.
 """.strip()
 
 
@@ -904,7 +936,7 @@ class DeepSpaceChatService:
         }
 
     def _candidate_supports_image_input(self, candidate: Any, tenant_id: uuid.UUID) -> bool:
-        """Use advertised model modalities before relying on provider defaults."""
+        """Resolve visual input from cached model metadata before name fallbacks."""
         metadata = getattr(candidate, "metadata", {})
         if not isinstance(metadata, dict):
             metadata = {}
@@ -921,19 +953,14 @@ class DeepSpaceChatService:
             if isinstance(cached_capabilities, dict):
                 capabilities = {**metadata, **cached_capabilities}
 
-        for key in ("supports_image_in", "supports_vision"):
-            advertised = capabilities.get(key)
-            if isinstance(advertised, bool):
-                return advertised
-        modalities = capabilities.get("input_modalities")
-        if isinstance(modalities, list) and modalities:
-            return any(
-                isinstance(item, str) and item.casefold() in {"image", "images", "vision"}
-                for item in modalities
-            )
+        advertised = self._declared_image_input_capability(capabilities)
+        if advertised is not None:
+            return advertised
 
         provider_type = str(getattr(candidate, "provider_type", "")).casefold()
         model_name = str(getattr(candidate, "model_name", "")).casefold()
+        if self._model_name_indicates_image_input(model_name):
+            return True
         if provider_type == "manus":
             return True
         if provider_type == "openai":
@@ -945,6 +972,116 @@ class DeepSpaceChatService:
         if provider_type == "google":
             return bool(re.match(r"gemini-(?:1\.[5-9]|[2-9](?:[-.]|$))", model_name))
         return False
+
+    @staticmethod
+    def _declared_image_input_capability(capabilities: dict[str, Any]) -> bool | None:
+        """Read explicit image flags and common provider modality catalog shapes."""
+        sources = [capabilities]
+        for key in ("capabilities", "architecture", "model_capabilities"):
+            nested = capabilities.get(key)
+            if isinstance(nested, dict):
+                sources.append(nested)
+
+        for source in sources:
+            for key in (
+                "supports_image_in",
+                "supports_vision",
+                "supports_image_input",
+                "supportsImageIn",
+                "supportsVision",
+                "supportsImageInput",
+            ):
+                advertised = source.get(key)
+                if isinstance(advertised, bool):
+                    return advertised
+
+        for source in sources:
+            modalities: object | None = source.get("input_modalities")
+            if modalities is None:
+                modalities = source.get("inputModalities")
+            if modalities is None:
+                modalities = source.get("modalities")
+            if isinstance(modalities, str):
+                modality_values = re.split(r"[,\s]+", modalities.casefold())
+            elif isinstance(modalities, list | tuple | set):
+                modality_values = []
+                for value in modalities:
+                    if isinstance(value, dict):
+                        value = value.get("type") or value.get("modality") or value.get("name")
+                    if isinstance(value, str):
+                        modality_values.append(value.casefold())
+            else:
+                continue
+            if modality_values:
+                return any(value in {"image", "images", "vision"} for value in modality_values)
+        return None
+
+    @staticmethod
+    def _model_name_indicates_image_input(model_name: str) -> bool:
+        """Recognize public multimodal family IDs when a provider omits metadata."""
+        tokens = [
+            token for token in re.sub(r"[^a-z0-9]+", "-", model_name.casefold()).split("-") if token
+        ]
+        for index, token in enumerate(tokens):
+            remaining = tokens[index + 1 :]
+            if token == "deepseek" and remaining:
+                if remaining[0] == "flash":
+                    return True
+                if remaining[0] == "v4" and len(remaining) > 1:
+                    if remaining[1] == "flash":
+                        return True
+                    if len(remaining) > 2 and remaining[1] == "1" and remaining[2] == "flash":
+                        return True
+            if token == "glm" and len(remaining) >= 3:
+                if remaining[:3] == ["5", "3", "flash"]:
+                    return True
+                if remaining[0] in {"4v", "5v"} or (
+                    remaining[0] == "4" and len(remaining) >= 2 and remaining[1] in {"5v", "6v"}
+                ):
+                    return True
+            if (
+                token == "llama"
+                and len(remaining) >= 2
+                and remaining[0] == "4"
+                and remaining[1] in {"scout", "maverick"}
+            ):
+                return True
+            gemma3 = token == "gemma" and remaining and remaining[0] == "3"
+            gemma3n = token == "gemma" and remaining and remaining[0] == "3n"
+            gemma4 = token == "gemma" and remaining and remaining[0] == "4"
+            if gemma4 or token == "gemma4":
+                return True
+            if gemma3 or token == "gemma3":
+                size_tokens = set(remaining[1:] if gemma3 else remaining)
+                if size_tokens.intersection({"4b", "12b", "27b", "e2b", "e4b"}):
+                    return True
+            if gemma3n or token == "gemma3n":
+                size_tokens = set(remaining[1:] if gemma3n else remaining)
+                if size_tokens.intersection({"e2b", "e4b"}):
+                    return True
+
+        if any(
+            token
+            in {
+                "vision",
+                "vl",
+                "vlm",
+                "llava",
+                "pixtral",
+                "internvl",
+                "idefics",
+                "molmo",
+                "paligemma",
+                "paligemma2",
+                "smolvlm",
+                "fuyu",
+            }
+            for token in tokens
+        ):
+            return True
+        if any(re.fullmatch(r"vl\d*", token) for token in tokens):
+            return True
+        return "minicpm-v" in "-".join(tokens)
 
     @staticmethod
     def _is_image_modality_rejection(error: ProviderRequestError) -> bool:
@@ -1043,6 +1180,132 @@ class DeepSpaceChatService:
             statuses[file_id] = "Image included as visual input."
         return images, statuses
 
+    async def _prepare_attachment_ocr_fallback(
+        self,
+        files: Sequence[DeepSpaceWorkspaceFile],
+        *,
+        tenant_id: uuid.UUID,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """Use saved OCR or the Library extractor when this request needs text fallback."""
+        text_by_id: dict[str, str] = {}
+        state_by_id: dict[str, str] = {}
+        pending: list[DeepSpaceWorkspaceFile] = []
+        fallback_bytes = 0
+
+        for file in files:
+            file_id = str(file.id)
+            if str(file.extracted_text or "").strip():
+                continue
+            metadata = file.metadata_json if isinstance(file.metadata_json, dict) else {}
+            raw_status = metadata.get("extraction_status")
+            status = (
+                safe_extraction_status(raw_status, attempted=False)
+                if isinstance(raw_status, dict)
+                else {"state": "not_attempted"}
+            )
+            state = str(status.get("state") or "not_attempted")
+            state_by_id[file_id] = state
+            if state in {"processing", "not_attempted", "unavailable"}:
+                pending.append(file)
+
+        # Give the existing extraction worker a brief chance to finish before
+        # doing the same bounded OCR work inline for a text-only model.
+        database = getattr(self, "db", None)
+        if (
+            pending
+            and database is not None
+            and any(
+                state_by_id.get(str(file.id)) in {"processing", "not_attempted"} for file in pending
+            )
+        ):
+            for _ in range(4):
+                await asyncio.sleep(0.25)
+                still_pending: list[DeepSpaceWorkspaceFile] = []
+                for file in pending:
+                    if state_by_id.get(str(file.id)) == "unavailable":
+                        still_pending.append(file)
+                        continue
+                    try:
+                        database.refresh(file)
+                    except SQLAlchemyError:
+                        still_pending.append(file)
+                        continue
+                    if str(file.extracted_text or "").strip():
+                        continue
+                    metadata = file.metadata_json if isinstance(file.metadata_json, dict) else {}
+                    raw_status = metadata.get("extraction_status")
+                    status = (
+                        safe_extraction_status(raw_status, attempted=False)
+                        if isinstance(raw_status, dict)
+                        else {"state": "not_attempted"}
+                    )
+                    state = str(status.get("state") or "not_attempted")
+                    state_by_id[str(file.id)] = state
+                    if state in {"processing", "not_attempted", "unavailable"}:
+                        still_pending.append(file)
+                pending = still_pending
+                if not any(
+                    state_by_id.get(str(file.id)) in {"processing", "not_attempted"}
+                    for file in pending
+                ):
+                    break
+
+        if not pending:
+            return text_by_id, state_by_id
+
+        library = LibraryStorageService(self.settings)
+        storage: StorageService | None = None
+        for file in pending:
+            file_id = str(file.id)
+            content_type = str(file.content_type or "").casefold()
+            if not is_extraction_supported(content_type):
+                state_by_id[file_id] = "unavailable"
+                continue
+            remaining_bytes = MAX_ATTACHMENT_OCR_FALLBACK_TOTAL_BYTES - fallback_bytes
+            declared_size = max(0, int(file.size_bytes or 0))
+            if declared_size > remaining_bytes:
+                state_by_id[file_id] = "unavailable"
+                continue
+            try:
+                if file.is_binary:
+                    if not file.storage_bucket or not file.storage_key:
+                        state_by_id[file_id] = "unavailable"
+                        continue
+                    if storage is None:
+                        storage = StorageService(self.settings)
+                    payload = await asyncio.to_thread(
+                        storage.get_tenant_bytes,
+                        tenant_id=tenant_id,
+                        bucket=file.storage_bucket,
+                        object_key=file.storage_key,
+                    )
+                else:
+                    payload = str(file.content or "").encode("utf-8")
+                if len(payload) > remaining_bytes:
+                    state_by_id[file_id] = "unavailable"
+                    continue
+                fallback_bytes += len(payload)
+                extraction = await asyncio.to_thread(
+                    library.extract,
+                    filename=file.name,
+                    content_type=content_type,
+                    payload=payload,
+                    tenant_id=tenant_id,
+                )
+                safe_status = safe_extraction_status(extraction)
+                state = str(safe_status.get("state") or "unavailable")
+                state_by_id[file_id] = state
+                text = extraction.get("text")
+                if isinstance(text, str) and text.strip():
+                    text_by_id[file_id] = text
+            except Exception:  # noqa: BLE001
+                state_by_id[file_id] = "unavailable"
+                logger.warning(
+                    "DeepSpace attachment OCR fallback failed", extra={"file_id": file_id}
+                )
+
+        return text_by_id, state_by_id
+
     @staticmethod
     def _attachment_ocr_fallback_instruction(
         files: Sequence[DeepSpaceWorkspaceFile],
@@ -1050,6 +1313,8 @@ class DeepSpaceChatService:
         *,
         image_ids: set[str] | None = None,
         only_not_visual: bool = True,
+        extracted_text_by_id: dict[str, str] | None = None,
+        extraction_state_by_id: dict[str, str] | None = None,
     ) -> tuple[str, bool]:
         selected = [
             file
@@ -1073,13 +1338,21 @@ class DeepSpaceChatService:
         remaining = max(0, MAX_ATTACHMENT_OCR_CONTEXT_CHARS - len(blocks[0]))
         for file in selected:
             file_name = str(file.name or "attached image")[:255]
-            extracted = str(file.extracted_text or "").strip()
+            file_id = str(file.id)
+            extracted = str(
+                (extracted_text_by_id or {}).get(file_id) or file.extracted_text or ""
+            ).strip()
             if not extracted:
                 raw_metadata = getattr(file, "metadata_json", None)
                 metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
                 extraction = metadata.get("extraction_status")
-                if isinstance(extraction, dict) and extraction.get("state") == "processing":
+                extraction_state = (extraction_state_by_id or {}).get(file_id) or (
+                    extraction.get("state") if isinstance(extraction, dict) else None
+                )
+                if extraction_state == "processing":
                     block = f"\n[OCR status for {file_name}: text extraction is still processing; do not claim the image has no readable text.]"
+                elif extraction_state == "unavailable":
+                    block = f"\n[OCR status for {file_name}: text extraction is unavailable; do not infer its contents.]"
                 else:
                     block = f"\n[OCR status for {file_name}: no readable text was extracted.]"
             else:
@@ -1105,27 +1378,32 @@ class DeepSpaceChatService:
     def _attachment_system_instruction(
         attachments: Sequence[dict[str, Any]], image_statuses: dict[str, str]
     ) -> str:
-        files = [
-            {
+        files: list[dict[str, Any]] = []
+        visual_input_number = 0
+        for index, item in enumerate(attachments, start=1):
+            file_id = str(item.get("id") or "")
+            image_status = image_statuses.get(file_id)
+            metadata: dict[str, Any] = {
+                "attachment_number": index,
                 "id": item.get("id"),
                 "name": item.get("name"),
                 "content_type": item.get("content_type"),
                 "size_bytes": item.get("size_bytes"),
-                **(
-                    {"extraction_status": item.get("extraction_status")}
-                    if item.get("extraction_status")
-                    else {}
-                ),
-                **(
-                    {"visual_input": image_statuses[str(item.get("id") or "")]}
-                    if str(item.get("id") or "") in image_statuses
-                    else {}
-                ),
             }
-            for item in attachments
-        ]
+            if item.get("extraction_status"):
+                metadata["extraction_status"] = item["extraction_status"]
+            if image_status:
+                metadata["visual_input"] = image_status
+                if image_status == "Image included as visual input.":
+                    visual_input_number += 1
+                    metadata["visual_input_number"] = visual_input_number
+            files.append(metadata)
         return (
             "The current user turn includes these authorized, conversation-scoped file attachments. "
+            "Attachment numbers follow the user's selection order. Attached image parts are sent in ascending "
+            "visual_input_number order; use that mapping to identify Image 1, Image 2, and so on. "
+            "Any additional tool-supplied image parts follow the attached image parts. "
+            "Use each attachment's stable id for Library tools and name it by attachment number when referring to it. "
             "Decide from the user's request whether and how to inspect them; do not answer about a file "
             "based only on its name. Discover read(target='library', operation='read') for extracted/OCR text "
             "or operation='query' for targeted passages. Use available visual input immediately even if "
@@ -1489,6 +1767,19 @@ class DeepSpaceChatService:
                     and self._is_image_modality_rejection(exc)
                 ):
                     if image_fallback_stream_factory is not None:
+                        fallback_stream = image_fallback_stream_factory()
+                        if inspect.isawaitable(fallback_stream):
+                            fallback_stream = await fallback_stream
+                        if fallback_stream is None:
+                            safe_error = _NoRetryProviderRequestError(
+                                provider_name=exc.provider_name,
+                                status_code=exc.status_code,
+                                message=(
+                                    image_fallback_no_text_message
+                                    or "DeepSpace could not extract readable text from the image."
+                                ),
+                            )
+                            raise safe_error from exc
                         fallback_timeout = float(
                             getattr(
                                 getattr(self, "settings", None),
@@ -1502,9 +1793,9 @@ class DeepSpaceChatService:
                             deadline,
                             time.monotonic() + fallback_timeout,
                         )
-                        logger.info("Retrying image request once with saved OCR text")
+                        logger.info("Retrying rejected image request once with OCR text")
                         async for item in self._cancellable_provider_stream(
-                            image_fallback_stream_factory(),
+                            fallback_stream,
                             run_id=run_id,
                             cancel_key=cancel_key,
                             deadline=fallback_deadline,
@@ -3922,6 +4213,7 @@ class DeepSpaceChatService:
                 "text": model_text,
                 "truncated": url_result.truncated or was_model_truncated,
                 "links": url_result.links,
+                "image_urls": url_result.image_urls or [],
                 "citations": [
                     {
                         "title": url_result.title or url_result.url,
@@ -4677,6 +4969,7 @@ class DeepSpaceChatService:
             attachment_rows = [by_id[str(file_id)] for file_id in requested_ids]
             attachments = [
                 {
+                    "attachment_number": index,
                     "id": str(row.id),
                     "name": row.name,
                     "content_type": row.content_type,
@@ -4693,7 +4986,7 @@ class DeepSpaceChatService:
                         else {}
                     ),
                 }
-                for row in attachment_rows
+                for index, row in enumerate(attachment_rows, start=1)
             ]
             if not prompt:
                 prompt = "Please review the attached Library file(s)."
@@ -5485,13 +5778,18 @@ class DeepSpaceChatService:
         native_media_model = self._is_native_media_model(candidate.model_name)
         attachment_vision_images: list[str] = []
         attachment_vision_statuses: dict[str, str] = {}
+        attachment_ocr_text_by_id: dict[str, str] = {}
+        attachment_ocr_state_by_id: dict[str, str] = {}
         image_attachments = [
             row
             for row in attachment_rows
             if str(row.content_type or "").casefold().startswith("image/")
         ]
         if image_attachments:
-            if self._candidate_supports_image_input(candidate, auth.tenant_id):
+            model_supports_image_input = self._candidate_supports_image_input(
+                candidate, auth.tenant_id
+            )
+            if model_supports_image_input:
                 attachment_vision_images, attachment_vision_statuses = (
                     await self._load_attachment_vision_inputs(
                         image_attachments,
@@ -5503,6 +5801,19 @@ class DeepSpaceChatService:
                     str(row.id): "Use extracted text; this model does not support image input."
                     for row in image_attachments
                 }
+            fallback_ocr_files = [
+                row
+                for row in image_attachments
+                if attachment_vision_statuses.get(str(row.id)) != "Image included as visual input."
+            ]
+            if fallback_ocr_files:
+                (
+                    attachment_ocr_text_by_id,
+                    attachment_ocr_state_by_id,
+                ) = await self._prepare_attachment_ocr_fallback(
+                    fallback_ocr_files,
+                    tenant_id=auth.tenant_id,
+                )
         web_candidate = None
         web_provider = None
         resumed_question_context = (
@@ -5669,6 +5980,8 @@ class DeepSpaceChatService:
             unavailable_ocr_context, _ = self._attachment_ocr_fallback_instruction(
                 attachment_rows,
                 attachment_vision_statuses,
+                extracted_text_by_id=attachment_ocr_text_by_id,
+                extraction_state_by_id=attachment_ocr_state_by_id,
             )
             if unavailable_ocr_context:
                 self._set_dynamic_system_instruction(
@@ -6756,6 +7069,13 @@ class DeepSpaceChatService:
                 stream_events = getattr(provider, "stream_generate_events", None)
                 image_fallback_stream_factory = None
                 image_fallback_no_text_message = None
+                # Capture the values used by the nested fallback factory.
+                # The factory may run after this loop advances, so do not
+                # close over the nullable provider candidate or budget object.
+                image_fallback_context_window = (
+                    candidate.context_window if candidate is not None else None
+                )
+                image_fallback_history_budget_tokens = round_budget.history_budget_tokens
                 if attachment_vision_images and len(request_images) == len(
                     attachment_vision_images
                 ):
@@ -6764,49 +7084,81 @@ class DeepSpaceChatService:
                         for file_id, status in attachment_vision_statuses.items()
                         if status == "Image included as visual input."
                     }
-                    ocr_context, has_ocr_text = self._attachment_ocr_fallback_instruction(
-                        attachment_rows,
-                        attachment_vision_statuses,
-                        image_ids=sent_image_ids,
-                        only_not_visual=False,
-                    )
-                    if has_ocr_text:
+                    sent_image_rows = [
+                        row for row in image_attachments if str(row.id) in sent_image_ids
+                    ]
+
+                    async def build_image_ocr_fallback_stream(
+                        rows: list[DeepSpaceWorkspaceFile] = sent_image_rows,
+                        file_ids: set[str] = sent_image_ids,
+                        source_payload: ChatGenerateRequest = request_payload,
+                        attachment_manifest: list[dict[str, Any]] = attachments,
+                        original_statuses: dict[str, str] = attachment_vision_statuses,
+                        provider_stream: Any = stream_events,
+                        selected_provider: Any = provider,
+                        model_context_window: int | None = image_fallback_context_window,
+                        output_token_limit: int = (
+                            request_max_tokens or context_output_reservation
+                        ),
+                        round_tools: list[dict[str, Any]] = tools_for_round,
+                        history_budget_tokens: int | None = image_fallback_history_budget_tokens,
+                    ) -> Any | None:
+                        fallback_text, fallback_states = (
+                            await self._prepare_attachment_ocr_fallback(
+                                rows,
+                                tenant_id=auth.tenant_id,
+                            )
+                        )
+                        ocr_context, has_ocr_text = self._attachment_ocr_fallback_instruction(
+                            rows,
+                            original_statuses,
+                            image_ids=file_ids,
+                            only_not_visual=False,
+                            extracted_text_by_id=fallback_text,
+                            extraction_state_by_id=fallback_states,
+                        )
+                        if not has_ocr_text:
+                            return None
+                        fallback_image_statuses = dict(original_statuses)
+                        for file_id in file_ids:
+                            fallback_image_statuses[file_id] = (
+                                "Visual input was rejected by the selected model; use only "
+                                "DeepSpace OCR text for this file."
+                            )
+                        fallback_base_messages = [
+                            dict(message) for message in source_payload.messages
+                        ]
+                        self._set_dynamic_system_instruction(
+                            fallback_base_messages,
+                            key="current_turn_attachments",
+                            content=self._attachment_system_instruction(
+                                attachment_manifest,
+                                fallback_image_statuses,
+                            ),
+                        )
                         fallback_messages, _, _ = self._fit_history_to_context(
                             [
-                                *request_payload.messages,
+                                *fallback_base_messages,
                                 {"role": "system", "content": ocr_context},
                             ],
-                            context_window=candidate.context_window,
-                            max_output_tokens=(request_max_tokens or context_output_reservation),
-                            tools=tools_for_round,
-                            history_budget_tokens=round_budget.history_budget_tokens,
+                            context_window=model_context_window,
+                            max_output_tokens=output_token_limit,
+                            tools=round_tools,
+                            history_budget_tokens=history_budget_tokens,
                         )
                         fallback_payload = replace(
-                            request_payload,
+                            source_payload,
                             messages=fallback_messages,
                             images=None,
                         )
-                        if callable(stream_events):
+                        stream = provider_stream or selected_provider.stream_generate
+                        return stream(fallback_payload)
 
-                            def image_fallback_stream_factory(
-                                payload: ChatGenerateRequest = fallback_payload,
-                                stream: Any = stream_events,
-                            ) -> Any:
-                                return stream(payload)
-
-                        else:
-
-                            def image_fallback_stream_factory(
-                                payload: ChatGenerateRequest = fallback_payload,
-                                stream: Any = provider.stream_generate,
-                            ) -> Any:
-                                return stream(payload)
-
-                    else:
-                        image_fallback_no_text_message = (
-                            "The selected model rejected the image, and upload-time OCR found no "
-                            "readable text. Try a clearer image or choose a model with image support."
-                        )
+                    image_fallback_stream_factory = build_image_ocr_fallback_stream
+                    image_fallback_no_text_message = (
+                        "The selected model rejected the image, and DeepSpace OCR found no "
+                        "readable text. Try a clearer image or choose a model with image support."
+                    )
                 cancelled_during_provider_stream = False
                 last_runtime_heartbeat = time.monotonic()
                 round_provider_usage: dict[str, Any] = {}

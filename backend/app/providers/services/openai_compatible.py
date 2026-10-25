@@ -44,7 +44,16 @@ from app.providers.services.types import (
 from app.providers.services.url_resolution import resolve_provider_base_url
 
 _STREAM_USAGE_AUTO_PROVIDERS = frozenset(
-    {"openai", "deepseek", "nvidia-nim", "mistral", "openrouter", "lmstudio", "vllm"}
+    {
+        "openai",
+        "deepseek",
+        "larprouter",
+        "nvidia-nim",
+        "mistral",
+        "openrouter",
+        "lmstudio",
+        "vllm",
+    }
 )
 
 
@@ -54,6 +63,7 @@ class _UnsupportedStreamUsageOptionError(Exception):
 
 class OpenAICompatibleProvider:
     provider_name = "openai-compatible"
+    MAX_MODEL_LISTING_TIMEOUT_SECONDS = 30.0
 
     def __init__(
         self,
@@ -63,6 +73,7 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         provider_name: str | None = None,
         provider_metadata: dict[str, object] | None = None,
+        model_listing_timeout_seconds: float = 8.0,
     ) -> None:
         # Registry-created instances use this to retain the concrete catalog
         # provider (Groq, OpenRouter, vLLM, custom, …) while sharing the
@@ -72,6 +83,10 @@ class OpenAICompatibleProvider:
         self.base_url = resolve_provider_base_url(base_url)
         self.api_key = api_key
         self.provider_metadata = dict(provider_metadata or {})
+        self.model_listing_timeout_seconds = min(
+            max(float(model_listing_timeout_seconds), 1.0),
+            self.MAX_MODEL_LISTING_TIMEOUT_SECONDS,
+        )
         self.endpoint_settings = openai_compatible_settings(
             self.provider_metadata, provider_type=self.provider_name
         )
@@ -190,11 +205,17 @@ class OpenAICompatibleProvider:
             "context_length",
             "context_window",
             "supports_image_in",
+            "supports_image_input",
+            "supportsImageIn",
+            "supportsImageInput",
+            "supports_vision",
+            "supportsVision",
             "supports_video_in",
             "supports_reasoning",
             "reasoning_capabilities_known",
             "max_output_tokens",
             "supported_reasoning_efforts",
+            "default_reasoning_effort",
             "reasoning_effort_values",
             "reasoning_visibility",
             "supports_thinking_summary_stream",
@@ -202,6 +223,8 @@ class OpenAICompatibleProvider:
             "request_controls_on",
             "request_controls_off",
             "input_modalities",
+            "inputModalities",
+            "modalities",
             "output_modalities",
         }
         result: dict[str, Any] = {}
@@ -225,6 +248,79 @@ class OpenAICompatibleProvider:
                 ]
                 if safe_values:
                     result[key] = safe_values
+        image_flag_keys = (
+            "supports_image_in",
+            "supports_vision",
+            "supports_image_input",
+            "supportsImageIn",
+            "supportsVision",
+            "supportsImageInput",
+        )
+        image_flag_sources = [item]
+        for key in ("capabilities", "architecture", "model_capabilities"):
+            nested = item.get(key)
+            if isinstance(nested, dict):
+                image_flag_sources.append(nested)
+        explicit_image_support = next(
+            (
+                source[flag]
+                for source in image_flag_sources
+                for flag in image_flag_keys
+                if isinstance(source.get(flag), bool)
+            ),
+            None,
+        )
+        if isinstance(explicit_image_support, bool):
+            result.setdefault("supports_image_in", explicit_image_support)
+        # Model catalogs such as OpenRouter put modality information under
+        # ``architecture.input_modalities``. Normalize that common shape so
+        # selection-time capability checks can use the cached model record
+        # without making a probe request during a chat turn.
+        raw_modalities = item.get("input_modalities")
+        if not isinstance(raw_modalities, list) or not raw_modalities:
+            raw_modalities = item.get("inputModalities")
+        if not isinstance(raw_modalities, list) or not raw_modalities:
+            raw_modalities = item.get("modalities")
+        if not isinstance(raw_modalities, list) or not raw_modalities:
+            architecture = item.get("architecture")
+            if isinstance(architecture, dict):
+                raw_modalities = (
+                    architecture.get("input_modalities")
+                    or architecture.get("inputModalities")
+                    or architecture.get("modalities")
+                )
+        if not isinstance(raw_modalities, list) or not raw_modalities:
+            capabilities = item.get("capabilities")
+            if isinstance(capabilities, dict):
+                raw_modalities = (
+                    capabilities.get("input_modalities")
+                    or capabilities.get("inputModalities")
+                    or capabilities.get("modalities")
+                )
+        if not isinstance(raw_modalities, list) or not raw_modalities:
+            model_capabilities = item.get("model_capabilities")
+            if isinstance(model_capabilities, dict):
+                raw_modalities = (
+                    model_capabilities.get("input_modalities")
+                    or model_capabilities.get("inputModalities")
+                    or model_capabilities.get("modalities")
+                )
+        if isinstance(raw_modalities, list) and len(raw_modalities) <= 32:
+            modalities: list[str] = []
+            for entry in raw_modalities:
+                value = entry
+                if isinstance(entry, dict):
+                    value = entry.get("type") or entry.get("modality") or entry.get("name")
+                if isinstance(value, str) and len(value) <= 64:
+                    normalized = value.strip().casefold()
+                    if normalized and normalized not in modalities:
+                        modalities.append(normalized)
+            if modalities:
+                result["input_modalities"] = modalities
+                if not any(isinstance(result.get(flag), bool) for flag in image_flag_keys):
+                    result["supports_image_in"] = any(
+                        modality in {"image", "images", "vision"} for modality in modalities
+                    )
         nested = item.get("capabilities")
         if isinstance(nested, dict):
             safe_nested: dict[str, Any] = {}
@@ -1364,11 +1460,21 @@ class OpenAICompatibleProvider:
     def _fetch_model_listing_items(self) -> list[dict[str, Any]]:
         httpx_module = self._httpx()
         listing_api_key = None if self.provider_name == "cline" else self.api_key
-        response = httpx_module.get(
-            self._endpoint_url(self.base_url, self.endpoint_settings.models_path),
-            headers=self._build_headers(listing_api_key, settings=self.endpoint_settings),
-            timeout=8.0,
-        )
+        try:
+            response = httpx_module.get(
+                self._endpoint_url(self.base_url, self.endpoint_settings.models_path),
+                headers=self._build_headers(listing_api_key, settings=self.endpoint_settings),
+                timeout=self.model_listing_timeout_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            timeout_exception = getattr(httpx_module, "TimeoutException", None)
+            if isinstance(timeout_exception, type) and isinstance(exc, timeout_exception):
+                raise ProviderRequestError(
+                    provider_name=self.provider_name,
+                    status_code=504,
+                    message="Provider model listing timed out.",
+                ) from exc
+            raise
         if response.status_code >= 400:
             self._raise_provider_error(response)
         payload_obj = self._unwrap_success_envelope(response.json(), operation="Model listing")
@@ -1743,6 +1849,10 @@ class OpenAICompatibleProvider:
         """
         provider_type = str(request.metadata.get("provider_type") or self.provider_name).lower()
         if request.tool_choice == "required":
+            if provider_type == "larprouter" and model_supports_reasoning(
+                provider_type, request.model
+            ):
+                return request.reasoning_enabled
             if provider_type == "ollama":
                 return request.reasoning_enabled
             capabilities = request.metadata.get("model_reasoning_capabilities")
@@ -1830,6 +1940,13 @@ class OpenAICompatibleProvider:
             self._apply_custom_reasoning_settings(payload, request, enabled=reasoning_enabled)
             return
         provider_type = str(request.metadata.get("provider_type") or self.provider_name).lower()
+        if provider_type == "larprouter":
+            self._apply_discovered_reasoning_settings(
+                payload,
+                request,
+                reasoning_enabled=reasoning_enabled,
+            )
+            return
         if provider_type == "nvidia-nim":
             lowered_model = request.model.casefold().replace("_", "-")
             # Nemotron's NIM API documents reasoning together with tool calls;
@@ -2058,7 +2175,14 @@ class OpenAICompatibleProvider:
         if not isinstance(capabilities, dict):
             return
         provider_type = str(request.metadata.get("provider_type") or self.provider_name).lower()
-        if request.tool_choice == "required" and provider_type not in {"ollama", "lmstudio"}:
+        if (
+            request.tool_choice == "required"
+            and provider_type not in {"ollama", "lmstudio"}
+            and not (
+                provider_type == "larprouter"
+                and model_supports_reasoning(provider_type, request.model)
+            )
+        ):
             return
         if capabilities.get("reasoning_capabilities_known") is not True:
             return

@@ -18,6 +18,82 @@ vi.mock("../lib/providers-api", async () => {
 });
 
 describe("provider form validation", () => {
+  it("uses LarpRouter defaults, discovers chat models, and submits its API key", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const discoveredModel: ProviderModel = {
+      id: null,
+      provider_config_id: null,
+      model_name: "claude-opus-4-7-1m",
+      model_kind: "chat",
+      display_name: "Claude Opus 4.7",
+      context_window: 1_000_000,
+      capabilities_json: {},
+      is_available: true,
+      last_seen_at: null,
+    };
+    vi.mocked(previewProviderModels).mockClear().mockResolvedValue([discoveredModel]);
+    const catalogEntry: ProviderCatalogEntry = {
+      provider_type: "larprouter",
+      display_name: "LarpRouter",
+      auth_modes: ["api_key"],
+      supports_chat: true,
+      supports_embeddings: false,
+      supports_model_listing: true,
+      supports_model_install: false,
+      supports_account_linking: false,
+      is_local: false,
+    };
+
+    render(
+      <ProviderForm
+        catalogEntry={catalogEntry}
+        provider={null}
+        models={[]}
+        kind="chat"
+        saving={false}
+        busyAction={null}
+        onCancel={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(screen.getByDisplayValue("https://larprouter.com/v1")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/enter secret value/i), {
+      target: { value: "lrsk-test-key" },
+    });
+    await waitFor(() =>
+      expect(previewProviderModels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_type: "larprouter",
+          api_base_url: "https://larprouter.com/v1",
+          supports_chat: true,
+          supports_embeddings: false,
+          supports_model_listing: true,
+          api_key: "lrsk-test-key",
+        }),
+      ),
+    );
+
+    await screen.findByText("1 models found");
+    fireEvent.click(screen.getByRole("button", { name: "Not Assigned" }));
+    const modelListbox = screen.getByRole("listbox", { name: "Select chat model" });
+    fireEvent.click(within(modelListbox).getByRole("option", { name: /claude opus 4\.7/i }));
+    fireEvent.click(screen.getByRole("button", { name: /link family/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider_type: "larprouter",
+        display_name: "LarpRouter",
+        api_base_url: "https://larprouter.com/v1",
+        supports_chat: true,
+        supports_embeddings: false,
+        supports_model_listing: true,
+        default_chat_model: "claude-opus-4-7-1m",
+        api_key: "lrsk-test-key",
+      }),
+    );
+  });
+
   it("submits a provider payload using the active catalog entry", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const catalogEntry: ProviderCatalogEntry = {

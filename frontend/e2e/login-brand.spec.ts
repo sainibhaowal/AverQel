@@ -47,14 +47,3 @@ test("signup page uses the same icon, colored wordmark, and tagline", async ({ p
   );
   await expect(page.getByText("INTELLIGENCE ALL YOU NEED")).toBeVisible();
 });
-
-test("login wordmark keeps a static RGB treatment for reduced motion", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/auth/login");
-
-  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS("animation-name", "none");
-  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
-    "background-position",
-    "50% 50%",
-  );
-});

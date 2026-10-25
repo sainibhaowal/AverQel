@@ -32,6 +32,29 @@ type RpcRequest = {
   params?: Record<string, unknown>;
 };
 
+const conversationWriteQueues = new Map<string, Promise<void>>();
+
+async function withConversationWriteLock<T>(
+  conversationId: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  const previous = conversationWriteQueues.get(conversationId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  conversationWriteQueues.set(conversationId, current);
+  await previous.catch(() => undefined);
+  try {
+    return await write();
+  } finally {
+    release();
+    if (conversationWriteQueues.get(conversationId) === current) {
+      conversationWriteQueues.delete(conversationId);
+    }
+  }
+}
+
 function recordId(namespace: string, key: string): string {
   return `${namespace}:${key}`;
 }
@@ -44,6 +67,75 @@ function publicConversation(value: Record<string, unknown>): Record<string, unkn
     content_html: value.content_html ?? null,
     created_at: value.created_at,
     updated_at: value.updated_at,
+  };
+}
+
+export function applyClientOwnedConversationUpdate(
+  conversation: Record<string, unknown> | null,
+  params: Record<string, unknown>,
+  updatedAt = new Date().toISOString(),
+): Record<string, unknown> | null {
+  const userId = String(params.user_id ?? "");
+  const kind = String(params.kind ?? "");
+  if (
+    !conversation ||
+    !userId ||
+    kind !== "deepspace" ||
+    String(conversation.user_id ?? "") !== userId ||
+    String(conversation.kind ?? "") !== kind
+  ) {
+    return null;
+  }
+
+  return {
+    ...conversation,
+    ...(typeof params.title === "string" ? { title: params.title } : {}),
+    ...(typeof params.content_html === "string" ? { content_html: params.content_html } : {}),
+    updated_at: updatedAt,
+  };
+}
+
+export function appendClientOwnedConversationContent(
+  conversation: Record<string, unknown> | null,
+  params: Record<string, unknown>,
+  updatedAt = new Date().toISOString(),
+): Record<string, unknown> | null {
+  const userId = String(params.user_id ?? "");
+  const kind = String(params.kind ?? "");
+  const addition = typeof params.content_html === "string" ? params.content_html.trim() : "";
+  if (!conversation || !userId || kind !== "deepspace") return null;
+  if (String(conversation.user_id ?? "") !== userId || String(conversation.kind ?? "") !== kind) {
+    return null;
+  }
+  if (!addition) throw new Error("content_html is required");
+
+  const recoveryContent =
+    typeof params.recovery_content_html === "string" ? params.recovery_content_html.trim() : "";
+  const recoveryTitle =
+    typeof params.recovery_title === "string" ? params.recovery_title.trim() : "";
+  const recoveryExpectedUpdatedAt = Number(params.recovery_expected_updated_at);
+  const currentUpdatedAt = Date.parse(String(conversation.updated_at ?? ""));
+  const shouldRecover = Boolean(recoveryContent);
+  if (shouldRecover && currentUpdatedAt !== recoveryExpectedUpdatedAt) {
+    throw new Error("Note changed while its recovery copy was being restored; retry the save.");
+  }
+  const title = typeof params.title === "string" ? params.title.trim() : "";
+  const baseContent = shouldRecover
+    ? recoveryContent
+    : typeof conversation.content_html === "string"
+      ? conversation.content_html.trim()
+      : "";
+  const baseTitle =
+    shouldRecover && recoveryTitle ? recoveryTitle : String(conversation.title ?? "");
+  const titleIsDefault = ["", "untitled note"].includes(baseTitle.trim().toLowerCase());
+  const nextTitle = titleIsDefault ? title || baseTitle : baseTitle;
+  return {
+    ...conversation,
+    title: nextTitle,
+    content_html: baseContent
+      ? `${baseContent}<hr data-averqel-document-separator="true" />${addition}`
+      : addition,
+    updated_at: updatedAt,
   };
 }
 
@@ -231,10 +323,15 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
       return { deleted: true };
     case "db.chats.list_conversations": {
       const userId = String(params.user_id ?? "");
+      const kind = String(params.kind ?? "");
       const limit = Number(params.limit ?? 50);
       const offset = Number(params.offset ?? 0);
       const items = (await listClientOwnedRecords<Record<string, unknown>>("chat.conversations"))
-        .filter((item) => !userId || String(item.user_id ?? "") === userId)
+        .filter(
+          (item) =>
+            (!userId || String(item.user_id ?? "") === userId) &&
+            (!kind || String(item.kind ?? "") === kind),
+        )
         .sort((left, right) =>
           String(right.updated_at ?? "").localeCompare(String(left.updated_at ?? "")),
         )
@@ -254,6 +351,50 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
       };
       await putClientOwnedRecord("chat.conversations", conversation.id, conversation);
       return publicConversation(conversation);
+    }
+    case "db.chats.get_conversation": {
+      const conversationId = String(params.conversation_id ?? "");
+      if (!conversationId) throw new Error("conversation_id is required");
+      const conversation = await getClientOwnedRecord<Record<string, unknown>>(
+        "chat.conversations",
+        conversationId,
+      );
+      if (
+        !conversation ||
+        String(conversation.user_id ?? "") !== String(params.user_id ?? "") ||
+        String(conversation.kind ?? "") !== String(params.kind ?? "")
+      ) {
+        return null;
+      }
+      return publicConversation(conversation);
+    }
+    case "db.chats.update_conversation": {
+      const conversationId = String(params.conversation_id ?? "");
+      if (!conversationId) throw new Error("conversation_id is required");
+      return withConversationWriteLock(conversationId, async () => {
+        const existing = await getClientOwnedRecord<Record<string, unknown>>(
+          "chat.conversations",
+          conversationId,
+        );
+        const updated = applyClientOwnedConversationUpdate(existing, params);
+        if (!updated) return null;
+        await putClientOwnedRecord("chat.conversations", conversationId, updated);
+        return publicConversation(updated);
+      });
+    }
+    case "db.chats.append_conversation_content": {
+      const conversationId = String(params.conversation_id ?? "");
+      if (!conversationId) throw new Error("conversation_id is required");
+      return withConversationWriteLock(conversationId, async () => {
+        const existing = await getClientOwnedRecord<Record<string, unknown>>(
+          "chat.conversations",
+          conversationId,
+        );
+        const updated = appendClientOwnedConversationContent(existing, params);
+        if (!updated) return null;
+        await putClientOwnedRecord("chat.conversations", conversationId, updated);
+        return publicConversation(updated);
+      });
     }
     case "db.chats.get_chat_history": {
       const conversationId = String(params.conversation_id ?? "");

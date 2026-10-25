@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useSyncExternalStore } from "react";
-import { useScroll, useSpring, useTransform } from "framer-motion";
+import { useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
 
 type LandingSectionMotionOptions = {
   depth?: number;
@@ -46,7 +46,7 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
   options: LandingSectionMotionOptions = {},
 ) {
   const ref = useRef<T | null>(null);
-  const reduceMotion = useLandingReducedMotion();
+  const reduceMotion = useReducedMotion();
   const isElectron = useSyncExternalStore(
     subscribeToElectronRuntime,
     getElectronRuntimeSnapshot,

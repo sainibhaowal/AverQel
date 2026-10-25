@@ -13,6 +13,62 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceMarkdownRenderer", () =
 import DeepSpaceThread from "../app/dashboard/deepspace/_components/DeepSpaceThread";
 
 describe("DeepSpaceThread streaming preview", () => {
+  beforeEach(() => {
+    markdownRendererMock.mockClear();
+  });
+
+  it("offers prompt editing only for the latest completed user and assistant turn", () => {
+    const onStartEdit = vi.fn();
+    const createdAt = new Date().toISOString();
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "user-old",
+            role: "user",
+            content: "Older prompt",
+            rawContent: "Older prompt",
+            createdAt,
+            status: "ready",
+          },
+          {
+            id: "assistant-old",
+            role: "assistant",
+            content: "Older answer",
+            rawContent: "Older answer",
+            createdAt,
+            status: "ready",
+          },
+          {
+            id: "user-latest",
+            role: "user",
+            content: "Latest prompt",
+            rawContent: "Latest prompt",
+            createdAt,
+            status: "ready",
+          },
+          {
+            id: "assistant-latest",
+            role: "assistant",
+            content: "Latest answer",
+            rawContent: "Latest answer",
+            createdAt,
+            status: "ready",
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+        onStartEdit={onStartEdit}
+      />,
+    );
+
+    const editButtons = screen.getAllByRole("button", { name: "EDIT" });
+    expect(editButtons).toHaveLength(1);
+    fireEvent.click(editButtons[0]!);
+    expect(onStartEdit).toHaveBeenCalledWith("user-latest");
+  });
+
   it("shows the wormhole only while the assistant has no streamed progress", () => {
     render(
       <DeepSpaceThread

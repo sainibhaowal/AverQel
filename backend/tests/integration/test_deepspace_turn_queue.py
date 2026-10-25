@@ -17,7 +17,9 @@ from app.deepspace.models.queue_control import DeepSpaceQueueControl
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.schemas.chats import QueueTurnRequest, RegenerateRequest
+from app.deepspace.services import runtime_store as runtime_store_module
 from app.deepspace.services import turn_queue as turn_queue_module
+from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.turn_queue import (
     DeepSpaceTurnQueueStore,
     QueueTurnEditConflictError,
@@ -509,6 +511,7 @@ def test_queued_regeneration_keeps_its_target_through_claim_and_retry(
     )
     db_session.commit()
 
+    attachment_file_ids = [str(uuid.UUID(int=2)), str(uuid.UUID(int=1))]
     queue = DeepSpaceTurnQueueStore(db_session)
     turn = queue.enqueue(
         tenant_id=seeded.tenant_id,
@@ -520,6 +523,7 @@ def test_queued_regeneration_keeps_its_target_through_claim_and_retry(
         thinking_enabled=False,
         roles=["user"],
         permissions=["queries:run"],
+        attachment_file_ids=attachment_file_ids,
     )
     claimed = queue.claim_next(
         tenant_id=seeded.tenant_id,
@@ -530,6 +534,7 @@ def test_queued_regeneration_keeps_its_target_through_claim_and_retry(
     assert claimed is not None
     assert claimed.client_request_id == turn.client_request_id
     assert claimed.regenerate_message_id == assistant.id
+    assert claimed.attachment_file_ids == attachment_file_ids
     queue.finish(
         tenant_id=seeded.tenant_id,
         user_id=seeded.user_id,
@@ -548,6 +553,7 @@ def test_queued_regeneration_keeps_its_target_through_claim_and_retry(
 
     assert retry.regenerate_message_id == assistant.id
     assert retry.resume_from_request_id == turn.client_request_id
+    assert retry.attachment_file_ids_json == attachment_file_ids
 
 
 def test_expired_worker_closes_the_saved_stream_and_marks_message_recoverable(
@@ -686,6 +692,163 @@ def test_expired_cancelled_worker_finishes_stale_cancelling_queue(
     assert len(appended_frames) == 1
     assert appended_frames[0].startswith("event: done\n")
     assert '"status":"cancelled"' in appended_frames[0]
+
+
+def test_stale_active_run_for_completed_turn_is_failed_and_queue_advances(
+    db_session, seed_user, monkeypatch
+) -> None:
+    from app.deepspace.api import chats as chat_api
+
+    _silence_queue_side_effects(monkeypatch)
+    seeded = seed_user(
+        "QueueStaleRuntimeTenant",
+        "queue-stale-runtime@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    request_id = "stale-completed-run"
+    assistant = DeepSpaceChatRepository(db_session).add_message(
+        tenant_id=seeded.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="Partial response",
+        metadata_json={"status": "streaming", "client_request_id": request_id},
+    )
+    db_session.commit()
+    finished_turn = _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id=request_id,
+        prompt="Original prompt",
+        sequence=1,
+        status="completed",
+    )
+    finished_turn.completed_at = datetime.now(UTC) - timedelta(hours=1)
+    run = DeepSpaceAgentRun(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+        assistant_message_id=assistant.id,
+        status="running",
+        checkpoint={"client_request_id": request_id},
+        heartbeat_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="next-queued-turn",
+        prompt="Follow-up prompt",
+        sequence=2,
+        status="queued",
+    )
+    db_session.add(run)
+    db_session.commit()
+    appended_frames: list[str] = []
+    dispatches: list[dict[str, object]] = []
+
+    def capture_event(_db, *, frame, **_kwargs):
+        appended_frames.append(frame)
+
+    monkeypatch.setattr(turn_queue_module, "append_event", capture_event)
+    monkeypatch.setattr(
+        chat_api,
+        "_dispatch_deepspace_queue",
+        lambda **kwargs: dispatches.append(kwargs),
+    )
+    queue = DeepSpaceTurnQueueStore(db_session)
+    state = chat_api.get_deepspace_queue_state(
+        conversation_id=conversation_id,
+        auth=SimpleNamespace(tenant_id=seeded.tenant_id, user_id=seeded.user_id),
+        db=db_session,
+    )
+    db_session.refresh(finished_turn)
+    db_session.refresh(run)
+    db_session.refresh(assistant)
+
+    assert state.paused is False
+    assert state.active_request_id is None
+    assert dispatches == [
+        {
+            "tenant_id": seeded.tenant_id,
+            "user_id": seeded.user_id,
+            "conversation_id": conversation_id,
+        }
+    ]
+    assert finished_turn.status == "failed"
+    assert run.status == "failed"
+    assert run.heartbeat_at is None
+    assert assistant.metadata_json["status"] == "error"
+    assert assistant.metadata_json["runtime_active"] is False
+    assert assistant.metadata_json["error_code"] == "DEEPSPACE_WORKER_LEASE_EXPIRED"
+    assert len(appended_frames) == 1
+    assert appended_frames[0].startswith("event: error\n")
+    assert "DEEPSPACE_WORKER_LEASE_EXPIRED" in appended_frames[0]
+
+    claimed = queue.claim_next(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+    )
+    assert claimed is not None
+    assert claimed.client_request_id == "next-queued-turn"
+
+
+def test_runtime_worker_terminal_outcome_closes_run_and_streaming_message(
+    db_session, seed_user, monkeypatch
+) -> None:
+    seeded = seed_user(
+        "RuntimeWorkerFinishTenant",
+        "runtime-worker-finish@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    request_id = "runtime-terminal-request"
+    assistant = DeepSpaceChatRepository(db_session).add_message(
+        tenant_id=seeded.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="Partial response",
+        metadata_json={"status": "streaming", "client_request_id": request_id},
+    )
+    run = DeepSpaceAgentRun(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+        assistant_message_id=assistant.id,
+        status="running",
+        checkpoint={"client_request_id": request_id},
+        heartbeat_at=datetime.now(UTC),
+    )
+    db_session.add(run)
+    db_session.commit()
+    monkeypatch.setattr(
+        runtime_store_module.StorageLifecycleService,
+        "record_activity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    finalized = DeepSpaceRuntimeStore(db_session).finish_for_request(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+        client_request_id=request_id,
+        status="failed",
+        error="DeepSpace stream ended without a terminal event.",
+    )
+    db_session.refresh(run)
+    db_session.refresh(assistant)
+
+    assert finalized is True
+    assert run.status == "failed"
+    assert run.heartbeat_at is None
+    assert run.last_error == "DeepSpace stream ended without a terminal event."
+    assert assistant.metadata_json["status"] == "error"
+    assert assistant.metadata_json["runtime_active"] is False
+    assert assistant.metadata_json["error_code"] == "DEEPSPACE_WORKER_FAILED"
 
 
 def test_retry_lookup_finds_the_saved_prompt_through_assistant_retry_id(

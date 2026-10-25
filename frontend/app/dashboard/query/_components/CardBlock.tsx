@@ -7,23 +7,31 @@ import remarkGfm from "remark-gfm";
 
 import type { StreamCardBlock } from "../_lib/stream-protocol";
 
+import { CardLayoutAside, CardLayoutBody, CardSourceBadges } from "./CardLayoutContent";
+import VisualIcon, {
+  DetailVisualIcon,
+  visualCardDetailSurfaceClasses,
+  visualCardToneClasses,
+  visualIconBadgeClasses,
+} from "./VisualIcon";
+
 export default function CardBlock({ block }: { block: StreamCardBlock }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const tone = block.tone ?? "neutral";
-  const toneClasses = {
-    info: "border-cyan-400/25 bg-cyan-400/[0.07]",
-    success: "border-emerald-400/25 bg-emerald-400/[0.07]",
-    warning: "border-amber-400/25 bg-amber-400/[0.07]",
-    error: "border-rose-400/25 bg-rose-400/[0.07]",
-    neutral: "border-glass-border bg-surface-1/40",
-  } as const;
-  const copy = async (value = block.content) => {
+  const layout = block.layout ?? "standard";
+  const imageHref = safeExternalHref(block.image_url);
+  const copy = async (value = block.content): Promise<boolean> => {
+    setCopyError(null);
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
-    } catch {
+      return true;
+    } catch (caught) {
       setCopied(false);
+      setCopyError(caught instanceof Error ? caught.message : "Card content could not be copied.");
+      return false;
     }
   };
   const download = () =>
@@ -31,36 +39,58 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
 
   return (
     <article
-      className={`group relative overflow-hidden rounded-[1.5rem] border p-5 shadow-sm sm:p-6 ${toneClasses[tone]}`}
+      className={`group relative overflow-hidden rounded-[1.5rem] border p-5 shadow-sm sm:p-6 ${visualCardToneClasses[tone]}`}
+      data-card-layout={layout}
     >
-      <div className="relative flex items-start justify-between gap-4">
+      {layout === "feature" && imageHref ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageHref}
+          alt={block.image_alt || block.title}
+          loading="lazy"
+          className="relative mb-5 max-h-72 w-full rounded-2xl border border-glass-border object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+      <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          {block.image_url && safeExternalHref(block.image_url) ? (
+          {imageHref && layout !== "feature" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={safeExternalHref(block.image_url)}
-              alt=""
+              src={imageHref}
+              alt={block.image_alt || block.title}
               loading="lazy"
-              className="h-12 w-12 shrink-0 rounded-xl border border-black/10 object-cover dark:border-white/15"
+              className={`${layout === "place" ? "h-24 w-24 sm:h-32 sm:w-32" : "h-12 w-12"} shrink-0 rounded-xl border border-glass-border object-cover`}
               onError={(event) => {
                 event.currentTarget.style.display = "none";
               }}
             />
           ) : (
-            <div className="bg-primary/10 text-primary flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-black/5 dark:border-white/10">
-              <FileJson size={18} aria-hidden="true" />
+            <div
+              className={`${layout === "feature" ? "h-14 w-14" : "h-12 w-12"} flex shrink-0 items-center justify-center rounded-xl border shadow-sm ${visualIconBadgeClasses}`}
+            >
+              {block.icon ? (
+                <VisualIcon name={block.icon} size={layout === "feature" ? 26 : 18} />
+              ) : (
+                <FileJson size={18} aria-hidden="true" />
+              )}
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="text-foreground text-base font-semibold tracking-tight">
+            <h3 className="text-foreground m-0 text-lg leading-tight font-semibold tracking-tight sm:text-xl">
               {block.title}
             </h3>
             {block.subtitle ? (
-              <p className="text-foreground/60 mt-1 text-xs">{block.subtitle}</p>
+              <p className="text-foreground/75 dark:text-foreground/60 mt-1 max-w-xl text-sm leading-6 [text-wrap:pretty]">
+                {block.subtitle}
+              </p>
             ) : null}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 opacity-70 transition group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1 opacity-70 transition group-focus-within:opacity-100 group-hover:opacity-100">
+          <CardLayoutAside block={block} onCopyCode={copy} />
           <button
             type="button"
             onClick={() => void copy()}
@@ -79,7 +109,13 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
           </button>
         </div>
       </div>
-      <div className="relative mt-4 text-sm leading-7">
+      {copyError ? (
+        <p className="relative mt-3 text-xs text-rose-600 dark:text-rose-300" role="alert">
+          {copyError}
+        </p>
+      ) : null}
+      <CardLayoutBody block={block} />
+      {block.content.trim() ? <div className="relative mt-4 max-w-3xl text-sm leading-6 [text-wrap:pretty]">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -113,22 +149,63 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
         >
           {block.content}
         </ReactMarkdown>
-      </div>
-      {block.metrics?.length ? (
-        <div className="relative mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      </div> : null}
+      {layout !== "evaluation" && layout !== "referral" && block.details?.length ? (
+        <dl className="relative mt-6 grid auto-rows-fr items-stretch gap-3 sm:grid-cols-2">
+          {block.details.map((detail, index) => {
+            const href = safeExternalHref(detail.href);
+            return (
+              <div
+                key={`${detail.label}-${index}`}
+                className={`flex h-full min-h-20 min-w-0 items-start gap-3 rounded-2xl border px-4 py-3 ${visualCardDetailSurfaceClasses}`}
+              >
+                <span
+                  className={`mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl border shadow-sm ${visualIconBadgeClasses}`}
+                  data-card-detail-icon
+                >
+                  <DetailVisualIcon name={detail.icon} label={detail.label} size={17} />
+                </span>
+                <div className="min-w-0">
+                  <dt className="text-foreground/70 dark:text-foreground/65 text-[11px] leading-4 font-semibold tracking-[0.14em] uppercase">
+                    {detail.label}
+                  </dt>
+                  <dd className="text-foreground/90 m-0 mt-1.5 text-sm leading-6 [text-wrap:pretty] [overflow-wrap:anywhere] break-words">
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="underline underline-offset-2"
+                      >
+                        {detail.value}
+                      </a>
+                    ) : (
+                      detail.value
+                    )}
+                  </dd>
+                </div>
+              </div>
+            );
+          })}
+        </dl>
+      ) : null}
+      {layout !== "evaluation" && layout !== "referral" && block.metrics?.length ? (
+        <div className="relative mt-6 grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {block.metrics.map((metric) => (
             <div
               key={`${metric.label}-${String(metric.value)}`}
-              className="rounded-xl border border-black/5 bg-black/5 px-3 py-2.5 dark:border-white/10 dark:bg-black/10"
+              className={`h-full rounded-2xl border px-4 py-3 ${visualCardDetailSurfaceClasses}`}
             >
-              <div className="text-foreground/55 text-[10px] font-semibold tracking-[0.14em] uppercase">
+              <div className="text-foreground/70 dark:text-foreground/65 text-[11px] leading-4 font-semibold tracking-[0.14em] uppercase">
                 {metric.label}
               </div>
-              <div className="text-foreground mt-1 text-lg font-semibold tabular-nums">
+              <div className="text-foreground mt-1.5 text-xl leading-tight font-semibold tracking-tight tabular-nums">
                 {String(metric.value)}
               </div>
               {metric.detail ? (
-                <div className="text-foreground/55 mt-0.5 text-[11px]">{metric.detail}</div>
+                <div className="text-foreground/75 dark:text-foreground/65 mt-1 text-sm leading-5 [text-wrap:pretty]">
+                  {metric.detail}
+                </div>
               ) : null}
             </div>
           ))}
@@ -144,8 +221,28 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
           Open source <Link2 size={13} aria-hidden="true" />
         </a>
       ) : null}
+      {(layout === "evaluation" || layout === "referral") ? (
+        <CardSourceBadges block={block} />
+      ) : block.sources?.length ? (
+        <div className="border-glass-border relative mt-5 flex flex-wrap gap-x-4 gap-y-2 border-t pt-4 text-[11px]">
+          {block.sources.map((source, index) => {
+            const href = safeExternalHref(source.url);
+            return href ? (
+              <a
+                key={`${source.url}-${index}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-primary decoration-primary/25 underline underline-offset-4"
+              >
+                {source.title}
+              </a>
+            ) : null;
+          })}
+        </div>
+      ) : null}
       {block.actions?.length ? (
-        <div className="relative mt-5 flex flex-wrap gap-2 border-t border-black/10 pt-4 dark:border-white/10">
+        <div className="border-glass-border relative mt-5 flex flex-wrap gap-2 border-t pt-4">
           {block.actions.map((action) => {
             const href = safeExternalHref(action.href);
             if (action.action === "copy")

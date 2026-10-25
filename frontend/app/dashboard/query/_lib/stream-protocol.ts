@@ -151,16 +151,33 @@ export interface StreamCardBlock {
   title: string;
   content: string;
   tone?: "info" | "success" | "warning" | "error" | "neutral";
+  layout?: "standard" | "feature" | "place" | "evaluation" | "referral";
   subtitle?: string | null;
   image_url?: string | null;
+  image_alt?: string | null;
+  icon?: VisualIconName | null;
   href?: string | null;
   metrics?: Array<{ label: string; value: string | number; detail?: string | null }>;
+  score?: {
+    value: number;
+    max: number;
+    tone?: "info" | "success" | "warning" | "error" | "neutral";
+  } | null;
+  primary_metric?: { label: string; value: string | number; detail?: string | null } | null;
+  code?: string | null;
   actions?: Array<{
     label: string;
     href?: string | null;
     action?: "open" | "copy" | "download";
     content?: string | null;
   }>;
+  details?: Array<{
+    label: string;
+    value: string;
+    icon?: VisualIconName | null;
+    href?: string | null;
+  }>;
+  sources?: Array<{ title: string; url: string }>;
   incomplete?: boolean;
   block_id?: string;
   schema_version?: number;
@@ -176,6 +193,62 @@ export interface StreamCardBlock {
   history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
   undo?: Record<string, unknown>;
   visual_model?: Record<string, unknown>;
+}
+
+export type VisualIconName =
+  | "sparkles"
+  | "lightbulb"
+  | "target"
+  | "shield"
+  | "layers"
+  | "zap"
+  | "globe"
+  | "chart"
+  | "check"
+  | "clock"
+  | "map-pin"
+  | "building"
+  | "users"
+  | "database"
+  | "cloud"
+  | "code"
+  | "star"
+  | "heart"
+  | "phone"
+  | "calendar"
+  | "landmark"
+  | "compass"
+  | "info";
+
+export interface StreamInfographicBlock {
+  id: string;
+  type: "infographic";
+  title: string;
+  subtitle?: string | null;
+  layout: "steps" | "timeline" | "comparison" | "feature_grid" | "stats";
+  direction?: "LR" | "RL" | "TD" | "DT";
+  items: Array<{
+    title: string;
+    description?: string | null;
+    value?: string | number | null;
+    date?: string | null;
+    icon?: VisualIconName | null;
+    image_url?: string | null;
+  }>;
+  note?: string | null;
+  sources?: Array<{ title: string; url: string }>;
+  block_id?: string;
+  schema_version?: number;
+  revision?: number;
+  source_markdown?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
 }
 
 export interface StreamGalleryBlock {
@@ -277,6 +350,7 @@ export type StructuredBlock =
   | StreamTableBlock
   | StreamChartBlock
   | StreamCardBlock
+  | StreamInfographicBlock
   | StreamGalleryBlock
   | StreamDiagramBlock;
 

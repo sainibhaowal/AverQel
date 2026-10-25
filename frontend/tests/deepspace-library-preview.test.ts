@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   libraryFileKind,
+  libraryFileNeedsServerVisualPreview,
   libraryKindSupportsEditor,
   libraryKindSupportsPreview,
 } from "@/app/dashboard/deepspace/_components/DeepSpaceLibraryFormats";
@@ -15,6 +16,10 @@ describe("DeepSpace Library format detection", () => {
     expect(libraryFileKind("slides.pptx", "application/octet-stream")).toBe("pptx");
     expect(libraryFileKind("plan.odt", "application/vnd.oasis.opendocument.text")).toBe("docx");
     expect(libraryFileKind("diagram.svg", "image/svg+xml")).toBe("svg");
+    expect(libraryFileKind("scan.bmp", "application/octet-stream")).toBe("image");
+    expect(libraryFileKind("animation.gif", "application/octet-stream")).toBe("image");
+    expect(libraryFileKind("scan.tif", "application/octet-stream")).toBe("image");
+    expect(libraryFileKind("scan.tiff", "image/tiff")).toBe("image");
     expect(libraryFileKind("recording.mp3", "audio/mpeg")).toBe("audio");
     expect(libraryFileKind("bundle.zip", "application/zip")).toBe("archive");
   });
@@ -35,5 +40,25 @@ describe("DeepSpace Library format detection", () => {
     ).toBe(true);
     expect(libraryKindSupportsEditor(libraryFileKind("data.csv", "text/csv"))).toBe(true);
     expect(libraryKindSupportsPreview(libraryFileKind("data.csv", "text/csv"))).toBe(true);
+  });
+
+  it("routes visual file families through bounded server previews", () => {
+    expect(libraryFileNeedsServerVisualPreview("photo.bmp", "image/bmp", 100)).toBe(true);
+    expect(libraryFileNeedsServerVisualPreview("report.pdf", "application/pdf", 10_000_000)).toBe(
+      true,
+    );
+    expect(libraryFileNeedsServerVisualPreview("report.odt", "application/octet-stream", 100)).toBe(
+      true,
+    );
+    expect(libraryFileNeedsServerVisualPreview("data.xlsx", "application/octet-stream", 100)).toBe(
+      false,
+    );
+    expect(
+      libraryFileNeedsServerVisualPreview(
+        "large-data.xlsx",
+        "application/octet-stream",
+        10_000_000,
+      ),
+    ).toBe(true);
   });
 });

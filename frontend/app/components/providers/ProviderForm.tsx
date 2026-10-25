@@ -65,6 +65,7 @@ const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   fireworks: "https://api.fireworks.ai/inference/v1",
   perplexity: "https://api.perplexity.ai",
   openrouter: "https://openrouter.ai/api/v1",
+  larprouter: "https://larprouter.com/v1",
   "opencode-zen": "https://opencode.ai/zen/v1",
   cohere: "https://api.cohere.ai/v1",
   tavily: "https://api.tavily.com",

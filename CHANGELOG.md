@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.1](https://github.com/sainibhaowal/AverQel/compare/v1.4.0...v1.4.1) (2026-10-25)
+
+### Security
+
+- Updated AverQel's LiveKit voice service to a build using Go 1.27.3, addressing
+  a security issue in Go's X.509 certificate handling. LiveKit remains at
+  v1.13.9; voice behavior and settings are unchanged.
+
+No new user-facing features were added in this patch release.
+
 ## [1.4.0] — Unreleased
 
 This release builds on `v1.3.4` with safer long-running DeepSpace workflows, a
