@@ -167,7 +167,7 @@ services:
 
   livekit:
     container_name: averqel-livekit
-    image: livekit/livekit-server:v1.9.0
+    image: livekit/livekit-server:v1.13.10
     restart: always
     command: ["--config", "/etc/livekit.yaml"]
     volumes:
@@ -314,8 +314,24 @@ services:
       service: worker
     container_name: averqel-ingestion-worker
     environment:
-      AKS_WORKER_QUEUES: ingestion_heavy,ingestion_light
+      AKS_WORKER_QUEUES: ingestion_light
       AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_WORKER_CONCURRENCY:-1}
+    mem_limit: ${AKS_INGESTION_LIGHT_MEMORY_LIMIT:-1g}
+    cpus: ${AKS_INGESTION_LIGHT_CPU_LIMIT:-1.0}
+    pids_limit: 128
+
+  ingestion-heavy-worker:
+    extends:
+      service: worker
+    container_name: averqel-ingestion-heavy-worker
+    environment:
+      AKS_WORKER_QUEUES: ingestion_heavy
+      AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_HEAVY_WORKER_CONCURRENCY:-1}
+    # OCR and office conversion are isolated from lightweight extraction and
+    # have hard container limits so one document cannot consume the whole host.
+    mem_limit: ${AKS_INGESTION_HEAVY_MEMORY_LIMIT:-4g}
+    cpus: ${AKS_INGESTION_HEAVY_CPU_LIMIT:-2.0}
+    pids_limit: ${AKS_INGESTION_HEAVY_PIDS_LIMIT:-256}
 
   library-worker:
     extends:

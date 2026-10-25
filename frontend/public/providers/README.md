@@ -12,3 +12,8 @@ shown as text. Their vendor artwork is not included because the published
 brand terms restrict logo use in application interfaces without permission.
 The OpenAI-compatible custom endpoint uses a neutral connection symbol because
 it does not have one vendor brand.
+
+The LarpRouter mark is the provider's 800 × 800 PNG from
+<https://larprouter.com/logo.png>. It remains LarpRouter's property and is used
+only to identify the corresponding integration; AverQel is not endorsed by or
+affiliated with LarpRouter.

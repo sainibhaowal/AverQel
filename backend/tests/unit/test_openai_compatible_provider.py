@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.openai_compatible_config import OpenAICompatibleEndpointSettings
+from app.providers.services.reasoning_capabilities import merge_reasoning_capabilities
 from app.providers.services.types import ChatGenerateRequest, EmbeddingRequest, ProviderModelInfo
 
 pytestmark = pytest.mark.unit_no_db
@@ -569,6 +570,42 @@ def test_custom_model_listing_keeps_multimodal_chat_and_embed_named_models(monke
     assert [model.name for model in provider.list_embedding_models()] == ["nomic-embed-text"]
 
 
+def test_model_metadata_normalizes_architecture_input_modalities() -> None:
+    metadata = OpenAICompatibleProvider._safe_model_metadata(
+        {
+            "input_modalities": [],
+            "architecture": {"input_modalities": ["text", "image"]},
+            "output_modalities": ["text"],
+        }
+    )
+
+    assert metadata["input_modalities"] == ["text", "image"]
+    assert metadata["supports_image_in"] is True
+
+    explicit = OpenAICompatibleProvider._safe_model_metadata(
+        {"supports_vision": False, "modalities": ["text"]}
+    )
+    assert explicit["supports_vision"] is False
+    assert explicit["modalities"] == ["text"]
+
+    camel_case = OpenAICompatibleProvider._safe_model_metadata(
+        {"architecture": {"inputModalities": ["text", "image"]}}
+    )
+    assert camel_case["input_modalities"] == ["text", "image"]
+    assert camel_case["supports_image_in"] is True
+
+    explicit_text_only = OpenAICompatibleProvider._safe_model_metadata(
+        {"supports_image_input": False, "input_modalities": ["text", "image"]}
+    )
+    assert explicit_text_only["supports_image_in"] is False
+
+    model_capabilities = OpenAICompatibleProvider._safe_model_metadata(
+        {"model_capabilities": {"input_modalities": ["text", "image"]}}
+    )
+    assert model_capabilities["input_modalities"] == ["text", "image"]
+    assert model_capabilities["supports_image_in"] is True
+
+
 def test_openai_compatible_provider_uses_groq_reasoning_fields() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(
@@ -726,6 +763,73 @@ def test_openai_compatible_provider_maps_deepseek_universal_effort() -> None:
     OpenAICompatibleProvider()._apply_reasoning_request_settings(payload, request)
 
     assert payload == {"thinking": {"type": "enabled"}, "reasoning_effort": "max"}
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "expected", "expected_choice"),
+    [
+        (
+            "deepseek-v4.1-flash",
+            "extreme_high",
+            {"thinking": {"type": "enabled"}, "reasoning_effort": "max"},
+            None,
+        ),
+        ("glm-5.3-flash", "high", {"reasoning_effort": "high"}, "required"),
+    ],
+)
+def test_larprouter_applies_verified_reasoning_efforts_with_tools(
+    model: str,
+    effort: str,
+    expected: dict[str, object],
+    expected_choice: str | None,
+) -> None:
+    provider = OpenAICompatibleProvider(provider_name="larprouter")
+    capabilities = merge_reasoning_capabilities("larprouter", model)
+    request = ChatGenerateRequest(
+        model=model,
+        messages=[{"role": "user", "content": "Use the available tools if needed."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://larprouter.com/v1",
+        reasoning_enabled=True,
+        reasoning_effort=effort,
+        tools=[{"type": "function", "function": {"name": "lookup"}}],
+        tool_choice="required",
+        metadata={
+            "provider_type": "larprouter",
+            "reasoning_mode": "explicit",
+            "model_reasoning_capabilities": capabilities,
+        },
+    )
+    payload: dict[str, object] = {}
+
+    provider._apply_reasoning_request_settings(payload, request)
+
+    assert payload == expected
+    assert provider._effective_tool_choice(request) == expected_choice
+
+
+def test_larprouter_deepseek_turns_thinking_off_when_selected() -> None:
+    provider = OpenAICompatibleProvider(provider_name="larprouter")
+    model = "deepseek-v4.1-flash"
+    request = ChatGenerateRequest(
+        model=model,
+        messages=[{"role": "user", "content": "Answer directly."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://larprouter.com/v1",
+        reasoning_enabled=False,
+        metadata={
+            "provider_type": "larprouter",
+            "reasoning_mode": "off",
+            "model_reasoning_capabilities": merge_reasoning_capabilities("larprouter", model),
+        },
+    )
+    payload: dict[str, object] = {}
+
+    provider._apply_reasoning_request_settings(payload, request)
+
+    assert payload == {"thinking": {"type": "disabled"}}
 
 
 def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotron() -> None:
@@ -1449,6 +1553,191 @@ def test_cline_chat_request_uses_bearer_auth_and_provider_model_id(monkeypatch) 
     assert captured["url"] == "https://api.cline.bot/api/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer cline-test-key"
     assert captured["json"]["model"] == "anthropic/claude-sonnet-4-6"
+
+
+def test_larprouter_lists_key_accessible_models_from_the_documented_api_root(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    provider = OpenAICompatibleProvider(
+        provider_name="larprouter",
+        base_url="https://larprouter.com/v1",
+        api_key="lrsk-test-key",
+    )
+
+    def _fake_get(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return _FakeResponse(
+            200,
+            {
+                "data": [
+                    {"id": "claude-opus-4-7-1m"},
+                    {"id": "deepseek-v4.1-flash"},
+                    {"id": "glm-5.3-flash"},
+                    {"id": "text-embedding-example"},
+                ]
+            },
+        )
+
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(get=_fake_get))
+
+    models = provider.list_models()
+
+    assert [model.name for model in models] == [
+        "claude-opus-4-7-1m",
+        "deepseek-v4.1-flash",
+        "glm-5.3-flash",
+    ]
+    assert models[1].context_window == 1_048_576
+    assert models[1].capabilities["supported_reasoning_efforts"] == [
+        "low",
+        "high",
+        "extreme_high",
+    ]
+    assert models[1].capabilities["default_reasoning_effort"] == "high"
+    assert models[2].capabilities["default_reasoning_effort"] == "extreme_high"
+    assert models[2].capabilities["supports_thinking_toggle"] is False
+    assert captured["url"] == "https://larprouter.com/v1/models"
+    assert captured["headers"]["Authorization"] == "Bearer lrsk-test-key"
+    assert captured["timeout"] == 8.0
+
+
+def test_openai_compatible_model_listing_uses_configured_timeout_and_maps_timeout(
+    monkeypatch,
+) -> None:
+    class FakeTimeoutError(Exception):
+        pass
+
+    captured: dict[str, object] = {}
+
+    def _fake_get(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        raise FakeTimeoutError("simulated model listing timeout")
+
+    provider = OpenAICompatibleProvider(
+        provider_name="larprouter",
+        base_url="https://larprouter.com/v1",
+        api_key="lrsk-test-key",
+        model_listing_timeout_seconds=24,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "httpx",
+        SimpleNamespace(get=_fake_get, TimeoutException=FakeTimeoutError),
+    )
+
+    with pytest.raises(ProviderRequestError) as error:
+        provider.list_models()
+
+    assert captured["timeout"] == 24.0
+    assert error.value.status_code == 504
+    assert error.value.provider_name == "larprouter"
+
+
+def test_openai_compatible_model_listing_timeout_is_capped() -> None:
+    provider = OpenAICompatibleProvider(model_listing_timeout_seconds=60)
+
+    assert provider.model_listing_timeout_seconds == 30.0
+
+
+def test_larprouter_chat_uses_openai_compatible_path_and_bearer_auth(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    provider = OpenAICompatibleProvider(
+        provider_name="larprouter",
+        base_url="https://larprouter.com/v1",
+        api_key="lrsk-test-key",
+    )
+
+    def _fake_post(url, *args, **kwargs):
+        captured.update(url=url, **kwargs)
+        return _FakeResponse(200, {"choices": [{"message": {"content": "LarpRouter response"}}]})
+
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(post=_fake_post))
+    response = provider.generate(
+        ChatGenerateRequest(
+            model="claude-opus-4-7-1m",
+            messages=[{"role": "user", "content": "hello"}],
+            temperature=0.2,
+            max_tokens=64,
+            base_url="https://larprouter.com/v1",
+            api_key="lrsk-test-key",
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+            tool_choice="auto",
+            metadata={"provider_type": "larprouter"},
+        )
+    )
+
+    assert response.content == "LarpRouter response"
+    assert captured["url"] == "https://larprouter.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer lrsk-test-key"
+    assert captured["json"]["model"] == "claude-opus-4-7-1m"
+    assert captured["json"]["tools"][0]["function"]["name"] == "lookup"
+
+
+@pytest.mark.asyncio
+async def test_larprouter_chat_stream_uses_openai_sse_and_bearer_auth(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _LarpRouterAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def stream(self, method, url, **kwargs):
+            captured.update(method=method, url=url, **kwargs)
+            return _FakeAsyncResponse(
+                [
+                    'data: {"choices":[{"delta":{"content":"LarpRouter"}}]}',
+                    'data: {"choices":[{"delta":{"content":" stream"}}]}',
+                    'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
+                    "data: [DONE]",
+                ]
+            )
+
+    provider = OpenAICompatibleProvider(
+        provider_name="larprouter",
+        base_url="https://larprouter.com/v1",
+        api_key="lrsk-test-key",
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "httpx",
+        SimpleNamespace(Timeout=_FakeTimeout, AsyncClient=_LarpRouterAsyncClient),
+    )
+    request = ChatGenerateRequest(
+        model="claude-opus-4-7-1m",
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0.2,
+        max_tokens=64,
+        base_url="https://larprouter.com/v1",
+        api_key="lrsk-test-key",
+        stream=True,
+        metadata={"provider_type": "larprouter"},
+    )
+
+    events = [event async for event in provider.stream_generate_events(request)]
+    chunks = [event["text"] for event in events if event.get("type") == "delta"]
+    usage_events = [event["usage"] for event in events if event.get("type") == "usage"]
+
+    assert chunks == ["LarpRouter", " stream"]
+    assert usage_events == [{"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}]
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://larprouter.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer lrsk-test-key"
+    assert captured["json"]["model"] == "claude-opus-4-7-1m"
+    assert captured["json"]["stream"] is True
+    assert captured["json"]["stream_options"] == {"include_usage": True}
 
 
 def test_mistral_reasoning_chunks_are_separated_from_final_content(monkeypatch) -> None:

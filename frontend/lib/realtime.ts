@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getApiBaseUrl } from "@/lib/api";
+import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
 
 type RealtimePayload = {
   event_id?: string;
@@ -13,15 +13,11 @@ type RealtimePayload = {
 
 export type RealtimeConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
-function realtimeUrl(): URL | null {
+function realtimeUrl(ticket: string): URL | null {
   if (typeof window === "undefined" || typeof WebSocket === "undefined") return null;
-  const token = window.localStorage.getItem("averqel_token");
-  if (!token) return null;
-  const tenantId = window.localStorage.getItem("averqel_tenant_id");
   const url = new URL(`${getApiBaseUrl().replace(/\/+$/, "")}/realtime/ws`, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("token", token);
-  if (tenantId) url.searchParams.set("tenant_id", tenantId);
+  url.searchParams.set("ticket", ticket);
   return url;
 }
 
@@ -62,55 +58,88 @@ export function useRealtimeEvents(
     }
     const cursorKey = `averqel_realtime_cursor:${window.localStorage.getItem("averqel_tenant_id") ?? "unknown"}:${storedUserId}`;
 
-    const connect = () => {
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer !== null) return;
+      setConnectionState("reconnecting");
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 10_000);
+    };
+
+    const connect = async () => {
       if (stopped) return;
-      const url = realtimeUrl();
-      if (!url) {
+      if (!window.localStorage.getItem("averqel_token")) {
         setConnectionState("disconnected");
         return;
       }
       setConnectionState(retryDelay > 500 ? "reconnecting" : "connecting");
-      const cursor = window.localStorage.getItem(cursorKey);
-      if (cursor) url.searchParams.set("last_event_id", cursor);
-      socket = new WebSocket(url.toString());
-      socket.onopen = () => {
-        retryDelay = 500;
-        setConnectionState("connected");
-      };
-      socket.onmessage = (message) => {
-        try {
-          const envelope = JSON.parse(String(message.data)) as {
-            event?: string;
-            cursor?: string;
-            payload?: RealtimePayload;
-          };
-          if (envelope.cursor) window.localStorage.setItem(cursorKey, envelope.cursor);
-          if (
-            envelope.event === "realtime" &&
-            envelope.payload &&
-            (!resourcesRef.current.length ||
-              resourcesRef.current.includes(envelope.payload.resource))
-          ) {
-            callbackRef.current(envelope.payload);
-          }
-        } catch {
-          // Ignore malformed frames; the next snapshot remains authoritative.
+
+      try {
+        // fetchWithAuth refreshes an expired/near-expiry access token before it
+        // mints the one-use ticket, so the browser never retries a stale JWT.
+        const ticketResponse = await fetchWithAuth("/realtime/ticket", {
+          method: "POST",
+          silentTimeout: true,
+        });
+        if (!ticketResponse.ok) throw new Error("Realtime ticket request failed.");
+        const ticketPayload = (await ticketResponse.json()) as { ticket?: unknown };
+        if (stopped) return;
+        if (typeof ticketPayload.ticket !== "string") {
+          throw new Error("Realtime ticket response was invalid.");
         }
-      };
-      socket.onclose = () => {
-        socket = null;
-        if (stopped) {
+
+        const url = realtimeUrl(ticketPayload.ticket);
+        if (!url) {
           setConnectionState("disconnected");
           return;
         }
-        setConnectionState("reconnecting");
-        reconnectTimer = window.setTimeout(connect, retryDelay);
-        retryDelay = Math.min(retryDelay * 2, 10_000);
-      };
-      socket.onerror = () => socket?.close();
+        const cursor = window.localStorage.getItem(cursorKey);
+        if (cursor) url.searchParams.set("last_event_id", cursor);
+        const currentSocket = new WebSocket(url.toString());
+        socket = currentSocket;
+        currentSocket.onopen = () => {
+          retryDelay = 500;
+          setConnectionState("connected");
+        };
+        currentSocket.onmessage = (message) => {
+          try {
+            const envelope = JSON.parse(String(message.data)) as {
+              event?: string;
+              cursor?: string;
+              payload?: RealtimePayload;
+            };
+            if (envelope.cursor) window.localStorage.setItem(cursorKey, envelope.cursor);
+            if (
+              envelope.event === "realtime" &&
+              envelope.payload &&
+              (!resourcesRef.current.length ||
+                resourcesRef.current.includes(envelope.payload.resource))
+            ) {
+              callbackRef.current(envelope.payload);
+            }
+          } catch {
+            // Ignore malformed frames; the next snapshot remains authoritative.
+          }
+        };
+        currentSocket.onclose = () => {
+          if (socket === currentSocket) socket = null;
+          if (stopped) {
+            setConnectionState("disconnected");
+            return;
+          }
+          scheduleReconnect();
+        };
+        currentSocket.onerror = () => currentSocket.close();
+      } catch {
+        // Realtime is an optional invalidation hint; REST snapshots remain
+        // authoritative while auth or the transport is recovering.
+        scheduleReconnect();
+      }
     };
 
-    connect();
+    void connect();
     return () => {
       stopped = true;
       setConnectionState("disconnected");

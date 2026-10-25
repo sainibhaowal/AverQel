@@ -35,6 +35,7 @@ const BASE_URLS: Record<string, string> = {
   groq: "https://api.groq.com/openai/v1",
   mistral: "https://api.mistral.ai/v1",
   openrouter: "https://openrouter.ai/api/v1",
+  larprouter: "https://larprouter.com/v1",
   together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
   perplexity: "https://api.perplexity.ai",

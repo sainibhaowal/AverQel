@@ -124,6 +124,14 @@ migration or manual cache reset is needed. If a model has no reliable reasoning
 capability metadata, DeepSpace leaves its provider default in place and does not
 invent effort choices.
 
+For LarpRouter, verified DeepSeek V4.1 Flash routes expose Low, High, and Max,
+default to High, and allow thinking to be disabled. Verified GLM-5.3 routes
+expose Low, High, and Max, default to Max, and do not support disabling
+thinking. The adapter sends the selected route's native `reasoning_effort`
+value and preserves the provider's default when reasoning controls are not
+selected. Other LarpRouter model IDs remain on their advertised capabilities or
+provider defaults.
+
 Model narration emitted before a tool call or `ask_user` pause is persisted as
 an ordered activity step. A paused, resumed, cancelled, or reloaded turn keeps
 that narration beside the tool and question events instead of rebuilding the
@@ -351,6 +359,14 @@ dispatch tasks use the bounded `deepspace_control` worker queue, separate from
 the long-running `deepspace` model tasks; both worker services must be running
 for prompt dispatch and generation.
 
+A worker marks a turn complete only after it receives a durable `done` event;
+an `error` event fails the turn. If a stream exits without either event, the
+worker closes the run and assistant message as failed and publishes a retryable
+terminal error. Queue recovery also reconciles an old active runtime row when
+its matching queue turn is already terminal and its heartbeat is stale. It
+does not release a turn whose queue record is still running merely because a
+provider response is taking a long time.
+
 A failed turn is terminal but does not pause the conversation queue. Its error
 and prompt stay visible while the dispatcher advances to the next queued item,
 ordered by priority and then FIFO sequence. Users can retry a failed prompt as
@@ -397,6 +413,13 @@ later turns are not included. Repeated delivery of one queue request id
 replays its saved events and does not create another generation. Queued
 regenerations can be canceled or retried, but their source prompt cannot be
 edited.
+
+Editing the latest completed user prompt creates a new active prompt version and queues a
+regeneration for its existing assistant message in one database transaction. The stream endpoint
+then reconnects to the durable queue event log. Reusing an edit request id with the same prompt
+replays that attempt; using a new id after a completed generation creates another prompt version
+and queued response. The API rejects stale prompt targets before writing a version. The client only
+offers this action when the latest prompt is editable and no queue work is pending.
 
 ### Clarification ownership and fresh requests
 

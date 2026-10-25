@@ -63,6 +63,8 @@ const LIBREOFFICE_PAGE_EXTENSIONS = new Set([
   "oti",
 ]);
 
+export const LIBRARY_MAX_BROWSER_PREVIEW_BYTES = 5 * 1024 * 1024;
+
 export function libraryFileSupportsServerPagePreview(name: string, contentType: string) {
   const extension = extensionFor(name);
   const normalized = contentType.toLowerCase().split(";", 1)[0];
@@ -70,6 +72,23 @@ export function libraryFileSupportsServerPagePreview(name: string, contentType: 
     extension === "pdf" ||
     normalized === "application/pdf" ||
     LIBREOFFICE_PAGE_EXTENSIONS.has(extension)
+  );
+}
+
+export function libraryFileNeedsServerVisualPreview(
+  name: string,
+  contentType: string,
+  sizeBytes: number,
+) {
+  const kind = libraryFileKind(name, contentType);
+  const extension = extensionFor(name);
+  if (["image", "svg", "pdf", "docx", "pptx"].includes(kind)) return true;
+  if (libraryFileSupportsServerPagePreview(name, contentType) && extension !== "xlsx") {
+    return true;
+  }
+  return (
+    sizeBytes > LIBRARY_MAX_BROWSER_PREVIEW_BYTES &&
+    libraryFileSupportsServerPagePreview(name, contentType)
   );
 }
 
@@ -162,7 +181,7 @@ export function libraryFileKind(name: string, contentType: string): LibraryFileK
   if (extension === "svg" || normalized === "image/svg+xml") return "svg";
   if (
     normalized.startsWith("image/") ||
-    ["png", "jpg", "jpeg", "webp", "avif"].includes(extension)
+    ["png", "jpg", "jpeg", "webp", "avif", "bmp", "gif", "tif", "tiff"].includes(extension)
   ) {
     return "image";
   }

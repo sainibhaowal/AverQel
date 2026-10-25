@@ -155,7 +155,7 @@ interface DeepSpaceThreadProps {
   onVisualBlockChange?: (
     messageId: string,
     block: StructuredBlock,
-  ) => void | boolean | Promise<void | boolean>;
+  ) => void | boolean | StructuredBlock | Promise<void | boolean | StructuredBlock>;
   onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
   onImportGalleryAsset?: (
     messageId: string,
@@ -163,6 +163,8 @@ interface DeepSpaceThreadProps {
     retention: GalleryAssetRetention,
   ) => Promise<GalleryAssetRef>;
   onRetainGalleryAsset?: (messageId: string, fileId: string) => Promise<GalleryAssetRef>;
+  promptEditDisabled?: boolean;
+  promptEditSubmittingMessageId?: string | null;
   retryableRequestIds?: ReadonlySet<string>;
   retryingRequestId?: string | null;
   retryActionDisabled?: boolean;
@@ -403,6 +405,9 @@ const MessageBubble = memo(
     isRetryActionDisabled,
     isQueued,
     isLast,
+    canEditPrompt,
+    promptEditDisabled,
+    promptEditSubmitting,
   }: {
     message: DeepSpaceMessage;
     onRegenerate: (messageId: string) => void;
@@ -419,7 +424,7 @@ const MessageBubble = memo(
     onVisualBlockChange?: (
       messageId: string,
       block: StructuredBlock,
-    ) => void | boolean | Promise<void | boolean>;
+    ) => void | boolean | StructuredBlock | Promise<void | boolean | StructuredBlock>;
     onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
     onImportGalleryAsset?: (
       messageId: string,
@@ -430,6 +435,9 @@ const MessageBubble = memo(
     canRetryFailedPrompt: boolean;
     isRetryingFailedPrompt: boolean;
     isRetryActionDisabled: boolean;
+    canEditPrompt: boolean;
+    promptEditDisabled: boolean;
+    promptEditSubmitting: boolean;
   }) {
     const [copied, setCopied] = useState(false);
     const prefersReducedMotion = useReducedMotion();
@@ -738,13 +746,19 @@ const MessageBubble = memo(
                 {message.isEditing ? (
                   <div className="flex items-center gap-3">
                     <button
+                      type="button"
+                      disabled={promptEditDisabled || promptEditSubmitting}
                       onClick={() =>
                         onSaveEdit(message.id, (message.draftContent ?? message.content).trim())
                       }
-                      className="text-primary hover:text-primary/80 flex items-center gap-1.5 font-bold"
+                      className="text-primary hover:text-primary/80 flex items-center gap-1.5 font-bold disabled:cursor-wait disabled:opacity-55"
                     >
-                      <Check size={12} />
-                      SAVE & SUBMIT
+                      {promptEditSubmitting ? (
+                        <LoaderCircle size={12} className="animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
+                      {promptEditSubmitting ? "SUBMITTING…" : "SAVE & SUBMIT"}
                     </button>
                     <button
                       onClick={() => onCancelEdit(message.id)}
@@ -756,13 +770,21 @@ const MessageBubble = memo(
                   </div>
                 ) : (
                   <>
-                    <button
-                      onClick={() => onStartEdit(message.id)}
-                      className="hover:text-primary flex items-center gap-1.5 transition"
-                    >
-                      <Edit3 size={12} />
-                      EDIT
-                    </button>
+                    {canEditPrompt ? (
+                      <button
+                        type="button"
+                        disabled={promptEditDisabled || promptEditSubmitting}
+                        onClick={() => onStartEdit(message.id)}
+                        className="hover:text-primary flex items-center gap-1.5 transition disabled:cursor-wait disabled:opacity-45"
+                      >
+                        {promptEditSubmitting ? (
+                          <LoaderCircle size={12} className="animate-spin" />
+                        ) : (
+                          <Edit3 size={12} />
+                        )}
+                        {promptEditSubmitting ? "SUBMITTING…" : "EDIT"}
+                      </button>
+                    ) : null}
                     <button
                       onClick={handleCopy}
                       aria-label={copied ? "Copied" : "Copy"}
@@ -1521,6 +1543,8 @@ export default function DeepSpaceThread({
   onSaveVisualArtifact,
   onImportGalleryAsset,
   onRetainGalleryAsset,
+  promptEditDisabled = false,
+  promptEditSubmittingMessageId = null,
   retryableRequestIds = EMPTY_RETRYABLE_REQUEST_IDS,
   retryingRequestId = null,
   retryActionDisabled = false,
@@ -1528,6 +1552,14 @@ export default function DeepSpaceThread({
   scrollMetrics = null,
 }: DeepSpaceThreadProps) {
   const [revealedHistoryCount, setRevealedHistoryCount] = useState(RECENT_MESSAGE_WINDOW);
+  const latestEditablePromptId = useMemo(() => {
+    for (let index = messages.length - 2; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user" && messages[index + 1]?.role === "assistant") {
+        return messages[index]!.id;
+      }
+    }
+    return null;
+  }, [messages]);
 
   const compactedHistoryMessages = useMemo(() => {
     if (messages.length <= LARGE_THREAD_THRESHOLD) {
@@ -1749,6 +1781,9 @@ export default function DeepSpaceThread({
             isRetryingFailedPrompt={message.clientRequestId === retryingRequestId}
             isRetryActionDisabled={retryActionDisabled}
             isQueued={message.id === queuedAssistantId}
+            canEditPrompt={message.role === "user" && message.id === latestEditablePromptId}
+            promptEditDisabled={promptEditDisabled}
+            promptEditSubmitting={message.id === promptEditSubmittingMessageId}
           />
         );
 

@@ -32,6 +32,7 @@ const supportedProviderTypes = [
   "tavily",
   "searxng",
   "openrouter",
+  "larprouter",
 ];
 
 describe("provider logos", () => {
@@ -42,15 +43,22 @@ describe("provider logos", () => {
 
     for (const [providerType, definition] of Object.entries(providerLogoRegistry)) {
       if (definition.kind === "asset") {
-        expect(definition.src, providerType).toMatch(/^\/(providers\/|brand\/AverQel_Icon\.svg$)/);
+        expect(definition.src, providerType).toMatch(
+          /^\/(providers\/|AverQel%20Logo\/AverQel_Icon\.svg$)/,
+        );
         expect(
-          existsSync(resolve(process.cwd(), "public", definition.src.slice(1))),
+          existsSync(resolve(process.cwd(), "public", decodeURIComponent(definition.src.slice(1)))),
           providerType,
         ).toBe(true);
       }
     }
 
     expect(getProviderLogoDefinition("custom").kind).toBe("endpoint");
+    expect(getProviderLogoDefinition("larprouter")).toEqual({
+      kind: "asset",
+      src: "/providers/larprouter.png",
+      appearance: "monochrome",
+    });
     expect(getProviderLogoDefinition("groq")).toEqual({ kind: "wordmark", text: "GROQ" });
     expect(getProviderLogoDefinition("tavily")).toEqual({ kind: "wordmark", text: "TAVILY" });
   });
@@ -59,12 +67,14 @@ describe("provider logos", () => {
     const { container } = render(
       <div>
         <ProviderLogo providerType="openai" size={20} />
+        <ProviderLogo providerType="larprouter" size={20} />
         <ProviderLogo providerType="custom" size={20} />
         <ProviderLogo providerType="groq" size={20} />
       </div>,
     );
 
     expect(container.querySelector('img[src="/providers/openai.svg"]')).toBeInTheDocument();
+    expect(container.querySelector('img[src="/providers/larprouter.png"]')).toBeInTheDocument();
     expect(container.querySelector("svg")).toBeInTheDocument();
     expect(container).toHaveTextContent("GROQ");
     expect(container).not.toHaveTextContent("0");

@@ -59,6 +59,19 @@ export default function DocumentsHubDocsPage() {
           source code alone does not prove these services are active in a hosted environment.
         </p>
       </DocsSection>
+      <DocsSection title="Processing delays and recovery">
+        <p>
+          If document details or extracted text cannot be loaded, use the retry control shown in the
+          affected section. Processing updates continue independently; extracted text is loaded
+          after indexing finishes so large documents do not repeatedly reload the whole page.
+        </p>
+        <p>
+          If the worker stops after saving an embedding checkpoint, the document page offers resume
+          from that checkpoint. A temporary API error does not mean the uploaded source was deleted.
+          For a persistent failure, check the document status and recovery details or contact your
+          workspace administrator.
+        </p>
+      </DocsSection>
       <DocsSection title="Related guides">
         <ul className="list-disc space-y-2 pl-6">
           <li>

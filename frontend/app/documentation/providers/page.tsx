@@ -10,7 +10,7 @@ export default function ProvidersPage() {
         items={[
           {
             title: "Model Providers",
-            body: "OpenRouter, OpenAI-compatible endpoints, Cline, Mistral, Meta, Anthropic, Google, Ollama, LM Studio, embeddings, rerankers, and search runtimes power AI generation and retrieval.",
+            body: "LarpRouter, OpenRouter, OpenAI-compatible endpoints, Cline, Mistral, Meta, Anthropic, Google, Ollama, LM Studio, embeddings, rerankers, and search runtimes power AI generation and retrieval.",
           },
           {
             title: "Self-hosted SearXNG",
@@ -43,6 +43,37 @@ export default function ProvidersPage() {
           Composio project API key there. Do not put it in a model-provider form. AverQel encrypts
           it and scopes it to your signed-in tenant and account; the running server uses it to make
           Composio requests.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="LarpRouter">
+        <p>
+          Add <strong>LarpRouter</strong> from Providers and enter your LarpRouter API key. AverQel
+          uses the OpenAI-compatible API root <code>https://larprouter.com/v1</code> by default and
+          loads chat model IDs from the key&apos;s <code>/models</code> catalog. Choose a discovered
+          model, then assign the connection to Query or DeepSpace. LarpRouter controls which model
+          pools are available to each key, so the model catalog depends on the key and its pool.
+        </p>
+        <p>
+          Model catalog refresh uses the provider&apos;s saved timeout, capped at 30 seconds. If the
+          provider does not respond in time, AverQel reports a refresh timeout and keeps the last
+          successfully loaded model catalog available.
+        </p>
+        <p>
+          The integration uses LarpRouter&apos;s OpenAI-compatible Chat Completions protocol,
+          including streaming, function tools, and image inputs when the selected model supports
+          them. DeepSpace uses the selected model&apos;s context and output limits, and requests
+          provider-reported token usage for streamed responses. The LarpRouter API reference does
+          not list an embeddings endpoint, so AverQel does not offer this connection for embeddings.
+          For current routes and model availability, see the{" "}
+          <a href="https://larprouter.com/docs">LarpRouter API reference</a>.
+        </p>
+        <p>
+          DeepSpace also uses verified model-specific reasoning controls for known LarpRouter
+          routes. DeepSeek V4.1 Flash offers Low, High, and Max, defaults to High, and supports
+          turning thinking off. GLM-5.3 offers Low, High, and Max, defaults to Max, and always
+          thinks. Other LarpRouter models show only capabilities returned by the model catalog or a
+          verified model profile.
         </p>
       </DocsSection>
 
@@ -406,8 +437,8 @@ export default function ProvidersPage() {
       <DocsSection title="Existing AI provider support">
         <ul className="list-disc space-y-2 pl-6">
           <li>
-            Chat runtimes include OpenRouter, OpenAI-compatible providers, Cline, Mistral, Meta,
-            Anthropic, Google, Ollama, LM Studio, and OpenCode Zen.
+            Chat runtimes include LarpRouter, OpenRouter, OpenAI-compatible providers, Cline,
+            Mistral, Meta, Anthropic, Google, Ollama, LM Studio, and OpenCode Zen.
           </li>
           <li>
             Embedding runtimes include local deterministic paths, sentence-transformers, OpenRouter,

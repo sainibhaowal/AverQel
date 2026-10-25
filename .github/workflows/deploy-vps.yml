@@ -18,9 +18,9 @@ jobs:
     name: Resolve exact main commit
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.resolve.outputs.image_tag }}
       release_version: ${{ steps.resolve.outputs.release_version }}
       sha: ${{ steps.resolve.outputs.sha }}
+      build_timestamp: ${{ steps.resolve.outputs.build_timestamp }}
     steps:
       - name: Require the protected main branch
         run: |
@@ -36,16 +36,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Resolve immutable image tag and runtime version
+      - name: Resolve current main version and build metadata
         id: resolve
         run: |
           set -euo pipefail
           git fetch origin main --tags --force
           SHA="$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$SHA" FETCH_HEAD || {
-            echo "::error::Selected commit is not contained in origin/main"
+          MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+          if [[ "$SHA" != "$MAIN_SHA" ]]; then
+            echo "::error::This run targets $SHA, but origin/main is now $MAIN_SHA. Start a new deployment from the current main commit; re-running this older run would deploy stale frontend code."
             exit 1
-          }
+          fi
           RELEASE_VERSION="$(git tag --points-at "$SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
           if [[ -z "$RELEASE_VERSION" ]]; then
             # Deployment is deliberately independent from the manual desktop
@@ -54,13 +55,13 @@ jobs:
             RELEASE_VERSION="v0.0.0-main.${SHA:0:12}"
             echo "::notice::No release tag is attached to this main commit; using $RELEASE_VERSION"
           fi
-          IMAGE_TAG="sha-${SHA:0:12}"
+          BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           {
-            echo "image_tag=$IMAGE_TAG"
             echo "release_version=$RELEASE_VERSION"
             echo "sha=$SHA"
+            echo "build_timestamp=$BUILD_TIMESTAMP"
           } >> "$GITHUB_OUTPUT"
-          echo "Deploying release $RELEASE_VERSION with immutable image tag $IMAGE_TAG from main commit $SHA"
+          echo "Deploying release $RELEASE_VERSION from main commit $SHA (build started $BUILD_TIMESTAMP)"
 
   build-and-test-images:
     name: Build and test Docker images
@@ -128,7 +129,7 @@ jobs:
             NEXT_PROXY_TARGET=http://api:1000
             GIT_VERSION=${{ needs.resolve-source.outputs.release_version }}
             GIT_SHA=${{ needs.resolve-source.outputs.sha }}
-            BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.image_tag }}
+            BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.build_timestamp }}
             DESKTOP_DOWNLOAD_BASE_URL=https://github.com/sainibhaowal/AverQel/releases/latest/download
           cache-from: type=gha,scope=averqel-frontend
           cache-to: type=gha,mode=max,scope=averqel-frontend
@@ -150,7 +151,64 @@ jobs:
             test "$livekit_version" = "livekit-server version 1.13.9"
           done
           docker run --rm --entrypoint node "$FRONTEND_IMAGE" --version
-          echo "Image smoke tests passed for $VERSION ($SHA) with LiveKit 1.13.9"
+          FRONTEND_VERSION="$(docker image inspect "$FRONTEND_IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          FRONTEND_SHA="$(docker image inspect "$FRONTEND_IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          test "$FRONTEND_VERSION" = "$VERSION" || {
+            echo "::error::Frontend image version is $FRONTEND_VERSION; expected $VERSION"
+            exit 1
+          }
+          test "$FRONTEND_SHA" = "$SHA" || {
+            echo "::error::Frontend image revision is $FRONTEND_SHA; expected $SHA"
+            exit 1
+          }
+          docker run --rm --entrypoint sh "$FRONTEND_IMAGE" -ec '
+            grep -r -F -- "$1" /app/.next/server /app/.next/static >/dev/null || {
+              echo "Frontend browser/server bundles do not contain the expected version: $1" >&2
+              exit 1
+            }
+            grep -r -F -- "$2" /app/.next/server /app/.next/static >/dev/null || {
+              echo "Frontend browser/server bundles do not contain the expected git SHA: $2" >&2
+              exit 1
+            }
+          ' sh "$VERSION" "$SHA"
+
+          FRONTEND_SMOKE_CONTAINER="averqel-frontend-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup_frontend_smoke() {
+            docker rm -f "$FRONTEND_SMOKE_CONTAINER" >/dev/null 2>&1 || true
+          }
+          trap cleanup_frontend_smoke EXIT
+          docker run --detach --name "$FRONTEND_SMOKE_CONTAINER" \
+            --publish 127.0.0.1::1030 "$FRONTEND_IMAGE" >/dev/null
+          FRONTEND_SMOKE_PORT="$(docker port "$FRONTEND_SMOKE_CONTAINER" 1030/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
+          if [[ ! "$FRONTEND_SMOKE_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not resolve the temporary frontend smoke-test port"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
+          FRONTEND_SMOKE_URL="http://127.0.0.1:$FRONTEND_SMOKE_PORT/"
+          FRONTEND_SMOKE_STATUS="not-ready"
+          for ((attempt = 1; attempt <= 30; attempt++)); do
+            FRONTEND_SMOKE_STATUS="$(curl --location --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 1 "$FRONTEND_SMOKE_URL" 2>/dev/null || true)"
+            if [[ "$FRONTEND_SMOKE_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+              echo "Built frontend served its homepage successfully (HTTP $FRONTEND_SMOKE_STATUS)"
+              break
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$FRONTEND_SMOKE_CONTAINER")" != "true" ]]; then
+              echo "::error::Built frontend container exited before serving its homepage (last HTTP status: $FRONTEND_SMOKE_STATUS)"
+              docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ ! "$FRONTEND_SMOKE_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::error::Built frontend did not serve its homepage within 60 seconds (last HTTP status: $FRONTEND_SMOKE_STATUS)"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
+          cleanup_frontend_smoke
+          trap - EXIT
+          echo "Image smoke tests passed for frontend $VERSION ($SHA) and LiveKit 1.13.9"
 
       - name: Install Trivy once
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241 # pinned installer commit
@@ -300,11 +358,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Validate deployment secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
-          test -n "${{ secrets.VPS_HOST }}" || { echo "::error::VPS_HOST secret missing"; exit 1; }
-          test -n "${{ secrets.VPS_USER }}" || { echo "::error::VPS_USER secret missing"; exit 1; }
-          test -n "${{ secrets.VPS_SSH_KEY }}" || { echo "::error::VPS_SSH_KEY secret missing"; exit 1; }
-          if [ -z "${{ secrets.GHCR_PAT }}" ]; then
+          set -euo pipefail
+          test -n "${VPS_HOST:-}" || { echo "::error::VPS_HOST secret missing"; exit 1; }
+          test -n "${VPS_USER:-}" || { echo "::error::VPS_USER secret missing"; exit 1; }
+          test -n "${VPS_SSH_KEY:-}" || { echo "::error::VPS_SSH_KEY secret missing"; exit 1; }
+          if [[ -z "${GHCR_PAT:-}" ]]; then
             echo "::warning::GHCR_PAT is not set; deployment will use the short-lived GITHUB_TOKEN"
           fi
 
@@ -323,6 +387,18 @@ jobs:
             exit 1
           }
 
+      - name: Recheck main immediately before deployment
+        env:
+          EXPECTED_SHA: ${{ needs.resolve-source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags --force
+          CURRENT_MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+          if [[ "$CURRENT_MAIN_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::main advanced during the image build. This run built $EXPECTED_SHA, while current main is $CURRENT_MAIN_SHA. Start a new deployment to avoid deploying an older frontend/backend."
+            exit 1
+          fi
+          echo "Confirmed that the tested images still match current main: $EXPECTED_SHA"
 
       - name: SSH deploy without touching VPS-owned files
         uses: appleboy/ssh-action@v1
@@ -357,6 +433,7 @@ jobs:
             export SEARXNG_CONFIG_DIR
             PREVIOUS_VERSION=""
             PREVIOUS_SHA=""
+            SKIP_ROLLBACK="0"
 
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
@@ -395,17 +472,45 @@ jobs:
               rm -f "$DEPLOY_COMPOSE_FILE" "$COMPOSE_NETWORK_OVERRIDE"
             }
 
+            report_frontend_health() {
+              echo "Frontend health diagnostics ($1)"
+              compose ps --all frontend || true
+              if docker inspect averqel-frontend >/dev/null 2>&1; then
+                docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restarts={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}} {{range .State.Health.Log}}probe(exit={{.ExitCode}} end={{.End}}): {{printf "%q" .Output}}; {{end}}' averqel-frontend || true
+              else
+                echo "Frontend container is missing"
+              fi
+            }
+
             rollback_on_failure() {
               status=$?
               trap - EXIT
-              if [[ "$status" -ne 0 && -n "$PREVIOUS_VERSION" && -n "$PREVIOUS_SHA" && "$PREVIOUS_VERSION" != "$VERSION" ]]; then
+              if [[ "$status" -ne 0 ]]; then
+                report_frontend_health "before rollback"
+              fi
+              if [[ "$status" -ne 0 && "$SKIP_ROLLBACK" != "1" && -n "$PREVIOUS_VERSION" && -n "$PREVIOUS_SHA" && "$PREVIOUS_VERSION" != "$VERSION" ]]; then
                 echo "Deployment failed; restoring previous release $PREVIOUS_VERSION"
                 set +e
                 export AVERQEL_RELEASE_VERSION="$PREVIOUS_VERSION"
                 export AVERQEL_IMAGE_TAG="$PREVIOUS_SHA"
                 compose pull api worker deepspace-control-worker maintenance-worker mcp-worker ingestion-worker scheduler inference frontend
-                compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
+                pull_status=$?
+                compose up -d --no-build --wait --wait-timeout 180
+                rollback_status=$?
                 set -e
+                if [[ "$pull_status" -ne 0 ]]; then
+                  echo "::warning::One or more previous release images could not be pulled (exit $pull_status)."
+                fi
+                if [[ "$rollback_status" -eq 0 ]]; then
+                  echo "Previous release $PREVIOUS_VERSION passed Compose health checks after rollback."
+                else
+                  echo "::error::Automatic rollback did not restore a healthy release (Compose exit $rollback_status). Production may remain unavailable."
+                  report_frontend_health "after failed rollback"
+                fi
+              elif [[ "$status" -ne 0 && "$SKIP_ROLLBACK" == "1" ]]; then
+                echo "Deployment rollback was intentionally skipped because the failure occurred during public-origin verification."
+              elif [[ "$status" -ne 0 ]]; then
+                echo "::error::Automatic rollback is unavailable because the previous release version or SHA could not be identified."
               fi
               cleanup_temp_files
               exit "$status"
@@ -460,7 +565,29 @@ jobs:
 
             compose config --quiet
             compose pull api worker deepspace-control-worker maintenance-worker mcp-worker ingestion-worker scheduler inference frontend
-            compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
+            # Keep orphan containers until the new release passes its health
+            # checks. This update still uses the current fixed-name Compose
+            # services; it is not a blue/green traffic switch.
+            compose up -d --no-build --wait --wait-timeout 180
+
+            EXPECTED_FRONTEND_IMAGE="$IMAGE_PREFIX-frontend:$SHA"
+            EXPECTED_FRONTEND_IMAGE_ID="$(docker image inspect "$EXPECTED_FRONTEND_IMAGE" --format '{{.Id}}')"
+            RUNNING_FRONTEND_IMAGE_ID="$(docker inspect averqel-frontend --format '{{.Image}}')"
+            test "$RUNNING_FRONTEND_IMAGE_ID" = "$EXPECTED_FRONTEND_IMAGE_ID" || {
+              echo "Frontend container is running image $RUNNING_FRONTEND_IMAGE_ID; expected $EXPECTED_FRONTEND_IMAGE_ID"
+              exit 1
+            }
+            RUNNING_FRONTEND_VERSION="$(docker image inspect "$RUNNING_FRONTEND_IMAGE_ID" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+            RUNNING_FRONTEND_SHA="$(docker image inspect "$RUNNING_FRONTEND_IMAGE_ID" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+            test "$RUNNING_FRONTEND_VERSION" = "$VERSION" || {
+              echo "Frontend container image version is $RUNNING_FRONTEND_VERSION; expected $VERSION"
+              exit 1
+            }
+            test "$RUNNING_FRONTEND_SHA" = "$SHA" || {
+              echo "Frontend container image revision is $RUNNING_FRONTEND_SHA; expected $SHA"
+              exit 1
+            }
+            echo "Frontend is running $RUNNING_FRONTEND_VERSION from $RUNNING_FRONTEND_SHA"
 
             compose ps
             compose exec -T api curl -fsS http://localhost:1000/api/v1/health/live
@@ -473,6 +600,23 @@ jobs:
             PUBLIC_RESPONSE="$(curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused "$PUBLIC_ORIGIN/api/v1/health/ready")"
             echo "$PUBLIC_RESPONSE"
             echo "$PUBLIC_RESPONSE" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$VERSION"'"'
+
+            # The API readiness endpoint does not prove which frontend the
+            # public origin serves. Keep the healthy VPS release in place if
+            # a proxy/cache still serves old web assets, but fail this run so
+            # the mismatch is visible to the operator.
+            SKIP_ROLLBACK="1"
+            PUBLIC_FRONTEND_RESPONSE="$(curl --fail --location --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused "$PUBLIC_ORIGIN/")"
+            if ! grep -Fq "$VERSION" <<< "$PUBLIC_FRONTEND_RESPONSE" \
+              || ! grep -Fq "${SHA:0:7}" <<< "$PUBLIC_FRONTEND_RESPONSE"; then
+              echo "::error::Public frontend does not serve version $VERSION from commit ${SHA:0:7}. The VPS container is healthy; not rolling it back while checking proxy or cache routing."
+              exit 1
+            fi
+            SKIP_ROLLBACK="0"
+
+            # Remove stale Compose-owned services only after the selected
+            # release has passed internal and public checks.
+            compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
 
             # Cleanup happens only after all health checks pass. It is scoped to
             # AverQel images; volumes and unrelated containers are untouched.

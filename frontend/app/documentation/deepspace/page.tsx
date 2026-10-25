@@ -97,6 +97,14 @@ export default function DeepSpaceDocsPage() {
           unsupported levels. If a model always reasons and cannot disable that behavior, DeepSpace
           shows its available levels or On without offering a misleading Off choice.
         </p>
+        <p>
+          For LarpRouter, DeepSeek V4.1 Flash exposes Low, High, and Max (default High) with an Off
+          choice. GLM-5.3 routes expose Low, High, and Max (default Max) and do not offer Off. Other
+          LarpRouter models use their advertised capabilities or stay on Provider default. The
+          separate <strong>Thinking &amp; activity</strong> panel appears in an assistant reply when
+          the provider streams reasoning or DeepSpace has activity to show; click its heading to
+          expand or collapse it.
+        </p>
       </DocsSection>
       <DocsSection title="Provider health and conversation details">
         <p>
@@ -145,22 +153,24 @@ export default function DeepSpaceDocsPage() {
           checks that attached files belong to your account and conversation before using them.
         </p>
         <p>
-          Images are sent directly to the model only when that model supports image input. If it
-          does not, DeepSpace uses the text saved by upload-time extraction or OCR when available.
-          If a model explicitly rejects an image, DeepSpace retries once without the image and uses
-          saved OCR text. If visual input is unavailable and extraction found no readable text, the
-          attachment shows that status and the assistant is told not to guess. Very large image sets
-          may be limited.
+          DeepSpace checks the selected provider and model&apos;s saved capabilities before sending
+          a prompt. Supported images go directly to a model with image input. For text-only or
+          unknown models, DeepSpace uses saved Library OCR or runs its bounded Library extractor
+          when extraction is still pending; the original image bytes are not sent to that model. If
+          a provider explicitly rejects image input before returning output, DeepSpace retries once
+          with OCR text. When OCR is unavailable or finds no readable text, DeepSpace reports the
+          limitation and does not infer the image&apos;s contents. Very large image sets may be
+          limited.
         </p>
         <p>
-          An attachment becomes ready as soon as its private file is stored. Text extraction and OCR
-          then continue in the background; the composer shows “Uploaded · reading text” while that
-          work is pending. Supported images can be sent to a model with visual input before OCR
-          finishes. For other files, DeepSpace reports pending extraction instead of treating
-          missing text as proof that the file is empty. When processing finishes, the attachment
-          shows whether text was extracted, OCR was used, no readable text was found, or extraction
-          was unavailable. Short whole-file reads use saved text directly; targeted questions and
-          large documents can use document search.
+          An attachment becomes ready as soon as its private file is stored and appears under your
+          sent message immediately. Text extraction and OCR continue in the background; the composer
+          shows “Uploaded · reading text” while that work is pending. Supported images can be sent
+          to a model with visual input before OCR finishes. For other files, DeepSpace reports
+          pending extraction instead of treating missing text as proof that the file is empty. When
+          processing finishes, it shows whether text was extracted, OCR was used, no readable text
+          was found, or extraction was unavailable. Short whole-file reads use saved text directly;
+          targeted questions and large documents can use document search.
         </p>
       </DocsSection>
       <DocsSection title="Rich answers, charts, and diagrams">
@@ -191,9 +201,46 @@ export default function DeepSpaceDocsPage() {
           structured controls that regenerate the Mermaid source. Use a <code>card</code> fence for
           a finding, recommendation, source, or media summary; cards can contain safe Markdown,
           metrics, an approved image URL, a source link, copy/download controls, and explicit
-          actions. External URLs must come from an authorized search or read result. Card tones are
-          info, success, warning, error, or neutral; common model labels such as positive and
-          caution are normalized automatically. Raw HTML and scripts are not rendered.
+          actions. Use <code>layout: &quot;feature&quot;</code> for a larger image or logo card, or{" "}
+          <code>layout: &quot;place&quot;</code> for source-linked place details with an optional
+          photo. Place details and images must come from authorized search or read results.
+          DeepSpace verifies page-declared photos through image reading; unavailable hours, contact
+          details, or photos are omitted rather than guessed. Cards also support a bounded set of
+          named icons; common detail labels such as address, hours, and email receive a matching
+          icon automatically when one is omitted. Card tones are info, success, warning, error, or
+          neutral; common model labels such as positive and caution are normalized automatically.
+          Raw HTML and scripts are not
+          rendered. In chat, card edits stay open until the revision is saved; validation, conflict,
+          and Library-save failures are shown beside the card controls.
+        </p>
+        <p>
+          Cards also support two data-focused layouts.{" "}
+          <code>layout: &quot;evaluation&quot;</code> displays a bounded{" "}
+          <code>score: &#123;value, max, tone&#125;</code> as an accessible progress bar followed by
+          aligned supporting metrics. <code>layout: &quot;referral&quot;</code> displays a featured{" "}
+          <code>primary_metric</code>, a copyable optional <code>code</code>, and responsive
+          label/value rows for <code>details</code>. Both layouts can include a concise caveat in{" "}
+          <code>content</code> and show supplied HTTP(S) source links as badges. Evaluation cards
+          need a score and at least one metric; referral cards need a primary metric and at least one
+          detail row.
+        </p>
+        <p>
+          An <code>infographic</code> fence creates a responsive visual explainer with a selected
+          layout: <code>steps</code>, <code>timeline</code>, <code>comparison</code>,{" "}
+          <code>feature_grid</code>, or <code>stats</code>. Each layout validates its required
+          fields, uses allowlisted icons, and shows supplied source links. A complete visual fence
+          can appear while later answer text is still streaming. DeepSpace chooses among these,
+          cards, charts, diagrams, and normal Markdown based on the request and available evidence.
+          Process infographics can set <code>direction</code> to <code>LR</code>, <code>RL</code>,{" "}
+          <code>TD</code>, or <code>DT</code>; it defaults to left-to-right and adapts to narrow
+          screens. Use vertical directions when step descriptions need more room. Invalid or
+          incomplete infographic data stays readable as code instead of breaking the answer.
+          Infographics remain editable when inserted into workspace notes and can be saved as
+          revisioned visual artifacts. Timeline labels support up to 300 characters; keep the date
+          or period short and put its explanation in the item description. In edit mode,
+          <strong>Save changes</strong> updates the conversation, while{" "}
+          <strong>Save to Library</strong> commits the current draft and stores it as a reusable
+          artifact.
         </p>
         <p>
           A <code>graph</code> fence opens the portable canvas editor: nodes can be moved and
@@ -210,13 +257,17 @@ export default function DeepSpaceDocsPage() {
           scheduled storage cleanup. Visual revisions update the authenticated message and active
           note. If a visual is saved as a Library artifact, later chat, note, or artifact edits
           advance its version and synchronize the revision to the linked views. Delayed note
-          refreshes preserve the latest saved visual revision; conflicting edits from another
-          session are reported so the note can be reloaded. Providers may use a generic
+          refreshes preserve the latest saved visual revision. If a chat visual changes in another
+          session while you edit it, DeepSpace keeps your draft open and refreshes its revision;
+          save again to apply your edit to the latest version. Library files keep their own version
+          guard. Providers may use a generic
           <code>json</code> fence for these same payloads; DeepSpace recognizes unambiguous card,
-          chart, graph, and gallery JSON automatically. Invalid visual JSON is kept as plain code
-          instead of being executed. A missing image or non-image URL shows a recoverable fallback
-          and does not terminate the answer. JSON, SVG, PNG, and PDF exports are available for
-          visual blocks; gallery SVG/PNG exports embed owned images when available and show a
+          chart, graph, infographic, and gallery JSON automatically. Invalid visual JSON is kept as
+          plain code instead of being executed. DeepSpace repairs a mismatched outer fence around
+          valid visual JSON and a shortened closing fence after a recognizable Mermaid diagram, so
+          following prose remains readable. A missing image or non-image URL shows a recoverable
+          fallback and does not terminate the answer. JSON, SVG, PNG, and PDF exports are available
+          for visual blocks; gallery SVG/PNG exports embed owned images when available and show a
           placeholder for a missing image. PNG/PDF export strips external SVG resources before
           rasterization; if a browser still blocks rasterization, the error is shown inline instead
           of escaping as an exception. Saved rich blocks in notes are restored as rendered visuals
@@ -224,11 +275,13 @@ export default function DeepSpaceDocsPage() {
           code.
         </p>
         <p>
-          Tables include copy and CSV/XLSX export controls. In DeepSpace, with a conversation open,
-          choose <strong>Save to Library</strong> to store a table as a private, versioned visual
-          artifact that can be reopened from the Library. If clipboard access is blocked, DeepSpace
-          tries a browser fallback and shows an error if copying still cannot complete. Export and
-          Library-save failures are also reported beside the table controls.
+          Markdown tables show a copy button, <strong>Save to Library</strong>, and an{" "}
+          <strong>Export</strong> menu above the table when you hover it or focus the controls with
+          the keyboard. Export offers CSV and XLSX in a floating menu below the Export button. The
+          menu overlays the content without moving the table rows. Saving stores the table as a
+          private, versioned visual artifact. If clipboard access is blocked, DeepSpace tries a
+          browser fallback and shows an error if copying still cannot complete. Export and
+          Library-save failures are reported beside the controls.
         </p>
         <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-6">
           <code>{`\`\`\`chart
@@ -259,6 +312,13 @@ export default function DeepSpaceDocsPage() {
           came before that reply. If the browser reconnects or the app is reopened, the response
           continues from its saved event stream. A queued regeneration can be canceled, but its
           source prompt cannot be edited.
+        </p>
+        <p>
+          Use <strong>Edit</strong> on the latest completed prompt to revise it and regenerate its
+          reply. DeepSpace saves each prompt revision and queues each generation with the
+          conversation, preserving the earlier prompt and reply versions. You can edit and submit
+          that same prompt again after each generation finishes. Older prompts, active turns, and
+          prompts with pending queue work cannot be edited.
         </p>
         <p>
           The message field grows with multiline text up to five visible rows; longer drafts scroll

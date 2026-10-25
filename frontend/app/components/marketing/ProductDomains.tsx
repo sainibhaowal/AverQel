@@ -69,6 +69,7 @@ const supportedProviderCatalog = [
   { providerType: "google", label: "Google" },
   { providerType: "groq", label: "Groq" },
   { providerType: "groq-openai-compatible", label: "Groq OpenAI-Compatible" },
+  { providerType: "larprouter", label: "LarpRouter" },
   { providerType: "lmstudio", label: "LM Studio" },
   { providerType: "manus", label: "Manus Agent API" },
   { providerType: "meta", label: "Meta AI" },

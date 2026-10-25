@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import pytest
+import yaml
+
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.unit_no_db
 
 
 def _read(path: Path) -> str:
@@ -47,6 +52,17 @@ def test_semantic_release_is_manual_and_does_not_deploy() -> None:
     assert "docker build" not in workflow
 
 
+def test_release_validates_packages_before_creating_the_tag() -> None:
+    workflow = _read(ROOT / ".github/workflows/release-semantic.yml")
+
+    assert workflow.count('python3 - "$PACKAGE_PATH" "$APPSTREAM_PATH"') == 1
+    assert (
+        workflow.index("Create checksummed release assets and manifest")
+        < workflow.index("Create or verify release tag")
+        < workflow.index("Create GitHub release with desktop downloads")
+    )
+
+
 def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
     assert "workflow_dispatch:" in workflow
@@ -64,6 +80,133 @@ def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     assert "MODELS_DIR" in workflow
     assert "Keep the previous release image so rollback is immediate." in workflow
     assert "AVERQEL_IMAGE_TAG" in workflow
+
+
+def test_vps_secret_validation_uses_environment_values() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    validation_step = workflow.split("- name: Validate deployment secrets", 1)[1].split(
+        "- name: Validate SSH private-key format", 1
+    )[0]
+
+    assert "VPS_HOST: ${{ secrets.VPS_HOST }}" in validation_step
+    assert 'test -n "${VPS_HOST:-}"' in validation_step
+    assert "${{ secrets.VPS_HOST }}" not in validation_step.split("run: |", 1)[1]
+    assert "${{ secrets.VPS_SSH_KEY }}" not in validation_step.split("run: |", 1)[1]
+
+
+def test_vps_deployment_rejects_stale_main_commits() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+
+    assert 'MAIN_SHA="$(git rev-parse FETCH_HEAD)"' in workflow
+    assert 'if [[ "$SHA" != "$MAIN_SHA" ]]' in workflow
+    assert "re-running this older run would deploy stale frontend code" in workflow
+    assert "Recheck main immediately before deployment" in workflow
+    assert 'CURRENT_MAIN_SHA="$(git rev-parse FETCH_HEAD)"' in workflow
+    assert 'if [[ "$CURRENT_MAIN_SHA" != "$EXPECTED_SHA" ]]' in workflow
+    assert (
+        workflow.index("Publish tested images to GHCR")
+        < workflow.index("Recheck main immediately before deployment")
+        < workflow.index("SSH deploy without touching VPS-owned files")
+    )
+    assert 'BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"' in workflow
+    assert "build_timestamp: ${{ steps.resolve.outputs.build_timestamp }}" in workflow
+
+
+def test_vps_frontend_image_version_and_revision_are_verified() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+
+    assert "GIT_VERSION=${{ needs.resolve-source.outputs.release_version }}" in workflow
+    assert "GIT_SHA=${{ needs.resolve-source.outputs.sha }}" in workflow
+    assert "org.opencontainers.image.revision" in workflow
+    assert "/app/.next/server /app/.next/static" in workflow
+    assert "docker inspect averqel-frontend --format" in workflow
+    assert "Frontend is running $RUNNING_FRONTEND_VERSION from $RUNNING_FRONTEND_SHA" in workflow
+    assert 'PUBLIC_FRONTEND_RESPONSE="$(curl --fail --location' in workflow
+    assert 'grep -Fq "$VERSION" <<< "$PUBLIC_FRONTEND_RESPONSE"' in workflow
+    assert 'grep -Fq "${SHA:0:7}" <<< "$PUBLIC_FRONTEND_RESPONSE"' in workflow
+    assert 'SKIP_ROLLBACK="1"' in workflow
+    assert "Built frontend served its homepage successfully" in workflow
+    assert "did not serve its homepage within 60 seconds" in workflow
+    assert "--publish 127.0.0.1::1030" in workflow
+
+
+def test_frontend_readiness_is_checked_before_compose_wait_completes() -> None:
+    compose = yaml.load(_read(ROOT / "backend/docker-compose.prod.yml"), Loader=yaml.BaseLoader)
+    frontend = compose["services"]["frontend"]
+    healthcheck = frontend["healthcheck"]
+
+    assert healthcheck["test"][0:3] == ["CMD", "node", "-e"]
+    assert "http://127.0.0.1:1030/" in healthcheck["test"][3]
+    assert "GET / returned HTTP " in healthcheck["test"][3]
+    assert "GET / failed: " in healthcheck["test"][3]
+    assert healthcheck["start_period"] == "30s"
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    assert "compose up -d --no-build --wait --wait-timeout 180\n" in workflow
+
+
+def test_failed_frontend_health_and_failed_rollback_are_reported() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    deploy_script = workflow.split("script: |", 1)[1]
+
+    assert 'report_frontend_health "before rollback"' in deploy_script
+    assert "State.Health.Log" in deploy_script
+    assert "oom_killed={{.State.OOMKilled}}" in deploy_script
+    assert "Automatic rollback did not restore a healthy release" in deploy_script
+    assert 'report_frontend_health "after failed rollback"' in deploy_script
+    assert deploy_script.index('report_frontend_health "before rollback"') < deploy_script.index(
+        "Deployment failed; restoring previous release"
+    )
+
+
+def test_cleanup_happens_after_public_health_checks_without_prune_commands() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    deploy_script = workflow.split("script: |", 1)[1]
+
+    assert (
+        deploy_script.index("PUBLIC_FRONTEND_RESPONSE=")
+        < deploy_script.index("--remove-orphans")
+        < deploy_script.index("docker image rm")
+    )
+    for forbidden in (
+        "docker system prune",
+        "docker builder prune",
+        "docker image prune",
+        "docker volume prune",
+    ):
+        assert forbidden not in deploy_script
+
+
+def test_vps_deployment_shell_scripts_parse() -> None:
+    workflow = yaml.load(_read(ROOT / ".github/workflows/deploy-vps.yml"), Loader=yaml.BaseLoader)
+    steps = [
+        *workflow["jobs"]["resolve-source"]["steps"],
+        *workflow["jobs"]["build-and-test-images"]["steps"],
+        *workflow["jobs"]["deploy-vps"]["steps"],
+    ]
+    scripts = [
+        step["run"]
+        for step in steps
+        if step.get("name")
+        in {
+            "Resolve current main version and build metadata",
+            "Smoke-test built image contents",
+            "Recheck main immediately before deployment",
+        }
+    ]
+    scripts.append(
+        next(
+            step["with"]["script"]
+            for step in steps
+            if step.get("name") == "SSH deploy without touching VPS-owned files"
+        )
+    )
+
+    assert len(scripts) == 4
+    for script in scripts:
+        result = subprocess.run(
+            ["bash", "-n"], input=script, capture_output=True, check=False, text=True
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_vps_trivy_scans_do_not_contend_for_a_shared_cache() -> None:

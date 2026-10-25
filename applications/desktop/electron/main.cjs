@@ -8,6 +8,7 @@ const {
 } = require("electron");
 const path = require("node:path");
 const { registerAppLifecycle } = require("./app-lifecycle.cjs");
+const { loginUrlForOrigin } = require("./initial-url.cjs");
 const {
   createOAuthWindow,
   interceptOAuthStartNavigation,
@@ -161,7 +162,7 @@ function createWindow() {
     mainWindow = null;
   });
 
-  void mainWindow.loadURL(appStartUrl());
+  void mainWindow.loadURL(loginUrlForOrigin(appStartUrl()));
 }
 
 function showWindow() {

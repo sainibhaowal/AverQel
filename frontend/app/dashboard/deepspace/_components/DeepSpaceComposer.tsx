@@ -29,10 +29,12 @@ import {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import type { DeepSpaceMessageAttachment } from "../_lib/deepspace-stream";
 import { formatReasoningEffortLabel, isValidReasoningEffort } from "../_lib/reasoning-options";
 import type { TaskProgress } from "../_lib/task-progress";
 import DeepSpaceTaskPlanDrawer from "./DeepSpaceTaskPlanDrawer";
 import DeepSpaceLiveOutputRate from "./DeepSpaceLiveOutputRate";
+import DeepSpaceVoicePresence from "./DeepSpaceVoicePresence";
 
 type ReasoningEffort = string;
 
@@ -44,7 +46,7 @@ interface DeepSpaceComposerProps {
   stopping?: boolean;
   taskProgress?: TaskProgress | null;
   onQueryChange: (value: string) => void;
-  onSubmit: (attachmentFileIds?: string[]) => void;
+  onSubmit: (attachments?: DeepSpaceMessageAttachment[]) => void;
   editingQueuedTurnId?: string | null;
   onEditQueuedTurn?: (clientRequestId: string) => void;
   onCancelQueueEdit?: () => void;
@@ -86,9 +88,12 @@ interface DeepSpaceComposerProps {
     reasoningCapabilitiesKnown?: boolean;
     reasoningToggleOnly?: boolean;
     reasoningAlwaysOn?: boolean;
+    defaultReasoningEffort?: string;
+    reasoningEffortValues?: Record<string, string>;
   }>;
   onModelSelect?: (providerId: string, modelName: string) => void;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
+  voiceActivityLevel?: number;
   contextUsedTokens?: number | null;
   contextLimit?: number | null;
   contextRemainingTokens?: number | null;
@@ -139,8 +144,13 @@ interface DeepSpaceComposerProps {
   } | null;
   tokenCategorySource?: string | null;
   sttActive?: boolean;
+  dictationSessionOpen?: boolean;
+  dictationControlPending?: boolean;
+  dictationElapsedSeconds?: number;
   ttsActive?: boolean;
   onSttToggle?: () => void;
+  onDictationPause?: () => void;
+  onDictationFinish?: () => void;
   onTtsToggle?: () => void;
   voiceLabel?: string;
   runtimePhase?: DeepSpaceRuntimePhase;
@@ -235,6 +245,13 @@ function StopIcon() {
   return <Square className="h-4 w-4 fill-current" strokeWidth={2.5} />;
 }
 
+function formatDictationElapsed(seconds: number) {
+  const boundedSeconds = Math.max(0, Math.min(600, Math.floor(seconds)));
+  const minutes = Math.floor(boundedSeconds / 60);
+  const remainingSeconds = boundedSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 export default function DeepSpaceComposer({
   conversationId,
   query,
@@ -269,6 +286,7 @@ export default function DeepSpaceComposer({
   availableModels = [],
   onModelSelect,
   voiceState = "idle",
+  voiceActivityLevel = 0,
   contextUsedTokens = null,
   contextLimit = null,
   contextRemainingTokens = null,
@@ -305,8 +323,13 @@ export default function DeepSpaceComposer({
   providerTurnUsage = null,
   tokenCategorySource = null,
   sttActive = false,
+  dictationSessionOpen = false,
+  dictationControlPending = false,
+  dictationElapsedSeconds = 0,
   ttsActive = false,
   onSttToggle,
+  onDictationPause,
+  onDictationFinish,
   onTtsToggle,
   voiceLabel = "",
   runtimePhase = "idle",
@@ -446,12 +469,14 @@ export default function DeepSpaceComposer({
             name: file.name,
             size_bytes: file.size,
             content_type: file.type || "application/octet-stream",
+            rename_on_conflict: true,
           }),
           timeoutMs: 15_000,
         })) as Response;
         if (!created.ok) throw new Error("Library could not accept this file.");
         let upload = (await created.json()) as {
           id: string;
+          name?: string;
           chunk_size: number;
           total_chunks: number;
           received_chunks: number[];
@@ -512,6 +537,7 @@ export default function DeepSpaceComposer({
               ? {
                   ...item,
                   id: upload.file_id!,
+                  name: upload.name || item.name,
                   status: "ready",
                   extractionStatus: upload.extraction_status ?? null,
                 }
@@ -632,7 +658,14 @@ export default function DeepSpaceComposer({
       await onSaveQueueEdit?.(editingQueuedTurnId, query);
       return;
     }
-    onSubmit(ready.map((item) => item.id));
+    onSubmit(
+      ready.map((item) => ({
+        id: item.id,
+        name: item.name,
+        content_type: item.type || "application/octet-stream",
+        size_bytes: item.size,
+      })),
+    );
     setAttachments([]);
   };
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -783,7 +816,8 @@ export default function DeepSpaceComposer({
       ? [...(selectedModelMetadata.reasoningAlwaysOn ? [] : [null]), ...advertisedEfforts]
       : [null];
   if (reasoningOptions.length === 0) reasoningOptions.push(null);
-  const formatReasoningEffort = formatReasoningEffortLabel;
+  const formatReasoningEffort = (effort: ReasoningEffort) =>
+    formatReasoningEffortLabel(effort, selectedModelMetadata?.reasoningEffortValues?.[effort]);
   const effortColor = (effort: ReasoningEffort | null) =>
     effort === "low"
       ? "bg-emerald-400"
@@ -1783,18 +1817,29 @@ export default function DeepSpaceComposer({
               </div>
 
               {/* Direct Voice Integration Controls */}
-              <div className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md">
+              <div
+                className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md"
+                data-testid="deepspace-voice-controls"
+              >
                 {/* Dictation stays in the composer for review before sending. */}
                 <div className="group relative">
                   <button
                     type="button"
-                    onClick={onSttToggle}
+                    onClick={dictationSessionOpen && sttActive ? onDictationPause : onSttToggle}
+                    disabled={dictationControlPending}
                     className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
                       sttActive
                         ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
-                    aria-label="Dictate to composer"
+                    aria-label={
+                      dictationSessionOpen
+                        ? sttActive
+                          ? "Pause dictation"
+                          : "Resume dictation"
+                        : "Dictate to composer"
+                    }
+                    aria-pressed={sttActive}
                   >
                     {sttActive ? (
                       <Mic
@@ -1807,7 +1852,11 @@ export default function DeepSpaceComposer({
                   </button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
-                      Dictate to composer
+                      {dictationSessionOpen
+                        ? sttActive
+                          ? "Pause dictation"
+                          : "Resume dictation"
+                        : "Dictate to composer"}
                     </div>
                   </div>
                 </div>
@@ -1823,6 +1872,7 @@ export default function DeepSpaceComposer({
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
                     aria-label="Voice conversation"
+                    aria-pressed={ttsActive}
                   >
                     {ttsActive ? (
                       <Volume2
@@ -1839,11 +1889,37 @@ export default function DeepSpaceComposer({
                     </div>
                   </div>
                 </div>
+
+                {dictationSessionOpen && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onDictationFinish}
+                      disabled={dictationControlPending}
+                      className="flex h-7 w-7 items-center justify-center rounded-[0.35rem] text-emerald-300 transition-colors hover:bg-emerald-400/10 hover:text-emerald-200"
+                      aria-label="Finish dictation"
+                      title="Finish dictation"
+                    >
+                      <Check size={13} />
+                    </button>
+                  </>
+                )}
+
+                <DeepSpaceVoicePresence state={voiceState} activityLevel={voiceActivityLevel} />
               </div>
 
-              {(sttActive || ttsActive) && voiceLabel && (
-                <span className="ml-0.5 max-w-[140px] animate-pulse truncate text-[10px] font-semibold tracking-wide text-white/45">
+              {voiceLabel && (
+                <span className="ml-0.5 max-w-[120px] truncate text-[10px] font-semibold tracking-wide text-white/45">
                   {voiceLabel}
+                </span>
+              )}
+              {dictationSessionOpen && (
+                <span
+                  className="shrink-0 text-[9px] text-white/40 tabular-nums"
+                  aria-label={`Dictation time ${formatDictationElapsed(dictationElapsedSeconds)} of 10:00`}
+                  data-testid="dictation-elapsed"
+                >
+                  {formatDictationElapsed(dictationElapsedSeconds)} / 10:00
                 </span>
               )}
             </div>

@@ -10,6 +10,8 @@ import { BlockNoteView, darkDefaultTheme, lightDefaultTheme } from "@blocknote/m
 import "@blocknote/mantine/style.css";
 import { forwardRef, useImperativeHandle, useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
+  Check,
   FileEdit,
   Sigma,
   Download,
@@ -33,7 +35,7 @@ import { MathBlock } from "./MathBlock";
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import { RICH_CONTENT_SLASH_ITEMS, RichContentBlock } from "./RichContentBlock";
 
-const RICH_CONTENT_KINDS = new Set(["chart", "card", "mermaid", "graph", "gallery"]);
+const RICH_CONTENT_KINDS = new Set(["chart", "card", "mermaid", "graph", "gallery", "infographic"]);
 
 async function parseNoteHtml<TBlock>(
   editor: { tryParseHTMLToBlocks: (html: string) => TBlock[] },
@@ -96,7 +98,8 @@ export interface DeepSpaceEditorProps {
   initialContent?: string;
   onChange?: (html: string) => void;
   conversationId?: string;
-  isSaving?: boolean;
+  saveStatus?: "idle" | "saving" | "saved" | "local" | "failed";
+  onRetrySave?: () => void;
   onCollapseChat?: () => void;
   chatVisible?: boolean;
   showCollapseControls?: boolean;
@@ -189,7 +192,8 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       initialContent = "",
       onChange,
       conversationId,
-      isSaving,
+      saveStatus = "idle",
+      onRetrySave,
       onCollapseChat,
       chatVisible,
       showCollapseControls = true,
@@ -226,7 +230,10 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       // protocol registration after linkifyjs has already initialized.
       disableExtensions: ["link"],
       _tiptapOptions: {
-        extensions: [Link.configure({ protocols: [] })],
+        // Match BlockNote's default link priority. Tiptap's standalone Link
+        // uses priority 1000, which puts links before styled marks; BlockNote
+        // appends the link mark after text styles when rebuilding blocks.
+        extensions: [Link.extend({ priority: 100 }).configure({ protocols: [] })],
       },
     });
     const loadedConversationIdRef = useRef<string | undefined>(undefined);
@@ -281,7 +288,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       insertMarkdown: async (markdown: string) => {
         // Preserve rich Markdown as native, editable BlockNote blocks instead
         // of leaving chart/card/diagram fences as inert code blocks.
-        const richFence = /```(chart|card|mermaid|graph|gallery)\s*\n([\s\S]*?)\n```/gi;
+        const richFence = /```(chart|card|mermaid|graph|gallery|infographic)\s*\n([\s\S]*?)\n```/gi;
         let cursor = 0;
         let match: RegExpExecArray | null;
         while ((match = richFence.exec(markdown)) !== null) {
@@ -447,12 +454,46 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
             <div className="border-glass-border bg-surface-2 text-primary mx-1 flex h-9 w-9 items-center justify-center rounded-xl border shadow-inner">
               <FileEdit size={16} />
             </div>
-            {isSaving && (
-              <div className="animate-in fade-in slide-in-from-left-2 flex items-center gap-2 px-3 py-1 duration-300">
-                <Loader2 size={12} className="text-primary animate-spin" />
-                <span className="text-primary/60 text-[10px] font-bold tracking-wider uppercase">
-                  Saving
+            {saveStatus !== "idle" && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="animate-in fade-in slide-in-from-left-2 flex items-center gap-2 px-3 py-1 duration-300"
+                data-testid="deepspace-note-save-status"
+              >
+                {saveStatus === "saving" ? (
+                  <Loader2 size={12} className="text-primary animate-spin" />
+                ) : saveStatus === "saved" ? (
+                  <Check size={12} className="text-emerald-400" />
+                ) : (
+                  <AlertTriangle size={12} className="text-amber-400" />
+                )}
+                <span
+                  className={`text-[10px] font-bold tracking-wider uppercase ${
+                    saveStatus === "saved"
+                      ? "text-emerald-400/80"
+                      : saveStatus === "saving"
+                        ? "text-primary/60"
+                        : "text-amber-300/90"
+                  }`}
+                >
+                  {saveStatus === "saving"
+                    ? "Saving"
+                    : saveStatus === "saved"
+                      ? "Saved"
+                      : saveStatus === "local"
+                        ? "Saved on this tab"
+                        : "Save failed"}
                 </span>
+                {(saveStatus === "local" || saveStatus === "failed") && onRetrySave ? (
+                  <button
+                    type="button"
+                    onClick={onRetrySave}
+                    className="text-primary hover:text-primary/80 rounded px-1 text-[10px] font-semibold underline underline-offset-2"
+                  >
+                    Retry
+                  </button>
+                ) : null}
               </div>
             )}
           </div>

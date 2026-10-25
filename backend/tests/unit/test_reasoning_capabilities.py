@@ -55,6 +55,26 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert not model_supports_reasoning("deepseek", "deepseek-chat")
 
 
+def test_larprouter_reasoning_profiles_match_verified_routes_only() -> None:
+    deepseek = resolve_reasoning_profile("larprouter", "deepseek-v4.1-flash")
+    glm = resolve_reasoning_profile("larprouter", "glm-5.3-flash")
+    unknown = resolve_reasoning_profile("larprouter", "vendor/unknown-reasoner")
+
+    assert deepseek.supported_reasoning_efforts == ("low", "high", "extreme_high")
+    assert deepseek.default_reasoning_effort == "high"
+    assert deepseek.to_dict()["reasoning_effort_values"]["extreme_high"] == "max"
+    assert deepseek.request_controls_on == ("thinking_enabled", "reasoning_effort")
+    assert deepseek.request_controls_off == ("thinking_disabled",)
+
+    assert glm.supported_reasoning_efforts == ("low", "high", "extreme_high")
+    assert glm.default_reasoning_effort == "extreme_high"
+    assert glm.to_dict()["reasoning_effort_values"]["extreme_high"] == "max"
+    assert glm.supports_thinking_toggle is False
+    assert glm.request_controls_off == ()
+
+    assert unknown.to_dict()["reasoning_capabilities_known"] is False
+
+
 def test_deepseek_protocol_detection_covers_direct_and_gateway_routes() -> None:
     assert uses_deepseek_reasoning_protocol("deepseek", "reasoner")
     assert uses_deepseek_reasoning_protocol("openrouter", "deepseek/deepseek-chat")
@@ -176,6 +196,32 @@ def test_provider_model_response_repairs_stale_cached_reasoning_profile() -> Non
 
     assert response.capabilities_json["reasoning_capabilities_known"] is True
     assert response.capabilities_json["supported_reasoning_efforts"] == ["medium", "high"]
+
+
+def test_larprouter_cached_model_response_includes_verified_effort_defaults() -> None:
+    row = SimpleNamespace(
+        id=UUID("9b96f146-c9ca-48e4-a287-ed8ad1152d6c"),
+        provider_config_id=UUID("8d224f0e-1150-4d57-8f84-80def800e041"),
+        model_name="glm-5.3-flash",
+        model_kind="chat",
+        display_name=None,
+        context_window=None,
+        capabilities_json={"reasoning_capabilities_known": False},
+        is_available=True,
+        last_seen_at=None,
+    )
+
+    response = _model_response(row, provider_type="larprouter")
+
+    assert response.capabilities_json["reasoning_capabilities_known"] is True
+    assert response.capabilities_json["supported_reasoning_efforts"] == [
+        "low",
+        "high",
+        "extreme_high",
+    ]
+    assert response.capabilities_json["default_reasoning_effort"] == "extreme_high"
+    assert response.capabilities_json["reasoning_effort_values"]["extreme_high"] == "max"
+    assert response.capabilities_json["request_controls_off"] == []
 
 
 def test_provider_model_response_includes_uncached_default_model_profile() -> None:

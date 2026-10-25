@@ -66,6 +66,28 @@ _EXTRACTABLE_CONTENT_TYPES = {
 }
 
 
+def unique_library_filename(filename: str, reserved_names: set[str]) -> str:
+    """Return a readable, bounded filename that does not collide in a folder."""
+    if filename not in reserved_names:
+        return filename
+
+    stem, separator, extension = filename.rpartition(".")
+    if not separator or not stem:
+        stem, extension = filename, ""
+    else:
+        extension = f".{extension}"
+
+    suffix_number = 2
+    while True:
+        suffix = f" ({suffix_number})"
+        bounded_extension = extension[: max(0, 255 - len(suffix) - 1)]
+        available_stem_length = max(1, 255 - len(suffix) - len(bounded_extension))
+        candidate = f"{stem[:available_stem_length]}{suffix}{bounded_extension}"
+        if candidate not in reserved_names:
+            return candidate
+        suffix_number += 1
+
+
 def _bounded_extraction_payload(payload: bytes, content_type: str) -> bytes:
     """Take a UTF-8-friendly preview for large tabular/data files only."""
     if (

@@ -42,6 +42,7 @@ class URLReadResult:
     section_headings: list[str] | None = None
     tables: list[list[list[str]]] | None = None
     retrieval_method: str = "static"
+    image_urls: list[str] | None = None
 
 
 def _clean_text(value: object, limit: int = MAX_TEXT_CHARS) -> str:
@@ -197,6 +198,7 @@ def read_url(
     section_headings: list[str] = []
     tables: list[list[list[str]]] = []
     links: list[str] = []
+    image_urls: list[str] = []
     if content_type in {"text/html", "application/xhtml+xml"}:
         from bs4 import BeautifulSoup
         from bs4.element import Tag
@@ -218,6 +220,21 @@ def read_url(
         author = meta("author", "article:author")
         published_at = meta("article:published_time", "date", "datePublished", "publish-date")
         modified_at = meta("article:modified_time", "dateModified", "last-modified")
+        for image_reference in ("og:image", "og:image:url", "twitter:image"):
+            image_value = meta(image_reference)
+            if not image_value:
+                continue
+            try:
+                image_url = validate_public_url(
+                    urljoin(final_url, image_value),
+                    allowed_domains=allowed_domains,
+                )
+            except ProviderRequestError:
+                continue
+            if image_url not in image_urls:
+                image_urls.append(image_url)
+            if len(image_urls) == 3:
+                break
         canonical = soup.find("link", attrs={"rel": "canonical"})
         if isinstance(canonical, Tag) and isinstance(canonical.get("href"), str):
             canonical_url = urljoin(final_url, str(canonical.get("href")))
@@ -264,6 +281,7 @@ def read_url(
         canonical_url,
         section_headings,
         tables,
+        image_urls=image_urls,
     )
 
 

@@ -26,12 +26,33 @@ export default function EditorFilesDocsPage() {
       <DocsSection title="What the editor actually supports">
         <ul className="list-disc space-y-2 pl-6">
           <li>rich block editing for working notes and generated drafts</li>
+          <li>combined inline formatting and hyperlinks in saved notes</li>
           <li>markdown insertion from chat output</li>
           <li>HTML import and lossy HTML/Markdown export</li>
           <li>custom slash-menu insertion for math equations</li>
-          <li>safe note autosave and durable draft history</li>
+          <li>server autosave with recovery for pending drafts in the current tab</li>
           <li>panel switching between chat, notes, split, and memory-oriented views</li>
         </ul>
+      </DocsSection>
+
+      <DocsSection title="Note saving and draft recovery">
+        <p>
+          Note edits are copied to temporary storage in the current browser tab immediately, then
+          autosaved to the note&apos;s authoritative storage after you pause typing. The editor
+          shows <strong>Saving</strong> while the write is pending and <strong>Saved</strong> only
+          after that storage confirms it. If the storage client or server cannot confirm the save,
+          the toolbar says <strong>Saved on this tab</strong> when a recovery copy is available, and
+          offers a retry.
+        </p>
+        <p>
+          Pending drafts are restored when you reopen the note in the same tab, including after a
+          refresh or sign-in flow. If the saved conversation changed since the draft was made, the
+          editor asks whether to restore the local draft or discard it; it never silently replaces
+          the newer saved version. If a newer recovery copy exists than the connected device&apos;s
+          note, DeepSpace opens that copy and restores it on the next confirmed edit if the note has
+          not changed in the meantime. Tab recovery is device- and tab-specific, so wait for{" "}
+          <strong>Saved</strong> before closing the tab or switching devices.
+        </p>
       </DocsSection>
 
       <DocsSection title="Why this matters">

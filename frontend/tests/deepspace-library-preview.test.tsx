@@ -1,8 +1,10 @@
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
   CSV_PREVIEW_MAX_COLUMNS,
   CSV_PREVIEW_MAX_ROWS,
+  LibraryPreview,
   parseCsvPreview,
 } from "@/app/dashboard/deepspace/_components/DeepSpaceLibraryPreview";
 
@@ -26,5 +28,22 @@ describe("DeepSpace Library CSV preview", () => {
     const preview = parseCsvPreview(csv);
 
     expect(preview.rows[0]).toHaveLength(CSV_PREVIEW_MAX_COLUMNS);
+  });
+
+  it("renders a LibreOffice PDF derivative for an Office file", () => {
+    render(
+      <LibraryPreview
+        kind="docx"
+        contentType="application/vnd.oasis.opendocument.text"
+        value=""
+        previewUrl="blob:office-preview"
+        previewContentType="application/pdf"
+      />,
+    );
+
+    expect(screen.getByTitle("Office visual preview")).toHaveAttribute(
+      "src",
+      "blob:office-preview",
+    );
   });
 });

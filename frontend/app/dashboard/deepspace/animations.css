@@ -815,3 +815,38 @@
 .ai-status-no-border {
   border: none !important;
 }
+
+/* Keep the compact voice waveform visibly moving in every active reply state. */
+.deepspace-voice-wave-trace {
+  animation: deepspace-voice-wave-travel 1.25s linear infinite;
+}
+
+.deepspace-voice-wave-trace--second {
+  animation-delay: -0.42s;
+  animation-direction: reverse;
+  animation-duration: 1.55s;
+}
+
+[data-voice-state="thinking"] .deepspace-voice-wave-trace {
+  animation-duration: 1.7s;
+}
+
+[data-voice-state="speaking"] .deepspace-voice-wave-trace {
+  animation-duration: 0.95s;
+}
+
+@keyframes deepspace-voice-wave-travel {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -0.44;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-voice-state] .deepspace-voice-wave-trace {
+    animation-duration: 4s;
+  }
+}

@@ -728,6 +728,7 @@ export function LibraryPreview({
   contentType,
   value,
   previewUrl,
+  previewContentType,
   archiveEntries,
   onArchiveEntrySelect,
   contentTruncated = false,
@@ -738,12 +739,22 @@ export function LibraryPreview({
   contentType: string;
   value: string;
   previewUrl?: string | null;
+  previewContentType?: string | null;
   archiveEntries?: ArchiveEntry[] | null;
   onArchiveEntrySelect?: (entry: ArchiveEntry) => void;
   contentTruncated?: boolean;
   sizeBytes?: number;
   csvPageUrl?: string | null;
 }) {
+  if (previewUrl && previewContentType?.toLowerCase().split(";", 1)[0] === "application/pdf") {
+    return (
+      <iframe
+        title="Office visual preview"
+        src={previewUrl}
+        className="h-full min-h-96 w-full border-0"
+      />
+    );
+  }
   if (kind === "markdown") return <DeepSpaceMarkdownRenderer content={value} />;
   if (kind === "csv")
     return (

@@ -201,6 +201,16 @@ services:
         condition: service_healthy
     expose:
       - "1030"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:1030/').then(response => { console.log('GET / returned HTTP ' + response.status); process.exit(response.ok ? 0 : 1); }).catch(error => { console.error('GET / failed: ' + error.name + ': ' + error.message); process.exit(1); })"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   worker:
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
@@ -337,8 +347,24 @@ services:
       service: worker
     container_name: averqel-ingestion-worker
     environment:
-      AKS_WORKER_QUEUES: ingestion_heavy,ingestion_light
+      AKS_WORKER_QUEUES: ingestion_light
       AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_WORKER_CONCURRENCY:-1}
+    mem_limit: ${AKS_INGESTION_LIGHT_MEMORY_LIMIT:-1g}
+    cpus: ${AKS_INGESTION_LIGHT_CPU_LIMIT:-1.0}
+    pids_limit: 128
+
+  ingestion-heavy-worker:
+    extends:
+      service: worker
+    container_name: averqel-ingestion-heavy-worker
+    environment:
+      AKS_WORKER_QUEUES: ingestion_heavy
+      AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_HEAVY_WORKER_CONCURRENCY:-1}
+    # OCR and office conversion are isolated from lightweight extraction and
+    # have hard container limits so one document cannot consume the whole host.
+    mem_limit: ${AKS_INGESTION_HEAVY_MEMORY_LIMIT:-4g}
+    cpus: ${AKS_INGESTION_HEAVY_CPU_LIMIT:-2.0}
+    pids_limit: ${AKS_INGESTION_HEAVY_PIDS_LIMIT:-256}
 
   library-worker:
     extends:

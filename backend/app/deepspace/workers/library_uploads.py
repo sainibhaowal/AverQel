@@ -13,6 +13,7 @@ from celery import Task
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
+from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.services.dataset_derivatives import (
     DatasetDerivativeService,
@@ -26,6 +27,7 @@ from app.deepspace.services.library_storage import (
 from app.deepspace.services.library_uploads import (
     _bounded_extraction_payload,
     finalize_upload,
+    unique_library_filename,
 )
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
@@ -49,6 +51,8 @@ logger = logging.getLogger(__name__)
 )  # type: ignore[misc]
 def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> str:
     """Assemble and publish a Library file without holding locks during storage I/O."""
+    from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
     settings = get_settings()
     parsed_upload_id = uuid.UUID(upload_id)
     parsed_tenant_id = uuid.UUID(tenant_id)
@@ -74,8 +78,6 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
             completed_file_id = upload.file_id
             db.commit()
             if completed_file_id is not None:
-                from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
-
                 completed_file = db.execute(
                     select(DeepSpaceWorkspaceFile).where(
                         DeepSpaceWorkspaceFile.id == completed_file_id,
@@ -104,6 +106,50 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
             for index in range(total_chunks)
         ]
         payload = b"".join(chunks)
+        upload_metadata = upload.metadata_json if isinstance(upload.metadata_json, dict) else {}
+        if upload_metadata.get("rename_on_conflict"):
+            # Recheck at publication time: another Library write can claim the
+            # reserved name after this upload session was created. Keep this
+            # row lock short and release it before object-storage work.
+            conversation_exists = db.execute(
+                select(Conversation.id)
+                .where(
+                    Conversation.id == upload.conversation_id,
+                    Conversation.tenant_id == upload.tenant_id,
+                    Conversation.user_id == upload.user_id,
+                    Conversation.kind == "deepspace",
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if conversation_exists is None:
+                db.rollback()
+                return "not-found"
+            file_name_query = select(DeepSpaceWorkspaceFile.name).where(
+                DeepSpaceWorkspaceFile.tenant_id == upload.tenant_id,
+                DeepSpaceWorkspaceFile.user_id == upload.user_id,
+                DeepSpaceWorkspaceFile.conversation_id == upload.conversation_id,
+                (
+                    DeepSpaceWorkspaceFile.parent_folder_id.is_(None)
+                    if upload.parent_folder_id is None
+                    else DeepSpaceWorkspaceFile.parent_folder_id == upload.parent_folder_id
+                ),
+            )
+            reserved_names = set(db.execute(file_name_query).scalars().all())
+            active_upload_name_query = select(DeepSpaceLibraryUpload.filename).where(
+                DeepSpaceLibraryUpload.tenant_id == upload.tenant_id,
+                DeepSpaceLibraryUpload.user_id == upload.user_id,
+                DeepSpaceLibraryUpload.conversation_id == upload.conversation_id,
+                DeepSpaceLibraryUpload.id != upload.id,
+                DeepSpaceLibraryUpload.status.in_(("pending", "uploading", "queued", "processing")),
+                (
+                    DeepSpaceLibraryUpload.parent_folder_id.is_(None)
+                    if upload.parent_folder_id is None
+                    else DeepSpaceLibraryUpload.parent_folder_id == upload.parent_folder_id
+                ),
+            )
+            reserved_names.update(db.execute(active_upload_name_query).scalars().all())
+            upload.filename = unique_library_filename(upload.filename, reserved_names)
+            db.commit()
         # File storage is deliberately done without the upload row lock. Slow
         # object storage or extraction must never block cancellation/status API
         # calls on this transaction.

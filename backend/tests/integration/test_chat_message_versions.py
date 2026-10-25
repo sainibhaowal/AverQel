@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -218,11 +220,14 @@ def test_deepspace_visual_block_edit_is_revisioned_and_conflict_checked(
                 "title": "Revenue",
                 "chart_type": "line",
                 "series": [{"label": "Q1", "value": 14}, {"label": "Q2", "value": 28}],
+                # Artifact and chat edits can advance at different rates; keep
+                # the larger visual revision when synchronizing them.
+                "revision": 7,
             },
         },
     )
     assert note_sync.status_code == 200
-    assert note_sync.json()["metadata_json"]["visual_blocks"]["chart-1"]["revision"] == 2
+    assert note_sync.json()["metadata_json"]["visual_blocks"]["chart-1"]["revision"] == 7
 
     artifact = client.post(
         f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
@@ -235,12 +240,31 @@ def test_deepspace_visual_block_edit_is_revisioned_and_conflict_checked(
                 "type": "chart",
                 "chart_type": "line",
                 "series": [{"label": "Q1", "value": 14}, {"label": "Q2", "value": 28}],
-                "revision": 2,
+                "revision": 7,
             },
         },
     )
     assert artifact.status_code == 200
     assert artifact.json()["version"] == 1
+
+    unchanged_artifact = client.post(
+        f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "filename": "chart-1.visual.json",
+            "expected_version": 1,
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "chart_type": "line",
+                "series": [{"label": "Q1", "value": 14}, {"label": "Q2", "value": 28}],
+                "revision": 7,
+            },
+        },
+    )
+    assert unchanged_artifact.status_code == 200
+    assert unchanged_artifact.json()["version"] == 1
 
     artifact_update = client.post(
         f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
@@ -254,7 +278,7 @@ def test_deepspace_visual_block_edit_is_revisioned_and_conflict_checked(
                 "type": "chart",
                 "chart_type": "line",
                 "series": [{"label": "Q1", "value": 15}, {"label": "Q2", "value": 30}],
-                "revision": 3,
+                "revision": 8,
             },
         },
     )
@@ -474,3 +498,97 @@ def test_chat_and_deepspace_conversations_are_private_between_same_tenant_users(
         ).status_code
         == 200
     )
+
+
+def test_deepspace_infographic_edit_is_persisted_and_rewritten(client: TestClient, seed_user):
+    user_data = seed_user(
+        "Infographic Tenant",
+        "infographic@example.com",
+        "password123",
+        ("editor",),
+    )
+    headers = _auth_headers(user_data, roles=("editor",))
+    initial_block = {
+        "id": "infographic-1",
+        "type": "infographic",
+        "title": "Launch steps",
+        "layout": "steps",
+        "items": [
+            {"title": "Research", "icon": "lightbulb"},
+            {"title": "Ship", "icon": "zap"},
+        ],
+        "sources": [{"title": "Launch plan", "url": "https://example.com/plan"}],
+    }
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, user_data.tenant_id)
+        repo = ChatRepository(session)
+        conversation = repo.create_conversation(
+            tenant_id=user_data.tenant_id,
+            user_id=user_data.user_id,
+            title="Visual Chat",
+            kind="deepspace",
+        )
+        message = repo.add_message(
+            tenant_id=user_data.tenant_id,
+            conversation_id=conversation.id,
+            kind="deepspace",
+            role="assistant",
+            content=f"```infographic\n{json.dumps(initial_block)}\n```",
+            metadata_json={"blocks": [initial_block]},
+        )
+        session.commit()
+    finally:
+        session.rollback()
+        session.close()
+
+    updated = client.patch(
+        f"/api/v1/deepspace/chats/{conversation.id}/messages/{message.id}/visual-block",
+        headers=headers,
+        json={
+            "block_id": "infographic-1",
+            "expected_revision": 0,
+            "block": {
+                **initial_block,
+                "items": [
+                    {"title": "Research", "icon": "lightbulb"},
+                    {"title": "Ship safely", "icon": "zap"},
+                ],
+            },
+        },
+    )
+
+    assert updated.status_code == 200
+    payload = updated.json()
+    assert payload["metadata_json"]["visual_blocks"]["infographic-1"]["revision"] == 1
+    assert '"title": "Ship safely"' in payload["content"]
+
+    long_date = (
+        "Setup: " + "prepare dependencies, configure access, and verify the environment. " * 2
+    )
+    timeline = {
+        **initial_block,
+        "layout": "timeline",
+        "items": [
+            {"title": "Prepare", "date": long_date},
+            {"title": "Ship", "date": "Later"},
+        ],
+    }
+    assert len(long_date) > 80
+    timeline_update = client.patch(
+        f"/api/v1/deepspace/chats/{conversation.id}/messages/{message.id}/visual-block",
+        headers=headers,
+        json={"block_id": "infographic-1", "expected_revision": 1, "block": timeline},
+    )
+    assert timeline_update.status_code == 200
+    assert (
+        timeline_update.json()["metadata_json"]["visual_blocks"]["infographic-1"]["revision"] == 2
+    )
+
+    saved_artifact = client.post(
+        f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
+        headers=headers,
+        json={"block_id": "infographic-1", "block": {**timeline, "revision": 2}},
+    )
+    assert saved_artifact.status_code == 200
+    assert saved_artifact.json()["version"] == 1

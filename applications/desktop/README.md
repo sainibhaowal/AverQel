@@ -1,7 +1,7 @@
 # AverQel Electron Desktop
 
 The AverQel desktop client is packaged with Electron and uses the shared Next.js
-frontend. The packaged application opens the production AverQel web origin so
+frontend. The packaged application opens the production AverQel login route so
 OAuth cookies, session refresh, and the web experience remain consistent.
 Google and GitHub sign-in open in a compact child window that shares the
 desktop session. The main AverQel window stays on the login page and returns to
@@ -26,8 +26,9 @@ Run the desktop's database-free source-resolution tests with:
 pnpm --dir applications/desktop test
 ```
 
-By default Electron opens the local frontend at `http://127.0.0.1:1030` and
-uses the local development API configuration. It does not contact the VPS.
+By default Electron opens the local frontend login route at
+`http://127.0.0.1:1030/auth/login` and uses the local development API
+configuration. It does not contact the VPS.
 To use the local HTTPS reverse proxy instead, set both values explicitly:
 
 ```bash

@@ -1,5 +1,291 @@
 # Changelog
 
+## [1.4.1](https://github.com/sainibhaowal/AverQel/compare/v1.4.0...v1.4.1) (2026-10-25)
+
+### Security
+
+- Updated AverQel's LiveKit voice service to a build using Go 1.27.3, addressing
+  a security issue in Go's X.509 certificate handling. LiveKit remains at
+  v1.13.9; voice behavior and settings are unchanged.
+
+No new user-facing features were added in this patch release.
+
+## [1.4.0] — Unreleased
+
+This release builds on `v1.3.4` with safer long-running DeepSpace workflows, a
+user-owned Composio app marketplace, more reliable document processing and
+Query behavior, stronger platform-administration safeguards, and a desktop
+release workflow that packages AverQel independently. This section covers
+changes currently merged to `main`; the release has not been published yet.
+
+**Change range:** [`v1.3.4` through `6a8e336`](https://github.com/sainibhaowal/AverQel/compare/v1.3.4...6a8e3364777826cc9a102b6ef59e8a369dc73e3f), including
+[PR #110](https://github.com/sainibhaowal/AverQel/pull/110) and [PR #111](https://github.com/sainibhaowal/AverQel/pull/111).
+
+### Highlights
+
+- **Connect external apps through Composio.** Browse Composio's live toolkit
+  catalog, inspect available tools, and connect an app account to DeepSpace.
+  Each AverQel user supplies and controls their own Composio project key and
+  external account. Tool policies still apply, and actions that write, delete,
+  or send external messages require explicit approval.
+- **Use Grounded Query more reliably.** Query prompt assembly now preserves
+  literal JSON examples instead of interpreting their braces as template
+  fields, preventing a prompt-construction failure before the provider call.
+  Query file and preview screens also use the shared loading and failure
+  states.
+- **Continue work across longer DeepSpace runs.** Queue and task state,
+  regeneration, activity, provider continuation data, and completed tool
+  results are handled more reliably across pauses, retries, reloads, and
+  cancellation. Recovery avoids repeating external actions that already
+  completed.
+- **Use voice as part of a DeepSpace conversation.** Dictation remains
+  available for review before sending. Voice conversation submits a transcript
+  through the selected DeepSpace chat and speaks new visible answer text while
+  the response streams.
+- **Protect sensitive administrative actions.** Platform administration now
+  applies clearer role and permission checks, session MFA requirements,
+  auditable account-security events, and guarded account-erasure and tenant
+  purge flows.
+
+### DeepSpace, models, and query workflows
+
+- Added the desktop-only **OpenAI Codex** provider mode. Desktop users can use
+  an existing local Codex CLI login or sign in through the system browser.
+  OAuth tokens stay in the desktop profile; inference is relayed through an
+  authenticated, short-lived desktop connection. The local CLI runs with a
+  restricted permission profile.
+- Improved provider capability handling. DeepSpace uses model-advertised
+  reasoning levels where available, preserves provider reasoning needed for
+  follow-up tool calls, and avoids incompatible tool-selection options for
+  thinking models. Unsupported reasoning choices are not invented for models
+  without reliable capability data.
+- Made provider continuation safer across tool calls, approvals, clarifications,
+  and queue retries. Required provider reasoning is encrypted before it is
+  persisted and is excluded from chat-history responses. If continuation data
+  is unavailable, DeepSpace treats the old tool exchange as quoted history and
+  preserves successful results so a completed side effect is not silently run
+  again.
+- Improved the queued-work lifecycle, including resuming interrupted work and
+  retrying or regenerating failed turns while keeping completed tool results
+  available. DeepSpace refreshes MCP tool definitions before execution; a
+  removed or changed tool is not invoked from a stale definition.
+- Fixed Query prompt construction so literal JSON examples in prompt templates
+  are not processed as `str.format` placeholders. This prevents `KeyError`
+  failures before a model request begins.
+- Standardized Query loading feedback for Documents Hub search, dataset
+  previews, PDF previews, and paginated file browsing, using the shared
+  AverQel loading treatment instead of separate ad hoc spinners and skeletons.
+- Improved DeepSpace history and live activity restoration. Ordered activity,
+  streamed drafts, provider continuation state, and output-rate measurements
+  are represented more accurately after reload or resume. Live output rate is
+  labeled as an estimate while streaming; provider-reported usage can refine
+  the final count.
+- Added support for speaking new visible response sentences during voice
+  conversation. Hidden reasoning, saved chat history, and raw tool payloads
+  are not spoken; interrupting speech playback does not cancel the underlying
+  DeepSpace task. Voice requires the configured LiveKit and speech services,
+  as well as browser microphone permission.
+
+### Integrations and connected apps
+
+- Added the Composio-hosted MCP catalog, app details, OAuth connection flow,
+  tool discovery, connection management, and per-user credential storage. The
+  marketplace now uses Composio's live catalog instead of AverQel's bundled
+  Google, GitHub, Notion, and Slack connector cards; existing installed
+  connections are retained.
+- Scoped Composio credentials and hosted-session references to the owning
+  tenant and account, encrypted them at rest, and added owner checks around
+  replacement and removal. OAuth callbacks are validated against the
+  authenticated account and its pending connection request.
+- Connected Composio tools to the existing MCP policy and approval broker.
+  Model requests receive only the needed tool references, not the full catalog
+  or credentials.
+- Improved MCP catalog refresh and runtime behavior so optional catalog
+  failures do not discard already available tools, and background refresh
+  results persist reliably.
+
+### Platform security, privacy, and administration
+
+- Tightened platform-admin route permissions and separated read permissions
+  from sensitive actions. Administrative content reads and account-security
+  events have safer audit records that exclude prompts, documents, passwords,
+  tokens, IP addresses, and device details.
+- Required a current MFA-verified administrator session for sensitive
+  account-erasure and tenant-purge actions. Tenant purges support a second
+  administrator's approval or a delayed, audited self-approval for
+  single-administrator installations.
+- Added durable cleanup tracking for account-owned object storage during
+  account erasure. The admin interface can report and retry failed cleanup
+  work without exposing object keys or raw provider errors. Storage cleanup,
+  backup expiry, and deletion at external providers remain separate steps.
+- Added browser-side encryption workflows for Support and Feedback message
+  content and attachments, with per-user keys and an account-owned platform
+  key, plus explicit setup and migration state. Only the account that created
+  the platform key can unlock cross-tenant Support and Feedback content; the
+  current product has no key transfer or recovery flow. Routing metadata
+  remains visible to the service, and encrypted attachments cannot be scanned
+  server-side. This protection is limited to Support and Feedback and is not
+  server-blind encryption for all AverQel data.
+- Improved administrator analytics and live system metrics for request and
+  error counters, database operations, worker retries, and selected DeepSpace
+  activity. The former tenant-usage analytics page and
+  `/api/v1/analytics/dashboard` endpoint have been removed; the replacement
+  metrics view contains service-operational signals, not per-user usage
+  records or an uptime guarantee.
+- Improved document detail status polling and classification-history
+  presentation. Classification history is requested and shown only for roles
+  with the required document-organization access, avoiding unauthorized
+  history requests from other users.
+
+### Documents Hub and long-running jobs
+
+- Separated expensive PDF, image, and Office extraction from lightweight
+  ingestion. The `ingestion-heavy-worker` consumes its own queue with a default
+  concurrency of one and configurable container limits (4 GiB memory and 2
+  CPUs by default); the light worker also has its own queue and configurable
+  limits (1 GiB and 1 CPU by default). This keeps an extraction workload from
+  consuming all worker capacity, while actual headroom still depends on the
+  host and deployment settings.
+- Hardened document-detail requests for large or busy documents. Status refresh
+  is separated from comments, quality, versions, and extracted text; realtime
+  updates are coalesced, polling stops at terminal status, concurrent requests
+  are guarded, and full text is loaded only when requested after processing is
+  complete.
+- Added rate-limit-aware cooldowns and bounded backoff for transient network,
+  timeout, HTTP 429, and HTTP 503 failures. The document page shows inline
+  status and retry controls, preserves the rest of the page when an optional
+  request fails, and avoids turning each failed request into a duplicate global
+  error toast. This reduces avoidable request bursts; service-side limits and
+  outages can still return errors.
+- Improved processing state and recovery presentation so a stopped or failed
+  job is not shown as healthy or indefinitely processing. When the backend
+  reports a recovery checkpoint, the UI can show the saved progress and offer
+  a resume action.
+- Added automatic retention for expired Support and Feedback records and
+  queues their stored attachments for cleanup. Retention defaults to 365 days
+  after the last update and is configurable from 30 to 3,650 days. Account
+  erasure and tenant-data purge continue to use separate, audited workflows.
+
+### Operations, observability, and storage
+
+- Added a live administrator metrics summary backed by shared Redis counters
+  from API and worker processes. The stream reports request and error totals,
+  database operations, worker retries and dead letters, and selected DeepSpace
+  counters; unavailable or incomplete telemetry is surfaced as such rather
+  than represented as a trustworthy zero.
+- Prioritized the authenticated metrics summary as an interactive request and
+  kept raw Prometheus metrics at background priority. Deployment routing must
+  continue to keep the raw metrics endpoint internal.
+- Added safe local backup retention to the PostgreSQL, MinIO, and production
+  configuration backup scripts. The default is 30 days, supports a configurable
+  retention period, and offers a dry-run mode. Pruning covers only recognized
+  local AverQel archives and does not configure remote backup or VPS snapshot
+  retention.
+- Improved worker, database, and request-priority instrumentation while
+  keeping metrics low-cardinality and excluding document content, prompts,
+  credentials, and raw provider reasoning.
+
+### Desktop, branding, and workspace experience
+
+- Clarified the desktop product boundary: AverQel's Linux and Windows release
+  packages contain the AverQel Electron shell and shared frontend. NeoSIS is
+  maintained and distributed separately and is not bundled, versioned, or
+  fetched by the AverQel package/release workflow.
+- Improved desktop login routing, OAuth windows, workspace navigation, and
+  installer metadata checks. Initial/deep-link URLs and OAuth windows are
+  handled by the Electron shell, and a second launch focuses the existing app
+  window. Desktop can route LM Studio and Ollama inference through the
+  signed-in local app without bundling model files. Desktop package icons and
+  web product marks now use consistent AverQel brand assets.
+- Aligned the AverQel icon and wordmark across landing, sign-in, onboarding,
+  navigation, dashboard, and desktop surfaces. Refreshed the public product
+  guide and landing visuals, improved responsive behavior, and reduced
+  background animation and streaming work.
+- Improved profile avatars, provider presentation, and visual loading states
+  while keeping the shared AverQel theme across the web and desktop surfaces.
+
+### Reliability fixes
+
+- Reduced DeepSpace queue read-lock contention and improved handling of
+  retries, cancellation, provider-stream shutdown, activity ordering, and
+  completed tool results.
+- Preserved provider reasoning across supported adapters and corrected
+  reasoning/tool-choice conflicts that could stop a tool-enabled turn before
+  execution.
+- Hardened dashboard request timeouts, support identity handling, and error
+  reporting in the affected admin and workspace surfaces. Document polling now
+  honors server retry instructions and uses bounded backoff instead of rapidly
+  repeating requests during service pressure.
+- Reduced duplicate stream-error reporting and stabilized responsive landing,
+  desktop, and browser test behavior.
+- Updated the MCP SDK and frontend/backend dependencies, aligned LiveKit with
+  the patched OpenTelemetry release, and corrected container image scan and
+  isolated MinIO test inputs.
+
+### Release engineering and upgrade notes
+
+- Fixed semantic version calculation for GitHub squash merges: the release
+  script now reads valid Conventional Commit titles from PR-body bullets as
+  well as commit subjects. For this range, the `feat:` entries calculate the
+  next version as `v1.4.0`.
+- Removed NeoSIS source checkout and version metadata from the AverQel release
+  workflow and download monitoring. The Linux package build now checks its
+  Debian package identity and AppStream metadata before publication.
+- Added regression coverage around DeepSpace continuation and tool safety,
+  Composio credentials and OAuth callbacks, support encryption, administrator
+  MFA and deletion approvals, document polling, metrics streaming, backup
+  retention, and desktop package boundaries.
+- Includes Alembic migrations for platform audit events, feedback/support
+  retention and encrypted content, administrator MFA and deletion approvals,
+  and per-user Composio credentials. The revisions are
+  `20261018_0001`–`20261018_0003` and `20261019_0001`–`20261019_0004`; the last
+  repairs the Composio credential schema for installations that recorded the
+  earlier platform-only table. Apply the normal database migration procedure
+  before deploying the new application version.
+- Configure the `ingestion-heavy-worker` alongside the light ingestion worker
+  when adopting the updated Compose topology. The resource limits and queue
+  concurrency are configurable; size them for the host and leave capacity for
+  the API, database, Redis, and other workers.
+- The backup scripts' 30-day default retention applies only to their managed
+  local backup directory. Configure remote backup and VPS-provider snapshot
+  retention separately, and verify a usable backup before reducing retention.
+- The former `/api/v1/admin/providers/composio` routes have been removed.
+  Users now configure Composio from **Providers → MCP** with their own
+  project key. A Composio project key and a working public HTTPS callback
+  origin are required for OAuth app connections.
+- The tenant-usage analytics page and `/api/v1/analytics/dashboard` API have
+  been removed in favor of the operational metrics page and
+  `/api/v1/metrics/summary` and `/api/v1/metrics/summary/stream` endpoints.
+  Legacy `support_manager` and `feedback_manager` role assignments no longer
+  grant access to cross-tenant queues; the platform-admin allowlist and the new
+  granular permissions govern that access. The former
+  `PUT /api/v1/admin/users/{user_id}/staff-roles` endpoint has also been
+  removed.
+- Support and Feedback encryption requires the configured platform key and a
+  personal key for each user. Cross-tenant support access depends on the
+  account that created the platform key; there is no transfer or recovery
+  flow. The passphrase cannot be recovered by AverQel. Keep the key-owner
+  account available and follow the documented key-handling procedure before
+  account erasure. Existing backup snapshots may retain pre-migration plaintext
+  until their configured retention expires.
+- Existing eligible Support and Feedback messages need the in-browser
+  migration after the platform key and each user's personal key are initialized.
+  Users without a personal key are skipped and can be migrated after setup.
+- Account erasure removes live AverQel records and schedules application-owned
+  storage cleanup. It does not instantly erase backups or data already held by
+  Composio or other external providers; those follow their own retention and
+  revocation controls.
+
+### Further reading
+
+- [DeepSpace user guide](frontend/app/documentation/deepspace/page.tsx)
+- [MCP and Composio connection guide](frontend/app/documentation/connectors-mcp/page.tsx)
+- [Grounded Query behavior and limits](frontend/app/dashboard/query/README.md)
+- [Documents Hub guide](frontend/app/documentation/documents-hub/page.tsx)
+- [Platform administration and MFA](backend/docs/platform/06-platform-administration.md)
+- [Support and Feedback security](backend/docs/platform/05-feedback-support-notifications.md)
+- [Desktop packaging and local providers](applications/desktop/README.md)
+
 ## [1.2.0](https://github.com/sainibhaowal/AverQel/compare/v1.1.1...v1.2.0) (2026-08-22)
 
 

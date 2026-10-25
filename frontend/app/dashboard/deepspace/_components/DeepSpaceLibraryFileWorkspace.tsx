@@ -103,6 +103,7 @@ export default function DeepSpaceLibraryFileWorkspace({
   value,
   onChange,
   previewUrl,
+  previewContentType,
   archiveEntries,
   onArchiveEntrySelect,
   archiveEntryName,
@@ -117,6 +118,7 @@ export default function DeepSpaceLibraryFileWorkspace({
   value: string;
   onChange: (value: string) => void;
   previewUrl?: string | null;
+  previewContentType?: string | null;
   archiveEntries?:
     | { name: string; directory: boolean; compressedSize: number; size: number }[]
     | null;
@@ -234,6 +236,7 @@ export default function DeepSpaceLibraryFileWorkspace({
               contentType={contentType}
               value={value}
               previewUrl={previewUrl}
+              previewContentType={previewContentType}
               archiveEntries={archiveEntries}
               onArchiveEntrySelect={onArchiveEntrySelect}
               contentTruncated={contentTruncated}

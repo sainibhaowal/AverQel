@@ -82,6 +82,10 @@ _CHART_QUERY_RE = re.compile(
     r"\b(chart|graph|plot|trend|trajectory|timeline|growth|decline|distribution|breakdown|comparison|metrics|projection|percentage|revenue|share)\b",
     re.IGNORECASE,
 )
+_CARD_LAYOUT_QUERY_RE = re.compile(
+    r"\b(scorecard|evaluation card|referral card|card layout|cards? for (?:evaluation|referral))\b",
+    re.IGNORECASE,
+)
 _GRAPH_CANVAS_QUERY_RE = re.compile(
     r"\b(graph|topology|node|edge|network|dependency|relationship map|system map|canvas|knowledge graph)\b",
     re.IGNORECASE,
@@ -1866,10 +1870,16 @@ class AnswerService:
         structured_output: bool = True,
         response_directive: str | None = None,
     ) -> list[dict[str, str]]:
-        sys_prompt = PromptTemplates.get_template(query_type).format(context=context)
+        # Templates contain literal JSON examples with braces. `str.format`
+        # treats those as fields and raises KeyError (for example on `"title"`)
+        # before any provider request is made. Only replace the one supported
+        # placeholder so JSON and user document text remain literal.
+        sys_prompt = PromptTemplates.get_template(query_type).replace("{context}", context)
         sys_prompt += (
             "\nIMPORTANT: You must respond in the exact same language that the user's Question is written in."
             "\nIMPORTANT: Prefer clean markdown with headings, bullets, and tables when helpful."
+            "\nIMPORTANT: Open and close every fenced block with exactly three backticks on their own lines, "
+            "and close diagram fences before following Markdown prose."
             "\nIMPORTANT: When the context contains numeric trends or quantitative comparisons (e.g. revenue, growth, percentages), use a ` ```chart ` block with the correct JSON payload to provide a high-fidelity visual."
             "\nIMPORTANT: Do not use Mermaid for numeric charts or trends; use the dedicated ` ```chart ` block instead."
         )
@@ -1923,6 +1933,8 @@ class AnswerService:
             "\nIMPORTANT: You have full access to the user's Gmail, Google Calendar, and Notion if connected. You can search communications, manage your schedule, and create/update documentation. Always ask for permission before destructive actions (delete) or outbound actions (send email, create meeting) if not explicitly instructed."
             "\nIMPORTANT: You are a proactive brain. You can perform multi-app workflows (e.g., 'Draft a reply to this email and save it to my Notion'). You can also see and analyze images or screenshots provided in the chat to troubleshoot issues or extract data."
             "\nIMPORTANT: You have the authority to trigger autonomous actions such as web crawling, ecosystem synchronization, and cross-app data transfers. Always acknowledge the action you have initiated."
+            "\nIMPORTANT: Open and close every fenced block with exactly three backticks on their own lines, "
+            "and close diagram fences before following Markdown prose."
             "\nIMPORTANT: Use Mermaid code blocks only for real diagrams such as architecture, workflow, sequence, ER, state, class, journey, timeline, or mindmap."
             "\nIMPORTANT: Do not use Mermaid for ordinary charts or numeric trends."
             "\nIMPORTANT: AverQel can render native charts, tables, diagrams, and code blocks directly in the chat."
@@ -1985,7 +1997,7 @@ class AnswerService:
             QueryType.SYNTHESIS,
             QueryType.SUMMARIZATION,
             QueryType.VERIFICATION,
-        }
+        } or bool(_CARD_LAYOUT_QUERY_RE.search(normalized))
         wants_structured = (
             wants_cards or wants_graph_canvas or wants_diagram or wants_chart or wants_table
         )
@@ -2181,6 +2193,9 @@ class AnswerService:
         if wants_cards:
             instructions.append(
                 "\nIMPORTANT: key_findings, limitations, and conclusion should be substantive when the question asks for synthesis, verification, executive takeaways, or risk framing."
+            )
+            instructions.append(
+                "\nIMPORTANT: For sourced test evaluations or score summaries, use a card fence with layout evaluation, score {value, max, tone}, and supporting metrics [{label, value, detail?}]. For referral or promotion terms, use layout referral with primary_metric {label, value, detail?}, details [{label, value, href?}], an optional code, and a concise caveat in content. Use only values, caveats, and source URLs supported by context; do not invent them. Keep ordinary prose outside the card when useful."
             )
         return "".join(instructions)
 

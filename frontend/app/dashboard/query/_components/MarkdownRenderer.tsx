@@ -13,6 +13,7 @@ import type {
   StreamChartBlock,
   StreamChartPoint,
   StreamDiagramBlock,
+  StreamInfographicBlock,
 } from "../_lib/stream-protocol";
 import { normalizeMarkdown } from "../_lib/markdown";
 import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
@@ -22,9 +23,14 @@ import CodeBlock from "./CodeBlock";
 import CardBlock from "./CardBlock";
 import GraphBlock from "./GraphBlock";
 import GalleryBlock, { parseGalleryPayload } from "./GalleryBlock";
+import InfographicBlock from "./InfographicBlock";
+import { isVisualIconName } from "./VisualIcon";
 import {
   inferVisualFenceKind,
+  markCompletedVisualFences,
   normalizePersistedRichContent,
+  repairMismatchedVisualFences,
+  STREAMING_VISUAL_FENCE_PREFIX,
   unwrapPersistedVisualFence,
 } from "../_lib/visual-fences";
 
@@ -62,15 +68,23 @@ export default function MarkdownRenderer({
   messageId = "message",
   enableRichPreview = true,
 }: MarkdownRendererProps) {
-  const normalizedContent = useMemo(
-    () => normalizeMarkdown(normalizePersistedRichContent(content)),
-    [content],
-  );
+  const normalizedContent = useMemo(() => {
+    const normalized = normalizeMarkdown(
+      repairMismatchedVisualFences(normalizePersistedRichContent(content)),
+    );
+    return streaming
+      ? markCompletedVisualFences(normalized, { markMermaidWhileStreaming: false })
+      : normalized;
+  }, [content, streaming]);
   const components = useMemo<Components>(
     () => ({
       pre: ({ children }) => <>{children}</>,
       code: ({ children, className, ...props }) => {
         const language = className?.match(/language-([^\s]+)/i)?.[1]?.toLowerCase() ?? "";
+        const streamingVisual = language.startsWith(STREAMING_VISUAL_FENCE_PREFIX);
+        const fenceLanguage = streamingVisual
+          ? language.slice(STREAMING_VISUAL_FENCE_PREFIX.length)
+          : language;
         const value = String(children).replace(/\n$/, "");
         const inline = !className && !String(children).includes("\n");
 
@@ -83,11 +97,12 @@ export default function MarkdownRenderer({
         }
 
         const persistedFence = unwrapPersistedVisualFence(value);
-        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(language, value);
+        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(fenceLanguage, value);
         const visualValue = persistedFence?.source ?? value;
         const visualLanguage = visualKind ?? language;
+        const visualReady = !streaming || streamingVisual;
 
-        if (!streaming && visualLanguage === "mermaid" && visualValue.trim()) {
+        if (visualReady && visualLanguage === "mermaid" && visualValue.trim()) {
           return (
             <CodeBlock
               language="mermaid"
@@ -103,19 +118,23 @@ export default function MarkdownRenderer({
             ? createChartBlock(visualValue, `${messageId}-chart`)
             : null;
 
-        if (chartBlock) {
+        if (visualReady && chartBlock) {
           return <ChartBlock block={chartBlock} />;
         }
 
-        if (!streaming && visualLanguage === "card") {
+        if (visualReady && visualLanguage === "card") {
           const card = createCardBlock(visualValue, `${messageId}-card`);
           if (card) return <CardBlock block={card} />;
         }
-        if (!streaming && visualLanguage === "graph") {
+        if (visualReady && visualLanguage === "infographic") {
+          const infographic = createInfographicBlock(visualValue, `${messageId}-infographic`);
+          if (infographic) return <InfographicBlock block={infographic} />;
+        }
+        if (visualReady && visualLanguage === "graph") {
           const graph = createGraphBlock(visualValue, `${messageId}-graph`);
           if (graph) return <GraphBlock block={graph as never} />;
         }
-        if (!streaming && visualLanguage === "gallery") {
+        if (visualReady && visualLanguage === "gallery") {
           const gallery = parseGalleryPayload(visualValue);
           if (gallery) return <GalleryBlock payload={gallery} />;
         }
@@ -248,6 +267,36 @@ export default function MarkdownRenderer({
   );
 }
 
+function parseCardDetail(value: unknown): { label: string; value: string } | null {
+  if (typeof value === "string") {
+    const match =
+      value.match(/^\s*\*\*([^:*]{1,80}):\*\*\s*(.+?)\s*$/) ??
+      value.match(/^\s*([^:*]{1,80}):\s*(.+?)\s*$/);
+    return match ? { label: match[1]!.trim(), value: match[2]!.trim() } : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const detail = value as Record<string, unknown>;
+  if (typeof detail.label !== "string" || detail.value == null) return null;
+  return { label: detail.label, value: String(detail.value) };
+}
+
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+function parseCardSource(value: unknown): { title: string; url: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const title = typeof source.title === "string" ? source.title : source.label;
+  const url = typeof source.url === "string" ? source.url : source.href;
+  return typeof title === "string" && isWebUrl(url) ? { title, url } : null;
+}
+
 function createCardBlock(value: string, id: string): StreamCardBlock | null {
   try {
     const payload = JSON.parse(value) as Record<string, unknown>;
@@ -258,7 +307,92 @@ function createCardBlock(value: string, id: string): StreamCardBlock | null {
         : "Information card";
     const content =
       typeof payload.content === "string" ? payload.content : String(payload.body ?? "");
-    if (!content.trim()) return null;
+    const layout =
+      payload.layout === "feature" ||
+      payload.layout === "place" ||
+      payload.layout === "evaluation" ||
+      payload.layout === "referral"
+        ? payload.layout
+        : "standard";
+    if (!content.trim() && layout !== "evaluation" && layout !== "referral") return null;
+    const scorePayload =
+      payload.score && typeof payload.score === "object"
+        ? (payload.score as Record<string, unknown>)
+        : null;
+    const score =
+      scorePayload &&
+      typeof scorePayload.value === "number" &&
+      Number.isFinite(scorePayload.value) &&
+      typeof scorePayload.max === "number" &&
+      Number.isFinite(scorePayload.max) &&
+      scorePayload.max > 0 &&
+      scorePayload.value >= 0 &&
+      scorePayload.value <= scorePayload.max
+        ? {
+            value: scorePayload.value,
+            max: scorePayload.max,
+            tone:
+              scorePayload.tone === "info" ||
+              scorePayload.tone === "success" ||
+              scorePayload.tone === "warning" ||
+              scorePayload.tone === "error" ||
+              scorePayload.tone === "neutral"
+                ? (scorePayload.tone as NonNullable<StreamCardBlock["score"]>["tone"])
+                : "warning",
+          }
+        : null;
+    const primaryPayload =
+      payload.primary_metric && typeof payload.primary_metric === "object"
+        ? (payload.primary_metric as Record<string, unknown>)
+        : null;
+    const primaryMetric =
+      primaryPayload && typeof primaryPayload.label === "string"
+        ? {
+            label: primaryPayload.label,
+            value:
+              typeof primaryPayload.value === "string" ||
+              typeof primaryPayload.value === "number"
+                ? primaryPayload.value
+                : "",
+            detail: typeof primaryPayload.detail === "string" ? primaryPayload.detail : null,
+          }
+        : null;
+    const metrics = Array.isArray(payload.metrics)
+      ? payload.metrics
+          .filter(
+            (
+              metric,
+            ): metric is { label: string; value: string | number; detail?: string | null } =>
+              Boolean(
+                metric &&
+                typeof metric === "object" &&
+                typeof (metric as Record<string, unknown>).label === "string",
+              ),
+          )
+          .map((metric) => ({
+            label: metric.label,
+            value: metric.value ?? "",
+            detail: metric.detail ?? null,
+          }))
+      : [];
+    const details = Array.isArray(payload.details)
+      ? payload.details.flatMap((item) => {
+          const detail = parseCardDetail(item);
+          if (!detail) return [];
+          const detailRecord =
+            item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          return [
+            {
+              label: detail.label,
+              value: detail.value,
+              icon: isVisualIconName(detailRecord.icon) ? detailRecord.icon : null,
+              href: isWebUrl(detailRecord.href) ? detailRecord.href : null,
+            },
+          ];
+        })
+      : [];
+    if (layout === "evaluation" && (!score || metrics.length === 0)) return null;
+    if (layout === "referral" && (!primaryMetric || details.length === 0)) return null;
     const tone = payload.tone;
     return {
       id,
@@ -273,27 +407,16 @@ function createCardBlock(value: string, id: string): StreamCardBlock | null {
         tone === "neutral"
           ? tone
           : "neutral",
+      layout,
       subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
       image_url: typeof payload.image_url === "string" ? payload.image_url : null,
+      image_alt: typeof payload.image_alt === "string" ? payload.image_alt : null,
+      icon: isVisualIconName(payload.icon) ? payload.icon : null,
       href: typeof payload.href === "string" ? payload.href : null,
-      metrics: Array.isArray(payload.metrics)
-        ? payload.metrics
-            .filter(
-              (
-                metric,
-              ): metric is { label: string; value: string | number; detail?: string | null } =>
-                Boolean(
-                  metric &&
-                  typeof metric === "object" &&
-                  typeof (metric as Record<string, unknown>).label === "string",
-                ),
-            )
-            .map((metric) => ({
-              label: metric.label,
-              value: metric.value ?? "",
-              detail: metric.detail ?? null,
-            }))
-        : [],
+      metrics,
+      score,
+      primary_metric: primaryMetric,
+      code: typeof payload.code === "string" ? payload.code : null,
       actions: Array.isArray(payload.actions)
         ? payload.actions
             .filter(
@@ -317,6 +440,76 @@ function createCardBlock(value: string, id: string): StreamCardBlock | null {
               action: action.action ?? "open",
               content: action.content ?? null,
             }))
+        : [],
+      details,
+      sources: Array.isArray(payload.sources)
+        ? payload.sources.flatMap((item) => {
+            const source = parseCardSource(item);
+            return source ? [source] : [];
+          })
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createInfographicBlock(value: string, id: string): StreamInfographicBlock | null {
+  try {
+    const payload = JSON.parse(value) as Record<string, unknown>;
+    const layouts = ["steps", "timeline", "comparison", "feature_grid", "stats"] as const;
+    if (
+      !payload ||
+      Array.isArray(payload) ||
+      typeof payload.title !== "string" ||
+      !layouts.includes(payload.layout as (typeof layouts)[number]) ||
+      !Array.isArray(payload.items) ||
+      payload.items.length < 2 ||
+      payload.items.length > 8
+    ) {
+      return null;
+    }
+    const items = payload.items.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const item = entry as Record<string, unknown>;
+      if (typeof item.title !== "string" || !item.title.trim()) return [];
+      return [
+        {
+          title: item.title,
+          description: typeof item.description === "string" ? item.description : null,
+          value:
+            typeof item.value === "string" || typeof item.value === "number" ? item.value : null,
+          date: typeof item.date === "string" ? item.date : null,
+          icon: isVisualIconName(item.icon) ? item.icon : null,
+          image_url: typeof item.image_url === "string" ? item.image_url : null,
+        },
+      ];
+    });
+    const layout = payload.layout as StreamInfographicBlock["layout"];
+    if (
+      items.length < 2 ||
+      (layout === "timeline" && items.some((item) => !item.date?.trim())) ||
+      (layout === "stats" && items.some((item) => item.value == null))
+    ) {
+      return null;
+    }
+    return {
+      id,
+      type: "infographic",
+      title: payload.title,
+      subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
+      layout,
+      direction:
+        payload.direction === "RL" || payload.direction === "TD" || payload.direction === "DT"
+          ? payload.direction
+          : "LR",
+      items,
+      note: typeof payload.note === "string" ? payload.note : null,
+      sources: Array.isArray(payload.sources)
+        ? payload.sources.flatMap((entry) => {
+            const source = parseCardSource(entry);
+            return source ? [source] : [];
+          })
         : [],
     };
   } catch {

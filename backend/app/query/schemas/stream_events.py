@@ -2,12 +2,38 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.query.schemas.structured_response import (
     ReasoningTraceModel,
     StructuredAnswerResponse,
 )
+
+VisualIconName = Literal[
+    "sparkles",
+    "lightbulb",
+    "target",
+    "shield",
+    "layers",
+    "zap",
+    "globe",
+    "chart",
+    "check",
+    "clock",
+    "map-pin",
+    "building",
+    "users",
+    "database",
+    "cloud",
+    "code",
+    "star",
+    "heart",
+    "phone",
+    "calendar",
+    "landmark",
+    "compass",
+    "info",
+]
 
 
 class StreamEventCursor(BaseModel):
@@ -112,6 +138,19 @@ class StreamCardPayload(BaseModel):
 
         model_config = ConfigDict(extra="forbid")
 
+    class Score(BaseModel):
+        value: float = Field(ge=0, allow_inf_nan=False)
+        max: float = Field(gt=0, allow_inf_nan=False)
+        tone: Literal["info", "success", "warning", "error", "neutral"] = "warning"
+
+        model_config = ConfigDict(extra="forbid")
+
+        @model_validator(mode="after")
+        def value_must_not_exceed_max(self) -> Any:
+            if self.value > self.max:
+                raise ValueError("score value must not exceed its maximum")
+            return self
+
     class Action(BaseModel):
         label: str
         href: str | None = None
@@ -120,15 +159,37 @@ class StreamCardPayload(BaseModel):
 
         model_config = ConfigDict(extra="forbid")
 
+    class Detail(BaseModel):
+        label: str = Field(min_length=1, max_length=80)
+        value: str = Field(min_length=1, max_length=500)
+        icon: VisualIconName | None = None
+        href: str | None = Field(default=None, max_length=2048)
+
+        model_config = ConfigDict(extra="forbid")
+
+    class Source(BaseModel):
+        title: str = Field(min_length=1, max_length=160)
+        url: str = Field(min_length=8, max_length=2048, pattern=r"^https?://")
+
+        model_config = ConfigDict(extra="forbid")
+
     id: str
     title: str
-    content: str
+    content: str = ""
     tone: Literal["info", "success", "warning", "error", "neutral"] = "neutral"
+    layout: Literal["standard", "feature", "place", "evaluation", "referral"] = "standard"
     subtitle: str | None = None
     image_url: str | None = None
+    image_alt: str | None = Field(default=None, max_length=300)
+    icon: VisualIconName | None = None
     href: str | None = None
     metrics: list[Metric] = Field(default_factory=list)
+    score: Score | None = None
+    primary_metric: Metric | None = None
+    code: str | None = Field(default=None, max_length=100)
     actions: list[Action] = Field(default_factory=list)
+    details: list[Detail] = Field(default_factory=list, max_length=8)
+    sources: list[Source] = Field(default_factory=list, max_length=8)
     incomplete: bool = False
     block_id: str | None = None
     schema_version: int = Field(default=1, ge=1)
@@ -140,6 +201,66 @@ class StreamCardPayload(BaseModel):
     undo: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def require_sources_for_place_layout(self) -> StreamCardPayload:
+        if self.layout == "place" and not self.sources:
+            raise ValueError("place cards require at least one source URL")
+        if self.layout == "evaluation":
+            if self.score is None:
+                raise ValueError("evaluation cards require a score")
+            if not self.metrics:
+                raise ValueError("evaluation cards require at least one supporting metric")
+        if self.layout == "referral":
+            if self.primary_metric is None:
+                raise ValueError("referral cards require a primary metric")
+            if not self.details:
+                raise ValueError("referral cards require at least one terms detail")
+        return self
+
+
+class StreamInfographicPayload(BaseModel):
+    class Item(BaseModel):
+        title: str = Field(min_length=1, max_length=120)
+        description: str | None = Field(default=None, max_length=600)
+        value: str | int | float | None = None
+        date: str | None = Field(default=None, max_length=300)
+        icon: VisualIconName | None = None
+        image_url: str | None = Field(default=None, max_length=2048)
+
+        model_config = ConfigDict(extra="forbid")
+
+    class Source(BaseModel):
+        title: str = Field(min_length=1, max_length=160)
+        url: str = Field(min_length=8, max_length=2048, pattern=r"^https?://")
+
+        model_config = ConfigDict(extra="forbid")
+
+    id: str
+    title: str = Field(min_length=1, max_length=180)
+    subtitle: str | None = Field(default=None, max_length=300)
+    layout: Literal["steps", "timeline", "comparison", "feature_grid", "stats"]
+    direction: Literal["LR", "RL", "TD", "DT"] = "LR"
+    items: list[Item] = Field(min_length=2, max_length=8)
+    note: str | None = Field(default=None, max_length=500)
+    sources: list[Source] = Field(default_factory=list, max_length=8)
+    block_id: str | None = None
+    schema_version: int = Field(default=1, ge=1)
+    revision: int = Field(default=0, ge=0)
+    source_markdown: str | None = None
+    assets: list[dict[str, Any]] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    undo: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_layout_items(self) -> StreamInfographicPayload:
+        if self.layout == "timeline" and any(not item.date for item in self.items):
+            raise ValueError("timeline items require a date or period label")
+        if self.layout == "stats" and any(item.value is None for item in self.items):
+            raise ValueError("statistics items require a value")
+        return self
 
 
 class StreamDiagramPayload(BaseModel):

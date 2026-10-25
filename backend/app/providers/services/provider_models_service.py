@@ -103,6 +103,21 @@ def provider_request_error_to_api_error(
             message=f"{provider_label} rate limited the request. Please try again in a moment.",
             status_code=429,
         )
+    if exc.status_code == 504:
+        if operation == "refresh":
+            return ApiError(
+                code="PROVIDER_TEST_FAILED",
+                message=(
+                    f"{provider_label} did not return its model catalog before the refresh "
+                    "timeout. Cached models remain available; try again shortly."
+                ),
+                status_code=504,
+            )
+        return ApiError(
+            code="PROVIDER_TEST_FAILED",
+            message=f"{provider_label} did not respond before the provider {operation} timeout.",
+            status_code=504,
+        )
     if exc.status_code >= 500:
         return ApiError(
             code="PROVIDER_TEST_FAILED",

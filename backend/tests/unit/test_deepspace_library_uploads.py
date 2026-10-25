@@ -18,7 +18,7 @@ from app.deepspace.api.library import (
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.services import library_uploads as uploads_module
 from app.deepspace.services.library_storage import safe_extraction_status
-from app.deepspace.services.library_uploads import finalize_upload
+from app.deepspace.services.library_uploads import finalize_upload, unique_library_filename
 
 
 def test_upload_create_normalizes_filename_and_content_type() -> None:
@@ -30,6 +30,33 @@ def test_upload_create_normalizes_filename_and_content_type() -> None:
 
     assert payload.name == "research paper.pdf"
     assert payload.content_type == "application/pdf"
+
+
+def test_composer_upload_can_opt_into_unique_names_without_changing_library_default() -> None:
+    payload = LibraryUploadCreate(
+        name="screenshot.png",
+        size_bytes=128,
+        content_type="image/png",
+        rename_on_conflict=True,
+    )
+    default_payload = LibraryUploadCreate(name="screenshot.png", size_bytes=128)
+
+    assert payload.rename_on_conflict is True
+    assert default_payload.rename_on_conflict is False
+
+
+def test_unique_library_filename_preserves_extension_and_bounds_long_names() -> None:
+    assert unique_library_filename("screenshot.png", {"screenshot.png"}) == "screenshot (2).png"
+    assert (
+        unique_library_filename("screenshot.png", {"screenshot.png", "screenshot (2).png"})
+        == "screenshot (3).png"
+    )
+    assert unique_library_filename(".env", {".env"}) == ".env (2)"
+
+    long_name = "r" * 255
+    unique_name = unique_library_filename(long_name, {long_name})
+    assert len(unique_name) == 255
+    assert unique_name.endswith(" (2)")
 
 
 def test_upload_create_accepts_unicode_names_and_infers_browser_octet_stream_types() -> None:
@@ -199,6 +226,45 @@ def test_finalize_upload_creates_text_file_and_version(
     assert upload.metadata_json["extraction_status"]["text_available"] is True
     assert _serialize_upload(upload).extraction_status.ocr_used is False
     assert len(db.rows) == 2
+
+
+def test_identical_payloads_published_under_unique_names_receive_distinct_file_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Storage:
+        def __init__(self, _settings: object) -> None:
+            self.storage = SimpleNamespace(delete_object=lambda **_kwargs: None)
+
+        def extract(self, **_kwargs: object) -> dict[str, object]:
+            return {"text": None}
+
+        def store(self, *, filename: str, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(bucket="private-library", object_key=filename)
+
+    monkeypatch.setattr(uploads_module, "LibraryStorageService", _Storage)
+    db = _Db()
+    first_upload = _upload(content_type="image/png", expected_size=4)
+    first_upload.filename = "screenshot.png"
+    second_upload = _upload(content_type="image/png", expected_size=4)
+    second_upload.filename = "screenshot (2).png"
+
+    first = finalize_upload(
+        db,
+        settings=SimpleNamespace(upload_max_bytes=100),
+        upload=first_upload,
+        payload=b"same",
+    )
+    second = finalize_upload(
+        db,
+        settings=SimpleNamespace(upload_max_bytes=100),
+        upload=second_upload,
+        payload=b"same",
+    )
+
+    assert first.checksum_sha256 == second.checksum_sha256
+    assert first.id != second.id
+    assert first.name == "screenshot.png"
+    assert second.name == "screenshot (2).png"
 
 
 def test_finalize_upload_can_publish_file_before_optional_extraction(

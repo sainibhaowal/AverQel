@@ -29,6 +29,7 @@ export const providerLogoRegistry: Record<string, ProviderLogoDefinition> = {
   openai: { kind: "asset", src: "/providers/openai.svg", appearance: "monochrome" },
   "opencode-zen": { kind: "asset", src: "/providers/opencode.svg", appearance: "monochrome" },
   openrouter: { kind: "asset", src: "/providers/openrouter-color.svg", appearance: "brand" },
+  larprouter: { kind: "asset", src: "/providers/larprouter.png", appearance: "monochrome" },
   "sentence-transformers": {
     kind: "asset",
     src: "/AverQel%20Logo/AverQel_Icon.svg",

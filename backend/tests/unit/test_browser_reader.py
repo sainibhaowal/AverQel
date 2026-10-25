@@ -6,6 +6,8 @@ from app.deepspace.services import browser_reader
 from app.deepspace.services.url_reader import URLReadResult
 from app.providers.services.base import ProviderRequestError
 
+pytestmark = pytest.mark.unit_no_db
+
 
 def _result(**overrides: object) -> URLReadResult:
     values: dict[str, object] = {
@@ -21,8 +23,14 @@ def _result(**overrides: object) -> URLReadResult:
     return URLReadResult(**values)
 
 
+@pytest.mark.unit_no_db
 def test_js_shell_uses_browser_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(browser_reader, "read_url", lambda *args, **kwargs: _result())
+    declared_images = ["https://example.com/images/preview.jpg"]
+    monkeypatch.setattr(
+        browser_reader,
+        "read_url",
+        lambda *args, **kwargs: _result(image_urls=declared_images),
+    )
     calls: list[dict[str, object]] = []
 
     def render(url: str, **kwargs: object) -> URLReadResult:
@@ -42,6 +50,7 @@ def test_js_shell_uses_browser_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert result.retrieval_method == "browser_renderer"
     assert result.title == "Rendered App"
+    assert result.image_urls == declared_images
     assert calls[0]["url"] == "https://example.com/app"
 
 

@@ -287,29 +287,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - name: Create or verify release tag
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
-        run: |
-          set -euo pipefail
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "::error::Refusing non-semantic release tag '$VERSION'"
-            exit 1
-          }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
-            EXISTING_SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
-            test "$EXISTING_SHA" = "$RELEASE_SHA" || {
-              echo "Tag $VERSION points to $EXISTING_SHA, expected $RELEASE_SHA"
-              exit 1
-            }
-          else
-            git tag -a "$VERSION" "$RELEASE_SHA" -m "Release $VERSION"
-            git push origin "$VERSION"
-          fi
-
       - name: Download desktop packages
         uses: actions/download-artifact@v4
         with:
@@ -347,6 +324,29 @@ jobs:
             --asset-dir release-assets \
             --output release-manifest.json \
             --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download"
+
+      - name: Create or verify release tag
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Refusing non-semantic release tag '$VERSION'"
+            exit 1
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            EXISTING_SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
+            test "$EXISTING_SHA" = "$RELEASE_SHA" || {
+              echo "Tag $VERSION points to $EXISTING_SHA, expected $RELEASE_SHA"
+              exit 1
+            }
+          else
+            git tag -a "$VERSION" "$RELEASE_SHA" -m "Release $VERSION"
+            git push origin "$VERSION"
+          fi
 
       - name: Create GitHub release with desktop downloads
         uses: softprops/action-gh-release@v2

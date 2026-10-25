@@ -13,8 +13,9 @@ changing the existing authentication, storage, or retrieval boundaries.
 
 The API enforces organization access; frontend visibility is not the security
 boundary. Free users have tags and folders. Editors additionally have saved
-views, classification rules, and automation schedules. Admins additionally
-manage webhooks and delivery history. All operations remain tenant-scoped.
+views, classification rules, per-document classification history, and
+automation schedules. Admins additionally manage webhooks and delivery history.
+All operations remain tenant-scoped.
 
 ## Capability coverage
 
@@ -140,8 +141,9 @@ applying a tenant tag or assigning a tenant folder. Uploads evaluate enabled
 rules immediately; manual and scheduled runs process every document in
 paginated batches. Preview is read-only. Manual and scheduled execution writes
 durable run counters and per-document application history, shown on the rule
-page and on an accessible document's classification-history panel. A failure
-for one document is isolated and does not block ingestion.
+page and on an accessible document's classification-history panel for users
+with advanced organization access. A failure for one document is isolated and
+does not block ingestion.
 
 Schedules remain backward-compatible with interval-only records. New schedules
 can target all enabled rules or an explicit tenant-owned rule set, run hourly,

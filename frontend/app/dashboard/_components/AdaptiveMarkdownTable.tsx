@@ -118,8 +118,8 @@ export default function AdaptiveMarkdownTable({
       return { primary: parsedRows[start]!, continuations: parsedRows.slice(start + 1, end) };
     });
     return (
-      <div className="group relative my-5 grid gap-4" data-adaptive-table="cards">
-        <div className="flex justify-end opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+      <div className="group/adaptive-table relative my-5 grid gap-4" data-adaptive-table="cards">
+        <div className="flex min-h-8 justify-end opacity-0 transition group-focus-within/adaptive-table:opacity-100 group-hover/adaptive-table:opacity-100">
           <TableActions rows={tableMatrix} title="Markdown table" onSaveToLibrary={saveToLibrary} />
         </div>
         {records.map(({ primary, continuations }, recordIndex) => {
@@ -178,14 +178,18 @@ export default function AdaptiveMarkdownTable({
   }
 
   return (
-    <div
-      className="group relative my-5 overflow-x-auto rounded-xl border border-white/10"
-      data-adaptive-table="grid"
-    >
-      <div className="flex min-h-10 justify-end px-1 pt-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+    <div className="group/adaptive-table relative my-5">
+      <div className="flex min-h-8 justify-end opacity-0 transition group-focus-within/adaptive-table:opacity-100 group-hover/adaptive-table:opacity-100">
         <TableActions rows={tableMatrix} title="Markdown table" onSaveToLibrary={saveToLibrary} />
       </div>
-      <table className="w-full min-w-[36rem] border-collapse text-left">{children}</table>
+      <div className="overflow-x-auto rounded-xl border border-white/10" data-adaptive-table="grid">
+        <table
+          className="w-full min-w-[36rem] border-collapse text-left"
+          style={{ marginBlock: 0 }}
+        >
+          {children}
+        </table>
+      </div>
     </div>
   );
 }

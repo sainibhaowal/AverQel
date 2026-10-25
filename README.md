@@ -91,7 +91,7 @@ Browser or Electron client
       +-------------------> MinIO private objects + ClamAV scanning
           |
           +--------------- Celery worker roles:
-                            DeepSpace, ingestion, Library, dataset,
+                            DeepSpace, light/heavy ingestion, Library, dataset,
                             MCP, collection push, maintenance, scheduler
 ```
 
@@ -99,7 +99,7 @@ Browser or Electron client
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `frontend`                                                                | Serves the Next.js application and proxies configured API requests.                                                                                              |
 | `api`                                                                     | Authenticated FastAPI endpoints and request orchestration. Its startup script applies Alembic migrations and seeds integrations plus code-reviewed MCP metadata; Composio's live app catalog is fetched per user. |
-| `worker`, `ingestion-worker`, `library-worker`, `dataset-worker`          | Run DeepSpace, document ingestion, Library, and dataset background work on dedicated queues.                                                                     |
+| `worker`, `ingestion-worker`, `ingestion-heavy-worker`, `library-worker`, `dataset-worker` | Run DeepSpace, separately bounded light/heavy document ingestion, Library, and dataset background work on dedicated queues. |
 | `mcp-worker`, `collection-push-worker`, `maintenance-worker`, `scheduler` | Connector tasks, collection push outbox, maintenance tasks, and scheduled Celery jobs.                                                                           |
 | `postgres`, `redis`, `minio`, `clamav`                                    | Durable relational and vector data, queues and coordination, private object storage, and malware scanning.                                                       |
 | `inference`, `searxng`                                                    | Local model inference and server-side search services used by configured paths.                                                                                  |
@@ -177,8 +177,10 @@ Agent-assisted work follows the plan-first production and documentation
 standard in [AGENT_ENGINEERING_STANDARD.md](AGENT_ENGINEERING_STANDARD.md),
 with the shared entry point in [AGENTS.md](AGENTS.md).
 
-CI selects backend and frontend gates based on changed paths. Common local
-checks are:
+CI runs for every pull request to `main`. It always checks the PR title,
+deployment configuration, and workflow files, then runs the backend, frontend,
+browser, integration, and provider suites selected for the changed paths.
+Common local checks are:
 
 ```bash
 # Frontend
@@ -203,27 +205,37 @@ integration tests do not establish production deployment status.
 
 ## Releases and deployment
 
-The repository's release and VPS deployment workflows are manual and use
-protected `main`:
+The release process has five stages. CI is automatic. Stages 2–4 run in order
+inside one manually started desktop release workflow; VPS deployment is a
+separate manual workflow from protected `main`:
 
-1. **Release - Manual SemVer and Desktop** calculates the next version, builds
-   the Linux `.deb` and Windows `.exe` desktop packages, creates checksums and
-   a release manifest, and publishes a GitHub release. The Linux installer is
-   checked for its AverQel AppStream metadata and package identity.
-   The default version follows Conventional Commits since the latest published
-   release: breaking changes increment the major number, `feat:` increments
-   minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level
-   across those commits wins. Other commit types do not trigger an automatic
-   release; provide an explicit version only when an intentional release is
-   needed without a release-worthy commit. Published version tags are never
-   rewritten.
-2. **Deploy - Manual Docker Build and VPS** uses the exact release commit to
-   build and test API, worker, and frontend images, scan them, create SBOMs,
-   sign and publish the immutable images, and deploy them to the configured
-   VPS.
-3. API startup runs `alembic upgrade heads` before serving requests. The deploy
-   workflow checks internal and public health/readiness and release version;
-   it attempts to restore the prior application images if deployment fails.
+| Stage | What it does | When it runs |
+| --- | --- | --- |
+| **CI** | Runs PR-title validation, deployment-configuration checks, and workflow lint on every PR; it runs the backend, frontend, browser, integration, and provider suites selected for the changed paths. | On every pull request to `main`. |
+| **Semantic versioning** | Calculates the next release version from Conventional Commits since the latest published release. Breaking changes increment major; `feat:` increments minor; `fix:`, `perf:`, and `revert:` increment patch. The highest level wins. An operator may enter an explicit version when intentionally releasing without a release-worthy commit. | After the PR passes required CI and is merged, when an operator starts **Release - Manual SemVer and Desktop** from `main`. |
+| **Desktop build** | Builds and validates the Linux `.deb` and Windows `.exe` installers from the selected `main` commit. | After the version is calculated; both platform builds must succeed. |
+| **Publish** | Creates checksums and a release manifest, then publishes the installers and notes as GitHub Release assets. Published version tags are never rewritten. | After both desktop builds and release-asset validation succeed. |
+| **VPS deployment** | Builds and tests API, worker, and frontend images, scans them and creates SBOMs, publishes and signs the immutable images in GHCR, then deploys the selected `main` commit to the configured VPS. It runs internal and public readiness/version checks and attempts to restore the prior images if deployment fails. | Only when an operator separately starts **Deploy - Manual Docker Build and VPS** from `main`. It does not run automatically after a desktop release. |
+
+API startup runs `alembic upgrade heads` before serving requests. The VPS
+workflow selects a `main` commit independently of the desktop release, so
+publishing desktop installers does not update the web app or backend. A VPS
+deployment must target the current `main` head; re-running an older deployment
+is rejected. Uncommitted changes and commits on another branch are not deployed.
+If the selected commit has no SemVer tag, the web app displays the
+synthetic version `v0.0.0-main.<12-character-sha>` until a desktop release is
+published for that commit.
+The workflow checks that the frontend bundle, running VPS container, and public
+homepage match the selected commit's version and Git SHA. If the container is
+healthy but the public page is stale, the run reports the mismatch without
+rolling back the new container, so proxy or cache routing can be fixed directly.
+After the image build, the workflow rechecks that `main` has not advanced, and
+the production Compose file waits for the frontend's HTTP health check before
+it reports the service ready. The current deployment still replaces fixed-name
+Compose services in place; these checks do not provide blue/green zero-downtime
+traffic switching. The public Caddy gateway is managed separately from the
+application Compose stack, so uninterrupted cutover requires gateway routing
+to be brought under the deployment's controlled blue/green procedure first.
 
 Before relying on a release, review migration compatibility, keep a matching
 PostgreSQL and object-storage backup, deploy and smoke-test in isolated

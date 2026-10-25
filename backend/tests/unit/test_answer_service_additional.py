@@ -55,6 +55,24 @@ def test_synthesize_clamps_confidence_and_snippet_helpers() -> None:
     assert SnippetService.clean("  a   b ", 10) == "a b"
 
 
+def test_build_llm_messages_preserves_prompt_json_and_context_braces() -> None:
+    service = AnswerService("no-result")
+    context = 'Document data includes {"key": "value"} and {literal} braces.'
+
+    for query_type in QueryType:
+        messages = service._build_llm_messages(
+            query="Summarize this document",
+            context=context,
+            history=None,
+            query_type=query_type,
+        )
+
+        system_prompt = messages[0]["content"]
+        assert context in system_prompt
+        assert 'Evaluation payload shape: {"title":"API evaluation"' in system_prompt
+        assert 'Referral payload shape: {"title":"Referral"' in system_prompt
+
+
 def test_llm_generation_enabled_guards(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_state()
     monkeypatch.setenv("AKS_AI_INTEGRATION_SCOPE", "embeddings_and_generation")

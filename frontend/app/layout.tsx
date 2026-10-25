@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./dashboard/deepspace/animations.css";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import ToastProvider from "@/app/components/layout/ToastProvider";

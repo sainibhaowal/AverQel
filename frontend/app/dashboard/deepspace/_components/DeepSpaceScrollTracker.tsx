@@ -74,9 +74,27 @@ function appendStructuredBlocks(content: string, blocks: StructuredBlock[] | und
       result += "\n";
     }
 
+    if (
+      block.type === "card" &&
+      (block.layout === "feature" || block.layout === "place") &&
+      !result.includes(fence + "card")
+    ) {
+      const payload = Object.fromEntries(Object.entries(block).filter(([key]) => key !== "type"));
+      result += "\n\n" + fence + "card\n" + JSON.stringify(payload, null, 2) + "\n" + fence + "\n";
+      continue;
+    }
+
     if (block.type === "card" && block.content && !result.includes(block.content.trim())) {
       result +=
         "\n\n### " + (block.title || "Information card") + "\n\n" + block.content.trim() + "\n";
+    }
+
+    if (block.type === "infographic" && !result.includes(fence + "infographic")) {
+      const payload = Object.fromEntries(
+        Object.entries(block).filter(([key]) => key !== "type"),
+      );
+      result +=
+        "\n\n" + fence + "infographic\n" + JSON.stringify(payload, null, 2) + "\n" + fence + "\n";
     }
   }
 
