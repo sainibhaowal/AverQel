@@ -40,20 +40,33 @@ fi
 
 COMMIT_SUBJECTS="$(git log "$COMMIT_RANGE" --format='%s')"
 COMMIT_BODIES="$(git log "$COMMIT_RANGE" --format='%b')"
+# GitHub squash merges often use a non-Conventional-Commit subject (for
+# example, "merge: resolve conflicts") and put the PR's individual commit
+# titles in a bulleted body. Include only bullet lines that are themselves
+# valid Conventional Commit titles so free-form prose cannot cause a bump.
+mapfile -t SQUASH_BODY_SUBJECTS < <(
+  sed -nE \
+    's/^[[:space:]]*[*-][[:space:]]+([[:alnum:]_-]+(\([^)]*\))?!?:[[:space:]]+.*)$/\1/p' \
+    <<< "$COMMIT_BODIES"
+)
+RELEASE_COMMIT_SUBJECTS="$COMMIT_SUBJECTS"
+if ((${#SQUASH_BODY_SUBJECTS[@]} > 0)); then
+  RELEASE_COMMIT_SUBJECTS+=$'\n'"$(printf '%s\n' "${SQUASH_BODY_SUBJECTS[@]}")"
+fi
 IFS=. read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
 
-if grep -Eq '^[[:alnum:]_-]+(\([^)]*\))?!:[[:space:]]' <<< "$COMMIT_SUBJECTS" \
-  || grep -Eq '^[[:space:]]*BREAKING[ -]CHANGE:' <<< "$COMMIT_BODIES"; then
+if grep -Eq '^[[:alnum:]_-]+(\([^)]*\))?!:[[:space:]]' <<< "$RELEASE_COMMIT_SUBJECTS" \
+  || grep -Eq '^[[:space:]]*([-*][[:space:]]+)?BREAKING[ -]CHANGE:' <<< "$COMMIT_BODIES"; then
   # AverQel remains on the v1 release line, including for breaking changes.
   MINOR=$((MINOR + 1))
   PATCH=0
-elif grep -Eq '^feat(\([^)]*\))?:[[:space:]]' <<< "$COMMIT_SUBJECTS"; then
+elif grep -Eq '^feat(\([^)]*\))?:[[:space:]]' <<< "$RELEASE_COMMIT_SUBJECTS"; then
   MINOR=$((MINOR + 1))
   PATCH=0
-elif grep -Eq '^(fix|perf|revert)(\([^)]*\))?:[[:space:]]' <<< "$COMMIT_SUBJECTS"; then
+elif grep -Eq '^(fix|perf|revert)(\([^)]*\))?:[[:space:]]' <<< "$RELEASE_COMMIT_SUBJECTS"; then
   PATCH=$((PATCH + 1))
 else
-  echo "::error::No release-worthy Conventional Commit found since ${LAST_TAG:-the start of history}. Use feat:, fix:, perf:, revert:, or a BREAKING CHANGE marker; otherwise provide an explicit release_version." >&2
+  echo "::error::No release-worthy Conventional Commit found in commit subjects or squash-body bullets since ${LAST_TAG:-the start of history}. Use feat:, fix:, perf:, revert:, or a BREAKING CHANGE marker; otherwise provide an explicit release_version." >&2
   exit 1
 fi
 

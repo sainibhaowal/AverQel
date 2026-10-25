@@ -120,6 +120,33 @@ new_repo automatic_latest_tag
 add_commit "feat(query): add saved filters"
 expect_auto_version "v1.3.0"
 
+new_repo squash_merge_features
+add_commit "merge: resolve integration conflicts" $'PR commit list:\n\n* chore(ci): update checks\n\n* feat: add document workflows\n\n* fix(documents): preserve processing state'
+expect_version "v1.3.0"
+
+new_repo squash_merge_fixes
+add_commit "merge: resolve integration conflicts" $'* docs: clarify setup\n\n* fix(documents): handle retry safely'
+expect_version "v1.2.14"
+
+new_repo squash_merge_breaking
+add_commit "merge: resolve integration conflicts" $'* feat(api)!: remove the legacy endpoint'
+expect_version "v1.3.0"
+
+new_repo squash_merge_breaking_footer
+add_commit "merge: resolve integration conflicts" $'* fix(api): keep the current response shape\n\n* BREAKING CHANGE: clients must migrate the old field'
+expect_version "v1.3.0"
+
+new_repo squash_merge_prose
+add_commit "merge: resolve integration conflicts" $'The discussion mentions feat: add filters and fix: a bug, but these are prose rather than commit bullets.'
+if output="$(cd "$repo" && "$script" HEAD v1.2.13 2>&1)"; then
+  echo "Expected prose in a squash body not to trigger a release." >&2
+  exit 1
+fi
+if [[ "$output" != *"No release-worthy Conventional Commit"* ]]; then
+  echo "Expected a clear no-release message; got: $output" >&2
+  exit 1
+fi
+
 for version in v1.0.0 v1.100.1; do
   actual="$(bash "$validator" "$version")"
   [[ "$actual" == "$version" ]]
@@ -132,4 +159,4 @@ for version in v2.0.0 v0.9.4 v1.2 v01.2.3; do
   fi
 done
 
-echo "SemVer regression checks passed (18 cases)."
+echo "SemVer regression checks passed (23 cases)."
