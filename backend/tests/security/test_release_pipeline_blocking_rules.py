@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 pytestmark = pytest.mark.unit_no_db
@@ -67,6 +69,59 @@ def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     assert "MODELS_DIR" in workflow
     assert "Keep the previous release image so rollback is immediate." in workflow
     assert "AVERQEL_IMAGE_TAG" in workflow
+
+
+def test_vps_deployment_smoke_tests_frontend_before_ssh() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+
+    assert "--publish 127.0.0.1::1030" in workflow
+    assert "Built frontend served its homepage successfully" in workflow
+    assert "did not serve its homepage within 60 seconds" in workflow
+    assert (
+        workflow.index("Smoke-test built image contents")
+        < workflow.index("Publish tested images to GHCR")
+        < workflow.index("SSH deploy without touching VPS-owned files")
+    )
+
+
+def test_frontend_healthcheck_and_rollback_report_diagnostics() -> None:
+    compose = yaml.load(_read(ROOT / "backend/docker-compose.prod.yml"), Loader=yaml.BaseLoader)
+    healthcheck = compose["services"]["frontend"]["healthcheck"]
+
+    assert "GET / returned HTTP " in healthcheck["test"][3]
+    assert "GET / failed: " in healthcheck["test"][3]
+
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    deploy_script = workflow.split("script: |", 1)[1]
+    assert 'report_frontend_health "before rollback"' in deploy_script
+    assert "State.Health.Log" in deploy_script
+    assert "oom_killed={{.State.OOMKilled}}" in deploy_script
+    assert "Automatic rollback did not restore a healthy release" in deploy_script
+    assert 'report_frontend_health "after failed rollback"' in deploy_script
+
+
+def test_vps_frontend_smoke_and_deploy_shell_scripts_parse() -> None:
+    workflow = yaml.load(_read(ROOT / ".github/workflows/deploy-vps.yml"), Loader=yaml.BaseLoader)
+    steps = [
+        *workflow["jobs"]["build-and-test-images"]["steps"],
+        *workflow["jobs"]["deploy-vps"]["steps"],
+    ]
+    scripts = [
+        next(
+            step["run"] for step in steps if step.get("name") == "Smoke-test built image contents"
+        ),
+        next(
+            step["with"]["script"]
+            for step in steps
+            if step.get("name") == "SSH deploy without touching VPS-owned files"
+        ),
+    ]
+
+    for script in scripts:
+        result = subprocess.run(
+            ["bash", "-n"], input=script, capture_output=True, check=False, text=True
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_vps_trivy_scans_do_not_contend_for_a_shared_cache() -> None:
