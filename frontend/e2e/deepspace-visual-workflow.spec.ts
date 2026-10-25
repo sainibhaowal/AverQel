@@ -347,9 +347,14 @@ async function installVisualApi(page: Page, state: VisualState) {
       });
     }
     if (pathname === `/deepspace/chats/${conversationId}` && method === "PATCH") {
-      const payload = request.postDataJSON() as { content_html?: string };
+      const payload = request.postDataJSON() as { content_html?: string; title?: string };
       if (typeof payload.content_html === "string") state.noteHtml = payload.content_html;
-      return json({ id: conversationId, content_html: state.noteHtml });
+      return json({
+        id: conversationId,
+        content_html: state.noteHtml,
+        title: payload.title ?? "Visual acceptance conversation",
+        updated_at: "2026-10-16T10:00:00Z",
+      });
     }
     if (pathname === "/deepspace/chats/operational-summary") return json(null);
     if (pathname === `/deepspace/chats/${conversationId}/messages` && method === "GET") {
@@ -564,7 +569,10 @@ test.describe("DeepSpace visual workflow", () => {
     for (const format of ["SVG", "PNG", "PDF"] as const) {
       await expectVisualDownload(
         authenticatedPage,
-        authenticatedPage.getByRole("button", { name: `Export card as ${format}` }),
+        authenticatedPage
+          .getByRole("heading", { name: "Executive summary" })
+          .locator("xpath=ancestor::article[1]")
+          .getByRole("button", { name: `Export card as ${format}` }),
         new RegExp(`executive-summary\\.${format.toLowerCase()}$`),
       );
     }
