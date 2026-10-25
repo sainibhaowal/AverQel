@@ -67,8 +67,9 @@ changes currently merged to `main`; the release has not been published yet.
   AverQel loading treatment instead of separate ad hoc spinners and skeletons.
 - Improved DeepSpace history and live activity restoration. Ordered activity,
   streamed drafts, provider continuation state, and output-rate measurements
-  are represented more accurately after reload or resume. Output rate is
-  shown only when the provider returns enough exact usage data to calculate it.
+  are represented more accurately after reload or resume. Live output rate is
+  labeled as an estimate while streaming; provider-reported usage can refine
+  the final count.
 - Added support for speaking new visible response sentences during voice
   conversation. Hidden reasoning, saved chat history, and raw tool payloads
   are not spoken; interrupting speech playback does not cancel the underlying
