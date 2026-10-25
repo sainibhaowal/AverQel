@@ -566,13 +566,14 @@ test.describe("DeepSpace visual workflow", () => {
         new RegExp(`quarterly-revenue\\.${format.toLowerCase()}$`),
       );
     }
+    const executiveSummaryCard = authenticatedPage.locator(
+      '[data-visual-block-id="visual-workflow-card"]',
+    );
+    await expect(executiveSummaryCard).toHaveCount(1);
     for (const format of ["SVG", "PNG", "PDF"] as const) {
       await expectVisualDownload(
         authenticatedPage,
-        authenticatedPage
-          .getByRole("heading", { name: "Executive summary" })
-          .locator("xpath=ancestor::article[1]")
-          .getByRole("button", { name: `Export card as ${format}` }),
+        executiveSummaryCard.getByRole("button", { name: `Export card as ${format}` }),
         new RegExp(`executive-summary\\.${format.toLowerCase()}$`),
       );
     }
