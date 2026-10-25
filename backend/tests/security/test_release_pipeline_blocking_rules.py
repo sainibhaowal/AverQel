@@ -77,6 +77,9 @@ def test_vps_deployment_smoke_tests_frontend_before_ssh() -> None:
     assert "--publish 127.0.0.1::1030" in workflow
     assert "Built frontend served its homepage successfully" in workflow
     assert "did not serve its homepage within 60 seconds" in workflow
+    assert 'docker exec "$FRONTEND_SMOKE_CONTAINER" node -e' in workflow
+    assert "Built frontend loopback health check returned HTTP " in workflow
+    assert "Built frontend cannot reach its own loopback listener" in workflow
     assert (
         workflow.index("Smoke-test built image contents")
         < workflow.index("Publish tested images to GHCR")
@@ -86,10 +89,15 @@ def test_vps_deployment_smoke_tests_frontend_before_ssh() -> None:
 
 def test_frontend_healthcheck_and_rollback_report_diagnostics() -> None:
     compose = yaml.load(_read(ROOT / "backend/docker-compose.prod.yml"), Loader=yaml.BaseLoader)
-    healthcheck = compose["services"]["frontend"]["healthcheck"]
+    frontend = compose["services"]["frontend"]
+    healthcheck = frontend["healthcheck"]
 
+    assert frontend["environment"]["HOSTNAME"] == "0.0.0.0"
     assert "GET / returned HTTP " in healthcheck["test"][3]
     assert "GET / failed: " in healthcheck["test"][3]
+
+    dockerfile = _read(ROOT / "frontend/Dockerfile")
+    assert "HOSTNAME=0.0.0.0" in dockerfile
 
     workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
     deploy_script = workflow.split("script: |", 1)[1]
