@@ -116,10 +116,11 @@ configured Ruff, Black, whitespace, and EOF formatters can modify files, so the
 isolated hook keeps those edits out of the active checkout and blocks the push
 if corrections need to be committed. Run applicable tests and quality gates
 after fixes, inspect the complete diff and staged file list, and do not bypass
-the hook. CI also runs Actionlint for every pull request, and the workflow lint
-job is included in the required `CI Passed` result. After a push, inspect the
-Actions results for that exact commit and resolve required failures before
-merge.
+the hook. Every pull request runs the backend, frontend, browser, integration,
+provider, deployment, and workflow quality gates, including documentation-only
+changes. The workflow lint job is included in the required `CI Passed` result.
+After a push, inspect the Actions results for that exact commit and resolve
+required failures before merge.
 
 Only reviewed pull requests may enter protected `main`. Release and VPS
 deployment workflows are intentionally manual and are not triggered by an
