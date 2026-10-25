@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.unit_no_db
 
 
 def _read(path: Path) -> str:
@@ -78,6 +81,21 @@ def test_vps_trivy_scans_do_not_contend_for_a_shared_cache() -> None:
     assert "scan api > trivy-api.log 2>&1 || API_STATUS=$?" in workflow
     assert "scan worker > trivy-worker.log 2>&1 || WORKER_STATUS=$?" in workflow
     assert "scan frontend > trivy-frontend.log 2>&1 || FRONTEND_STATUS=$?" in workflow
+
+
+def test_livekit_binary_uses_the_fixed_go_toolchain() -> None:
+    rebuild = _read(ROOT / "backend/ops/livekit/rebuild.sh")
+    build_docs = _read(ROOT / "backend/ops/livekit/BUILD.md")
+    builder_image = (
+        "golang:1.27.3-bookworm@sha256:"
+        "972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5"
+    )
+
+    assert builder_image in rebuild
+    assert "go version go1.27.3 linux/amd64" in rebuild
+    assert "grep -Fq go1.27.3 /out/build-info.txt" in rebuild
+    assert "CVE-2026-111943" in build_docs
+    assert "Go `1.27.3`" in build_docs
 
 
 def test_release_download_monitor_follows_github_redirects() -> None:

@@ -2,7 +2,9 @@
 
 The API and worker images include the checked-in `livekit-server` binary. It is
 built from the signed upstream `livekit/livekit` release `v1.13.9` and compiled
-with Go `1.27.2` for Linux `amd64` with `CGO_ENABLED=0`.
+with Go `1.27.3` for Linux `amd64` with `CGO_ENABLED=0`. Go 1.27.3 includes
+the `crypto/x509` security fix for CVE-2026-111943 detected in the previous
+Go 1.27.2 build.
 
 The build uses `golang.org/x/net v0.60.0` to include the upstream security fix
 that was not yet present in LiveKit's release dependency set. The Go module
