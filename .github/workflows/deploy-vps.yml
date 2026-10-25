@@ -171,6 +171,43 @@ jobs:
               exit 1
             }
           ' sh "$VERSION" "$SHA"
+
+          FRONTEND_SMOKE_CONTAINER="averqel-frontend-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup_frontend_smoke() {
+            docker rm -f "$FRONTEND_SMOKE_CONTAINER" >/dev/null 2>&1 || true
+          }
+          trap cleanup_frontend_smoke EXIT
+          docker run --detach --name "$FRONTEND_SMOKE_CONTAINER" \
+            --publish 127.0.0.1::1030 "$FRONTEND_IMAGE" >/dev/null
+          FRONTEND_SMOKE_PORT="$(docker port "$FRONTEND_SMOKE_CONTAINER" 1030/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
+          if [[ ! "$FRONTEND_SMOKE_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not resolve the temporary frontend smoke-test port"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
+          FRONTEND_SMOKE_URL="http://127.0.0.1:$FRONTEND_SMOKE_PORT/"
+          FRONTEND_SMOKE_STATUS="not-ready"
+          for ((attempt = 1; attempt <= 30; attempt++)); do
+            FRONTEND_SMOKE_STATUS="$(curl --location --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 1 "$FRONTEND_SMOKE_URL" 2>/dev/null || true)"
+            if [[ "$FRONTEND_SMOKE_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+              echo "Built frontend served its homepage successfully (HTTP $FRONTEND_SMOKE_STATUS)"
+              break
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$FRONTEND_SMOKE_CONTAINER")" != "true" ]]; then
+              echo "::error::Built frontend container exited before serving its homepage (last HTTP status: $FRONTEND_SMOKE_STATUS)"
+              docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ ! "$FRONTEND_SMOKE_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::error::Built frontend did not serve its homepage within 60 seconds (last HTTP status: $FRONTEND_SMOKE_STATUS)"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
+          cleanup_frontend_smoke
+          trap - EXIT
           echo "Image smoke tests passed for frontend $VERSION ($SHA) and LiveKit 1.13.9"
 
       - name: Install Trivy once
@@ -435,17 +472,45 @@ jobs:
               rm -f "$DEPLOY_COMPOSE_FILE" "$COMPOSE_NETWORK_OVERRIDE"
             }
 
+            report_frontend_health() {
+              echo "Frontend health diagnostics ($1)"
+              compose ps --all frontend || true
+              if docker inspect averqel-frontend >/dev/null 2>&1; then
+                docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restarts={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}} {{range .State.Health.Log}}probe(exit={{.ExitCode}} end={{.End}}): {{printf "%q" .Output}}; {{end}}' averqel-frontend || true
+              else
+                echo "Frontend container is missing"
+              fi
+            }
+
             rollback_on_failure() {
               status=$?
               trap - EXIT
+              if [[ "$status" -ne 0 ]]; then
+                report_frontend_health "before rollback"
+              fi
               if [[ "$status" -ne 0 && "$SKIP_ROLLBACK" != "1" && -n "$PREVIOUS_VERSION" && -n "$PREVIOUS_SHA" && "$PREVIOUS_VERSION" != "$VERSION" ]]; then
                 echo "Deployment failed; restoring previous release $PREVIOUS_VERSION"
                 set +e
                 export AVERQEL_RELEASE_VERSION="$PREVIOUS_VERSION"
                 export AVERQEL_IMAGE_TAG="$PREVIOUS_SHA"
                 compose pull api worker deepspace-control-worker maintenance-worker mcp-worker ingestion-worker scheduler inference frontend
+                pull_status=$?
                 compose up -d --no-build --wait --wait-timeout 180
+                rollback_status=$?
                 set -e
+                if [[ "$pull_status" -ne 0 ]]; then
+                  echo "::warning::One or more previous release images could not be pulled (exit $pull_status)."
+                fi
+                if [[ "$rollback_status" -eq 0 ]]; then
+                  echo "Previous release $PREVIOUS_VERSION passed Compose health checks after rollback."
+                else
+                  echo "::error::Automatic rollback did not restore a healthy release (Compose exit $rollback_status). Production may remain unavailable."
+                  report_frontend_health "after failed rollback"
+                fi
+              elif [[ "$status" -ne 0 && "$SKIP_ROLLBACK" == "1" ]]; then
+                echo "Deployment rollback was intentionally skipped because the failure occurred during public-origin verification."
+              elif [[ "$status" -ne 0 ]]; then
+                echo "::error::Automatic rollback is unavailable because the previous release version or SHA could not be identified."
               fi
               cleanup_temp_files
               exit "$status"

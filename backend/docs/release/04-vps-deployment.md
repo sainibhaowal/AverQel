@@ -29,6 +29,14 @@ cleanup is scoped to AverQel; it does not run Docker system, builder, image, or
 volume prune commands and does not remove PostgreSQL, Redis, MinIO, or runtime
 data volumes.
 
+Before SSH deployment, the workflow starts the built frontend image in an
+isolated container and requires its homepage to return HTTP 2xx. If production
+readiness fails, the workflow reports the frontend container state and recent
+health-probe status/error before attempting rollback. It reports rollback
+health separately; a failed rollback means the previous service was not
+restored and requires operator recovery. These checks improve detection and
+diagnosis but do not preserve traffic during the fixed-name container swap.
+
 ## Availability limitation
 
 The deployment currently updates fixed-name Compose services in place. Docker
