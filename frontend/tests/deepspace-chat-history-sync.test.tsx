@@ -937,18 +937,22 @@ describe("DeepSpaceChatClient history sync", () => {
 
     renderChat({ activeConversationId: "conv-1" });
     expect(await screen.findByText("assistant:Saved response version 2.")).toBeInTheDocument();
+    await waitForSelectedConversationReady();
+    const historyLoadsBeforeSwitch = historyLoads;
     fireEvent.click(screen.getByRole("button", { name: "Previous response version" }));
 
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith(
+        "/deepspace/chats/conv-1/messages/assistant-versioned/versions/version-1/activate",
+        { method: "PATCH" },
+      );
+    });
     await waitFor(() => {
       expect(screen.getByTestId("deepspace-thread")).toHaveTextContent(
         "assistant:Saved response version 2.",
       );
-      expect(historyLoads).toBeGreaterThan(1);
+      expect(historyLoads).toBeGreaterThan(historyLoadsBeforeSwitch);
     });
-    expect(fetchWithAuthMock).toHaveBeenCalledWith(
-      "/deepspace/chats/conv-1/messages/assistant-versioned/versions/version-1/activate",
-      { method: "PATCH" },
-    );
   });
 
   it("shows the selected conversation's existing ID in expanded diagnostics", async () => {
