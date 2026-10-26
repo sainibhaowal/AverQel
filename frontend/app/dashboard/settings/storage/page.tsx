@@ -26,6 +26,7 @@ import {
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useRealtimeEvents } from "@/lib/realtime";
 
@@ -335,9 +336,9 @@ export default function StorageDetailsPage() {
                     {usagePercent.toFixed(1)}%
                   </span>
                 </div>
-                <div className="bg-muted/60 h-4 overflow-hidden rounded-full">
+                <div className="bg-muted/60 h-4 overflow-hidden rounded-sm">
                   <div
-                    className={`h-full rounded-full ${usagePercent >= 90 ? "bg-destructive" : "bg-cyan-500"}`}
+                    className={`h-full rounded-sm ${usagePercent >= 90 ? "bg-destructive" : "bg-cyan-500"}`}
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
@@ -384,7 +385,7 @@ export default function StorageDetailsPage() {
                   credentials, security records, and unknown legacy data stay protected.
                 </p>
               </div>
-              <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
+              <span className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
                 Archive-first · purge disabled
               </span>
             </div>
@@ -394,20 +395,21 @@ export default function StorageDetailsPage() {
                 htmlFor="storage-retention-mode"
               >
                 Inactivity period
-                <select
+                <RoundedSelect
                   id="storage-retention-mode"
+                  label="Inactivity period"
                   value={retentionMode}
-                  onChange={(event) =>
-                    setRetentionMode(event.target.value as StorageRetentionPolicy["mode"])
-                  }
+                  onChange={(mode) => setRetentionMode(mode as StorageRetentionPolicy["mode"])}
                   disabled={retentionSaving || !retention}
-                  className="border-border/70 bg-background/70 text-foreground min-w-44 rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none focus:border-cyan-500"
-                >
-                  <option value="off">Off</option>
-                  <option value="30">30 days</option>
-                  <option value="60">60 days</option>
-                  <option value="90">90 days</option>
-                </select>
+                  options={[
+                    { value: "off", label: "Off" },
+                    { value: "30", label: "30 days" },
+                    { value: "60", label: "60 days" },
+                    { value: "90", label: "90 days" },
+                  ]}
+                  className="min-w-44"
+                  triggerClassName="w-full px-3 py-2.5 text-sm font-semibold"
+                />
               </label>
               <button
                 type="button"
@@ -513,7 +515,7 @@ function StorageVisualization({
             refreshes with the live storage meter every 5 seconds.
           </p>
         </div>
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
           <span className="h-2 w-2 rounded-full bg-emerald-400" /> Live meter
         </span>
       </div>
@@ -569,7 +571,7 @@ function StorageVisualization({
               <span>{metered.filter((metric) => metric.bytes > 0).length} active categories</span>
             </div>
             <div
-              className="border-border/70 flex h-5 w-full overflow-hidden rounded-full border bg-slate-900/80"
+              className="border-border/70 flex h-5 w-full overflow-hidden rounded-lg border bg-slate-900/80"
               role="img"
               aria-label="Storage used by category"
             >
@@ -663,7 +665,7 @@ function VisualStat({
 
 function InfoIcon() {
   return (
-    <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 text-xs font-black text-cyan-600 dark:text-cyan-300">
+    <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 text-xs font-black text-cyan-600 dark:text-cyan-300">
       i
     </span>
   );
@@ -700,11 +702,11 @@ function MetricRow({ metric, total }: { metric: StorageMetric; total: number }) 
             />
             {metric.label}
             {metric.included_in_quota ? (
-              <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-700 uppercase dark:text-cyan-300">
+              <span className="rounded-lg bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-700 uppercase dark:text-cyan-300">
                 metered
               </span>
             ) : (
-              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-600 uppercase dark:text-violet-300">
+              <span className="rounded-lg bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-600 uppercase dark:text-violet-300">
                 inventory
               </span>
             )}

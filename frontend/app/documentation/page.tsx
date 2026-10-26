@@ -64,7 +64,7 @@ export default function DocsIndex() {
       {docsNavGroups.map((group) => (
         <section key={group.group} className="space-y-4">
           <h2 className="text-foreground flex items-center gap-3 text-lg font-black tracking-tight">
-            <span className="bg-primary h-4 w-1 rounded-full" />
+            <span className="bg-primary h-4 w-1 rounded-sm" />
             {group.group}
           </h2>
           <DocsCards

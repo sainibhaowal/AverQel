@@ -121,7 +121,7 @@ function IconTooltipButton({
       }}
       onPointerUp={hide}
       onPointerCancel={hide}
-      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-all sm:h-10 sm:w-10 ${
+      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all sm:h-10 sm:w-10 ${
         active
           ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
           : "text-foreground/70 hover:bg-surface-2 hover:text-primary"
@@ -131,7 +131,7 @@ function IconTooltipButton({
       <span
         role="tooltip"
         aria-hidden={!open}
-        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
+        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-lg border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
       >
@@ -157,6 +157,8 @@ export default function QueryPageClient() {
   const { user } = useAuth();
   const [state, dispatch] = useReducer(queryThreadReducer, initialQueryThreadState);
   const [query, setQuery] = useState("");
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  const [loadingOlderHistory, setLoadingOlderHistory] = useState(false);
   const allUploads = useSyncExternalStore(
     subscribeQueryUploads,
     getQueryUploadsSnapshot,
@@ -213,6 +215,7 @@ export default function QueryPageClient() {
   const autoFollowRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
   const pendingHistorySyncRef = useRef(false);
+  const olderHistoryRequestRef = useRef(false);
   const modelSwitchRef = useRef<Promise<void> | null>(null);
   const modelSelectionVersionRef = useRef(0);
   const searchParams = useSearchParams();
@@ -503,11 +506,45 @@ export default function QueryPageClient() {
         }
         return;
       }
-      const payload = (await response.json()) as { messages: QueryHistoryMessage[] };
+      const payload = (await response.json()) as {
+        messages: QueryHistoryMessage[];
+        has_more?: boolean;
+      };
       dispatch({ type: "load_history", conversationId, messages: payload.messages });
+      setHasOlderHistory(Boolean(payload.has_more));
     },
     [chatEndpointBase],
   );
+
+  const loadOlderHistory = useCallback(async () => {
+    const conversationId = state.currentConversationId;
+    const beforeMessageId = state.messages[0]?.id;
+    if (!conversationId || !beforeMessageId || !hasOlderHistory || olderHistoryRequestRef.current) {
+      return;
+    }
+
+    olderHistoryRequestRef.current = true;
+    setLoadingOlderHistory(true);
+    try {
+      const params = new URLSearchParams({ limit: "40", before_message_id: beforeMessageId });
+      const response = (await fetchWithAuth(
+        `${chatEndpointBase}/${conversationId}/messages?${params.toString()}`,
+      )) as Response;
+      if (!response.ok) throw new Error("History page request failed");
+      const payload = (await response.json()) as {
+        messages: QueryHistoryMessage[];
+        has_more?: boolean;
+      };
+      if (state.currentConversationId !== conversationId) return;
+      dispatch({ type: "prepend_history", conversationId, messages: payload.messages });
+      setHasOlderHistory(Boolean(payload.has_more));
+    } catch {
+      toast.error("Could not load older messages. Try again.");
+    } finally {
+      olderHistoryRequestRef.current = false;
+      setLoadingOlderHistory(false);
+    }
+  }, [chatEndpointBase, hasOlderHistory, state.currentConversationId, state.messages]);
 
   useEffect(() => {
     if (!state.isStreaming && pendingHistorySyncRef.current && state.currentConversationId) {
@@ -521,7 +558,10 @@ export default function QueryPageClient() {
       if (state.streamError) {
         return;
       }
-      void loadConversation(state.currentConversationId);
+      // Defer the history refresh out of the effect body. The network request
+      // updates reducer state after it resolves, without a synchronous
+      // effect-to-render cascade.
+      void Promise.resolve().then(() => loadConversation(state.currentConversationId!));
     }
   }, [
     loadConversation,
@@ -876,6 +916,27 @@ export default function QueryPageClient() {
     ],
   );
 
+  const handleFollowupSelect = useCallback(
+    (suggestion: string) => {
+      setQuery(suggestion);
+      void submitQuery(suggestion, attachments);
+    },
+    [attachments, submitQuery],
+  );
+
+  const startMessageEdit = useCallback(
+    (messageId: string) => dispatch({ type: "start_edit", messageId }),
+    [],
+  );
+  const cancelMessageEdit = useCallback(
+    (messageId: string) => dispatch({ type: "cancel_edit", messageId }),
+    [],
+  );
+  const updateMessageDraft = useCallback(
+    (messageId: string, value: string) => dispatch({ type: "update_edit_draft", messageId, value }),
+    [],
+  );
+
   useEffect(() => {
     if (
       state.isStreaming ||
@@ -1123,7 +1184,7 @@ export default function QueryPageClient() {
 
         if (shouldRenderPortal) {
           return createPortal(
-            <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-full border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
+            <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-lg border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
               <IconTooltipButton
                 label="Controls"
                 active={filtersOpen}
@@ -1169,19 +1230,17 @@ export default function QueryPageClient() {
               emptyPrompts={emptyPrompts}
               activeAssistantId={state.activeAssistantId}
               onRegenerate={regenerateMessage}
-              onStartEdit={(messageId) => dispatch({ type: "start_edit", messageId })}
-              onCancelEdit={(messageId) => dispatch({ type: "cancel_edit", messageId })}
-              onEditDraftChange={(messageId, value) =>
-                dispatch({ type: "update_edit_draft", messageId, value })
-              }
+              onStartEdit={startMessageEdit}
+              onCancelEdit={cancelMessageEdit}
+              onEditDraftChange={updateMessageDraft}
               onSaveEdit={saveEditedMessage}
               onActivateVersion={activateVersion}
               onDeleteAssistant={deleteAssistantMessage}
               onPreviewDocument={setSelectedCitationDocument}
-              onFollowupSelect={(suggestion) => {
-                setQuery(suggestion);
-                void submitQuery(suggestion, attachments);
-              }}
+              onFollowupSelect={handleFollowupSelect}
+              hasOlderMessages={hasOlderHistory}
+              loadingOlderMessages={loadingOlderHistory}
+              onLoadOlderMessages={loadOlderHistory}
               realTimeStats={realTimeStats}
             />
             <div ref={messagesEndRef} />
@@ -1262,7 +1321,7 @@ export default function QueryPageClient() {
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
-                  className="text-foreground/40 rounded-full p-2 transition-all hover:bg-white/10 hover:text-white active:scale-90"
+                  className="text-foreground/40 rounded-lg p-2 transition-all hover:bg-white/10 hover:text-white active:scale-90"
                 >
                   <X size={15} />
                 </button>
@@ -1320,7 +1379,7 @@ export default function QueryPageClient() {
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold tracking-wide">{mode.name}</span>
                               {isActive && (
-                                <span className="bg-primary/20 text-primary border-primary/30 flex h-4 w-4 items-center justify-center rounded-full border shadow-[0_0_10px_rgba(var(--primary),0.2)]">
+                                <span className="bg-primary/20 text-primary border-primary/30 flex h-4 w-4 items-center justify-center rounded-lg border shadow-[0_0_10px_rgba(var(--primary),0.2)]">
                                   <Check size={10} className="stroke-[3]" />
                                 </span>
                               )}

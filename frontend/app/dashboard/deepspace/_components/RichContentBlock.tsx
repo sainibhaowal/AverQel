@@ -38,14 +38,14 @@ function RichContentBlockView({ block, editor }: RichContentBlockProps) {
                 setDraft(block.props.source);
                 setEditing(false);
               }}
-              className="theme-chip inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs"
+              className="theme-chip inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs"
             >
               <X size={13} /> Cancel
             </button>
             <button
               type="button"
               onClick={save}
-              className="theme-chip bg-primary text-primary-foreground inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs"
+              className="theme-chip bg-primary text-primary-foreground inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs"
             >
               <Save size={13} /> Save block
             </button>
@@ -57,7 +57,7 @@ function RichContentBlockView({ block, editor }: RichContentBlockProps) {
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="theme-chip absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100"
+        className="theme-chip absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100"
         aria-label={`Edit ${block.props.kind} block`}
       >
         <Pencil size={13} /> Edit

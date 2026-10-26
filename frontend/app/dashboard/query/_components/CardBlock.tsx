@@ -94,7 +94,7 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
           <button
             type="button"
             onClick={() => void copy()}
-            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label={copied ? "Card content copied" : "Copy card content"}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -102,7 +102,7 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
           <button
             type="button"
             onClick={download}
-            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label="Download information card"
           >
             <Download size={14} />
@@ -251,7 +251,7 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
                   key={action.label}
                   type="button"
                   onClick={() => void copy(action.content ?? action.label)}
-                  className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+                  className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
                 >
                   <Copy size={13} />
                   {action.label}
@@ -269,7 +269,7 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
                       "text/plain;charset=utf-8",
                     )
                   }
-                  className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+                  className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
                 >
                   <Download size={13} />
                   {action.label}
@@ -281,7 +281,7 @@ export default function CardBlock({ block }: { block: StreamCardBlock }) {
                 href={href}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+                className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
               >
                 <Play size={13} />
                 {action.label}

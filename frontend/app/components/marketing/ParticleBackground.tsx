@@ -25,17 +25,35 @@ export default function ParticleBackground() {
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
-    let animationId: number;
+    let animationId = 0;
+    let isDocumentVisible = !document.hidden;
+    let isInViewport = true;
     let cw = 0,
       ch = 0;
     let time = 0;
+    let grainCanvas: HTMLCanvasElement | null = null;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const resize = () => {
       cw = canvas.width = window.innerWidth;
       ch = canvas.height = window.innerHeight;
     };
+    const rebuildGrainLayer = () => {
+      grainCanvas = document.createElement("canvas");
+      grainCanvas.width = cw;
+      grainCanvas.height = ch;
+      const grainContext = grainCanvas.getContext("2d");
+      if (!grainContext) {
+        grainCanvas = null;
+        return;
+      }
+      grainContext.fillStyle = "rgba(255, 255, 255, 0.012)";
+      for (let i = 0; i < 800; i++) {
+        grainContext.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
+      }
+    };
     resize();
-    window.addEventListener("resize", resize);
+    rebuildGrainLayer();
     window.addEventListener("mousemove", handleMouseMove);
 
     // Lattice Grid Points
@@ -57,7 +75,8 @@ export default function ParticleBackground() {
 
     const signals: { r: number; c: number; progress: number; speed: number; color: string }[] = [];
 
-    const animate = () => {
+    const drawFrame = () => {
+      if (!isDocumentVisible || !isInViewport) return;
       time += 0.005;
       ctx.fillStyle = "#020617";
       ctx.fillRect(0, 0, cw, ch);
@@ -190,20 +209,82 @@ export default function ParticleBackground() {
         ctx.fillRect(sx - 15, sy - 15, 30, 30);
       });
 
-      // 5. Fine Premium Grain
-      ctx.fillStyle = "rgba(255, 255, 255, 0.012)";
-      for (let i = 0; i < 800; i++) {
-        ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
-      }
+      // Keep the same fine-grain layer without generating 800 random pixels
+      // on every animation frame.
+      if (grainCanvas) ctx.drawImage(grainCanvas, 0, 0);
+    };
 
+    const scheduleAnimation = () => {
+      if (animationId || !isDocumentVisible || !isInViewport || motionPreference.matches) return;
       animationId = requestAnimationFrame(animate);
     };
 
-    animate();
+    const animate = () => {
+      animationId = 0;
+      if (!isDocumentVisible || !isInViewport) return;
+      drawFrame();
+      scheduleAnimation();
+    };
+
+    const cancelAnimation = () => {
+      if (!animationId) return;
+      cancelAnimationFrame(animationId);
+      animationId = 0;
+    };
+
+    const handleVisibilityChange = () => {
+      isDocumentVisible = !document.hidden;
+      if (!isDocumentVisible) {
+        cancelAnimation();
+      } else if (motionPreference.matches) {
+        drawFrame();
+      } else {
+        scheduleAnimation();
+      }
+    };
+
+    const handleResize = () => {
+      resize();
+      rebuildGrainLayer();
+      if (motionPreference.matches) drawFrame();
+    };
+
+    const handleMotionPreferenceChange = () => {
+      cancelAnimation();
+      if (motionPreference.matches) {
+        drawFrame();
+      } else {
+        scheduleAnimation();
+      }
+    };
+
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            isInViewport = entry?.isIntersecting ?? true;
+            if (!isInViewport) {
+              cancelAnimation();
+            } else if (motionPreference.matches) {
+              drawFrame();
+            } else {
+              scheduleAnimation();
+            }
+          });
+
+    observer?.observe(canvas);
+    window.addEventListener("resize", handleResize);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    motionPreference.addEventListener("change", handleMotionPreferenceChange);
+    if (motionPreference.matches) drawFrame();
+    else scheduleAnimation();
 
     return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", resize);
+      cancelAnimation();
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      motionPreference.removeEventListener("change", handleMotionPreferenceChange);
+      window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
     };
   }, [handleMouseMove]);

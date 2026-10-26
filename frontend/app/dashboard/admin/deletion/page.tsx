@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { useAuth } from "@/app/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { hasAdminRole } from "@/lib/roles";
@@ -446,14 +447,14 @@ export default function DeletionPage() {
                   AverQel.
                 </p>
               </div>
-              <label className="theme-panel-muted flex items-center gap-3 rounded-xl px-4 py-3">
+              <label className="theme-panel-muted focus-within:border-primary/55 focus-within:ring-primary/10 flex items-center gap-3 rounded-xl px-4 py-3 focus-within:ring-2">
                 <Search size={16} className="text-muted-foreground" />
                 <span className="sr-only">Search accounts</span>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search email or tenant"
-                  className="text-foreground placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
+                  className="search-shell-input text-foreground placeholder:text-muted-foreground w-full text-sm"
                 />
               </label>
 
@@ -490,7 +491,7 @@ export default function DeletionPage() {
                         </span>
                       </span>
                       <span
-                        className={`deletion-account-status shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                        className={`deletion-account-status shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold uppercase ${
                           item.is_active
                             ? "deletion-account-status-active"
                             : "deletion-account-status-disabled"
@@ -622,18 +623,19 @@ export default function DeletionPage() {
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="deletion-form-label min-w-48 text-xs font-semibold text-slate-400">
                     Reason
-                    <select
+                    <RoundedSelect
+                      label="Deletion reason"
                       value={purgeReason}
-                      onChange={(event) =>
-                        setPurgeReason(
-                          event.target.value as "workspace_offboarding" | "security_incident",
-                        )
+                      onChange={(reason) =>
+                        setPurgeReason(reason as "workspace_offboarding" | "security_incident")
                       }
-                      className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2"
-                    >
-                      <option value="security_incident">Security incident</option>
-                      <option value="workspace_offboarding">Tenant-content offboarding</option>
-                    </select>
+                      options={[
+                        { value: "security_incident", label: "Security incident" },
+                        { value: "workspace_offboarding", label: "Tenant-content offboarding" },
+                      ]}
+                      className="mt-1 w-full"
+                      triggerClassName="w-full px-3 py-2"
+                    />
                   </label>
                   <label className="deletion-form-label min-w-64 flex-1 text-xs font-semibold text-slate-400">
                     Type {expectedPurgeConfirmation || "DELETE tenant ID"}

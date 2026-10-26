@@ -4,6 +4,54 @@ import {
 } from "../app/dashboard/query/_lib/query-thread-reducer";
 
 describe("query thread reducer", () => {
+  it("prepends older history in order without duplicating the current page", () => {
+    let state = queryThreadReducer(initialQueryThreadState, {
+      type: "load_history",
+      conversationId: "conversation-1",
+      messages: [
+        {
+          id: "user-z",
+          role: "user",
+          content: "Second question",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+        {
+          id: "assistant-a",
+          role: "assistant",
+          content: "Current reply",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+
+    state = queryThreadReducer(state, {
+      type: "prepend_history",
+      conversationId: "conversation-1",
+      messages: [
+        {
+          id: "user-a",
+          role: "user",
+          content: "First question",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+        {
+          id: "user-z",
+          role: "user",
+          content: "Stale duplicate",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(state.messages.map((message) => message.id)).toEqual([
+      "user-a",
+      "user-z",
+      "assistant-a",
+    ]);
+    expect(state.messages[1]?.content).toBe("Second question");
+    expect(state.messageIndex.get("assistant-a")).toBe(2);
+  });
+
   it("creates user and assistant messages on submit and finalizes on done", () => {
     const submitted = queryThreadReducer(initialQueryThreadState, {
       type: "submit_query",

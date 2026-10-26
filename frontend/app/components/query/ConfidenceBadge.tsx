@@ -26,7 +26,7 @@ export default function ConfidenceBadge({ score }: ConfidenceBadgeProps) {
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${colorClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold ${colorClass}`}
     >
       <Icon size={14} className="opacity-80" />
       <span>{label}</span>

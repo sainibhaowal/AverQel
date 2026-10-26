@@ -70,6 +70,21 @@ async function mockDocumentHub(page: import("@playwright/test").Page) {
       });
       return;
     }
+    if (path === "/documents/supported-formats") {
+      await json(route, {
+        total_formats: 1,
+        legacy_conversion_enabled: true,
+        items: [
+          {
+            extension: ".pdf",
+            category: "pdf",
+            extraction_method: "pdf_text",
+            needs_conversion: false,
+          },
+        ],
+      });
+      return;
+    }
     if (path === "/documents/duplicates") {
       await json(route, { total_duplicate_documents: 0, groups: [] });
       return;
@@ -216,6 +231,25 @@ async function mockDocumentHub(page: import("@playwright/test").Page) {
 }
 
 test.describe("Documents Hub production workflows", () => {
+  test("opens and closes the Protocol Matrix without disturbing the Hub", async ({
+    authenticatedPage,
+  }) => {
+    await mockDocumentHub(authenticatedPage);
+    await authenticatedPage.goto("/dashboard/documents");
+
+    await authenticatedPage.getByRole("button", { name: "Protocol Matrix" }).click();
+    const dialog = authenticatedPage.getByRole("dialog", { name: "Supported Formats" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(".pdf", { exact: true })).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Close supported formats dialog" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(authenticatedPage.getByRole("heading", { name: "Documents Hub" })).toBeVisible();
+    await expect(
+      authenticatedPage.getByRole("link", { name: "Open quarterly-report.pdf" }).first(),
+    ).toBeVisible();
+  });
+
   test("reviews quarantined documents from the Hub", async ({ authenticatedPage }) => {
     await mockDocumentHub(authenticatedPage);
     await authenticatedPage.goto("/dashboard/documents");

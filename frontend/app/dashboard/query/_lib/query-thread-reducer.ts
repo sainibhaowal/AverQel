@@ -30,6 +30,7 @@ export interface QueryThreadState {
 
 export type QueryThreadAction =
   | { type: "load_history"; conversationId: string; messages: QueryHistoryMessage[] }
+  | { type: "prepend_history"; conversationId: string; messages: QueryHistoryMessage[] }
   | { type: "reset_thread" }
   | { type: "submit_query"; query: string }
   | { type: "start_regenerate"; assistantMessageId: string }
@@ -559,7 +560,15 @@ export function queryThreadReducer(
       return initialQueryThreadState;
 
     case "load_history": {
-      const messages = action.messages.map(fromHistoryMessage);
+      const incoming = action.messages.map(fromHistoryMessage);
+      const merged = new Map<string, QueryThreadMessage>();
+      if (state.currentConversationId === action.conversationId) {
+        for (const message of state.messages) merged.set(message.id, message);
+      }
+      for (const message of incoming) merged.set(message.id, message);
+      const messages = [...merged.values()].sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      );
       return {
         ...state,
         messages,
@@ -569,9 +578,24 @@ export function queryThreadReducer(
         isStreaming: false,
         streamError: null,
         lastModelName:
-          (action.messages.findLast((m) => m.role === "assistant")?.metadata_json
+          ([...action.messages].reverse().find((m) => m.role === "assistant")?.metadata_json
             ?.model_name as string) || null,
       };
+    }
+
+    case "prepend_history": {
+      if (state.currentConversationId !== action.conversationId || action.messages.length === 0) {
+        return state;
+      }
+      const merged = new Map<string, QueryThreadMessage>();
+      for (const message of action.messages.map(fromHistoryMessage)) {
+        merged.set(message.id, message);
+      }
+      for (const message of state.messages) merged.set(message.id, message);
+      const messages = [...merged.values()].sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      );
+      return { ...state, messages, messageIndex: buildMessageIndex(messages) };
     }
 
     case "submit_query": {

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import toast from "react-hot-toast";
 
 type SavedFilters = {
@@ -317,18 +318,17 @@ export default function SavedViewsPanel() {
                   <span className="text-muted-foreground mb-1 block text-[10px] font-bold uppercase">
                     Status
                   </span>
-                  <select
+                  <RoundedSelect
+                    label="Filter by status"
                     value={filters.status ?? ""}
-                    onChange={(event) => updateFilter("status", event.target.value)}
-                    className="theme-input w-full rounded-xl px-3 py-2.5 text-xs"
-                  >
-                    <option value="">Any status</option>
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(status) => updateFilter("status", status)}
+                    options={[
+                      { value: "", label: "Any status" },
+                      ...statusOptions.map((status) => ({ value: status, label: status })),
+                    ]}
+                    className="w-full"
+                    triggerClassName="w-full px-3 py-2.5 text-xs"
+                  />
                 </label>
                 <label>
                   <span className="text-muted-foreground mb-1 block text-[10px] font-bold uppercase">
@@ -345,56 +345,58 @@ export default function SavedViewsPanel() {
                   <span className="text-muted-foreground mb-1 block text-[10px] font-bold uppercase">
                     OCR
                   </span>
-                  <select
+                  <RoundedSelect
+                    label="Filter by OCR state"
                     value={filters.ocr_used === undefined ? "" : String(filters.ocr_used)}
-                    onChange={(event) =>
-                      updateFilter(
-                        "ocr_used",
-                        event.target.value === "" ? undefined : event.target.value === "true",
-                      )
+                    onChange={(ocrUsed) =>
+                      updateFilter("ocr_used", ocrUsed === "" ? undefined : ocrUsed === "true")
                     }
-                    className="theme-input w-full rounded-xl px-3 py-2.5 text-xs"
-                  >
-                    <option value="">Any OCR state</option>
-                    <option value="true">OCR used</option>
-                    <option value="false">OCR not used</option>
-                  </select>
+                    options={[
+                      { value: "", label: "Any OCR state" },
+                      { value: "true", label: "OCR used" },
+                      { value: "false", label: "OCR not used" },
+                    ]}
+                    className="w-full"
+                    triggerClassName="w-full px-3 py-2.5 text-xs"
+                  />
                 </label>
                 <label>
                   <span className="text-muted-foreground mb-1 block text-[10px] font-bold uppercase">
                     Quarantine
                   </span>
-                  <select
+                  <RoundedSelect
+                    label="Filter by quarantine state"
                     value={filters.quarantined === undefined ? "" : String(filters.quarantined)}
-                    onChange={(event) =>
+                    onChange={(quarantined) =>
                       updateFilter(
                         "quarantined",
-                        event.target.value === "" ? undefined : event.target.value === "true",
+                        quarantined === "" ? undefined : quarantined === "true",
                       )
                     }
-                    className="theme-input w-full rounded-xl px-3 py-2.5 text-xs"
-                  >
-                    <option value="">Any quarantine state</option>
-                    <option value="true">Quarantined only</option>
-                    <option value="false">Not quarantined</option>
-                  </select>
+                    options={[
+                      { value: "", label: "Any quarantine state" },
+                      { value: "true", label: "Quarantined only" },
+                      { value: "false", label: "Not quarantined" },
+                    ]}
+                    className="w-full"
+                    triggerClassName="w-full px-3 py-2.5 text-xs"
+                  />
                 </label>
                 <label>
                   <span className="text-muted-foreground mb-1 block text-[10px] font-bold uppercase">
                     Tag
                   </span>
-                  <select
+                  <RoundedSelect
+                    label="Filter by tag"
                     value={filters.tag_id ?? ""}
-                    onChange={(event) => updateFilter("tag_id", event.target.value)}
-                    className="theme-input w-full rounded-xl px-3 py-2.5 text-xs"
-                  >
-                    <option value="">Any tag</option>
-                    {tags.map((tag) => (
-                      <option key={tag.id} value={tag.id}>
-                        {tag.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(tagId) => updateFilter("tag_id", tagId)}
+                    options={[
+                      { value: "", label: "Any tag" },
+                      ...tags.map((tag) => ({ value: tag.id, label: tag.name })),
+                    ]}
+                    className="w-full"
+                    triggerClassName="w-full px-3 py-2.5 text-xs"
+                  />
                 </label>
                 <label>
                   <span className="text-muted-foreground mb-1 flex items-center gap-1 text-[10px] font-bold uppercase">
@@ -429,7 +431,7 @@ export default function SavedViewsPanel() {
                   activeChips.map((chip) => (
                     <span
                       key={chip.key}
-                      className="bg-primary/10 text-primary rounded-full px-2.5 py-1 text-[10px] font-bold"
+                      className="bg-primary/10 text-primary rounded-lg px-2.5 py-1 text-[10px] font-bold"
                     >
                       {chip.label}
                     </span>
@@ -494,7 +496,7 @@ export default function SavedViewsPanel() {
                             chips.map((chip) => (
                               <span
                                 key={chip.key}
-                                className="bg-primary/10 text-primary rounded-full px-2 py-1 text-[10px] font-bold"
+                                className="bg-primary/10 text-primary rounded-lg px-2 py-1 text-[10px] font-bold"
                               >
                                 {chip.label}
                               </span>

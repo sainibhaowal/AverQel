@@ -188,6 +188,43 @@ describe("providers settings page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "MCP" }));
     fireEvent.click(await screen.findByRole("button", { name: "Select Composio MCP provider" }));
     const input = await screen.findByLabelText("Your Composio project API key");
+    const keyForm = input.closest("form");
+    const saveButton = screen.getByRole("button", { name: "Validate and save" });
+    const browseLink = screen.getByRole("link", { name: /browse composio apps/i });
+    const providerLabel = screen.getByText("MCP provider");
+    const providerSurface = keyForm?.parentElement;
+    const setupPanel = input.closest(".providers-setup-panel");
+
+    expect(providerLabel).toHaveClass("text-foreground");
+    expect(providerLabel.querySelector("svg")).toHaveClass("text-primary");
+    expect(browseLink).toHaveClass(
+      "border",
+      "border-primary/40",
+      "bg-surface-1",
+      "text-foreground",
+    );
+    expect(providerSurface).toHaveClass("theme-inset");
+    expect(setupPanel).not.toHaveClass("bg-white/[0.02]");
+    expect(input).toHaveClass(
+      "bg-surface-0",
+      "text-foreground",
+      "border-glass-border",
+      "focus:border-primary",
+    );
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground",
+      "disabled:bg-surface-2",
+      "disabled:text-foreground",
+      "disabled:opacity-100",
+    );
+    expect(
+      [providerLabel, browseLink, providerSurface, input, saveButton]
+        .map((element) => element?.getAttribute("class") ?? "")
+        .join(" "),
+    ).not.toMatch(/cyan|sky/i);
+
     fireEvent.change(input, { target: { value: "user-project-api-key-123" } });
     fireEvent.click(screen.getByRole("button", { name: "Validate and save" }));
 
@@ -205,7 +242,7 @@ describe("providers settings page", () => {
     });
   });
 
-  it("greys out local runtime families in the web catalog", async () => {
+  it("clearly marks local runtime families unavailable in the web catalog", async () => {
     render(<ProvidersSettingsPage />);
 
     const inventoryHeading = await screen.findByRole("heading", {
@@ -227,6 +264,9 @@ describe("providers settings page", () => {
     ).toBeInTheDocument();
     expect(ollama).toBeDisabled();
     expect(ollama).toHaveAttribute("aria-disabled", "true");
+    expect(ollama).toHaveClass("cursor-not-allowed", "bg-surface-2");
+    expect(ollama).not.toHaveClass("opacity-45");
+    expect(within(ollama).getByText(/desktop app only/i)).toHaveClass("text-muted-foreground");
   });
 
   it("keeps the provider panel fixed and constrains both inventory views to scrolling", async () => {

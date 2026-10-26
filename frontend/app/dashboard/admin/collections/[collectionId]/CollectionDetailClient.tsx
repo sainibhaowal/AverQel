@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 const DEFAULT_AVATAR_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23f59e0b"/><stop offset="100%" stop-color="%2310b981"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23g)"/><path d="M50 30a15 15 0 1 0 0 30 15 15 0 0 0 0-30zM50 67c-18 0-32 10-32 20v3h64v-3c0-10-14-20-32-20z" fill="%230f172a"/></svg>`;
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
@@ -1492,17 +1493,17 @@ export default function AdminCollectionDetailPage({
             <div className="flex items-center gap-2">
               {/* WS status chip */}
               {wsStatus === "online" ? (
-                <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-emerald-500 uppercase">
+                <span className="flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-emerald-500 uppercase">
                   <span className="h-1 w-1 animate-ping rounded-full bg-emerald-500" />
                   Live Sync
                 </span>
               ) : wsStatus === "connecting" ? (
-                <span className="flex animate-pulse items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-blue-400 uppercase">
+                <span className="flex animate-pulse items-center gap-1 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-blue-400 uppercase">
                   <span className="h-1 w-1 rounded-full bg-blue-400" />
                   Syncing...
                 </span>
               ) : (
-                <span className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-amber-500 uppercase">
+                <span className="flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-amber-500 uppercase">
                   <span className="h-1 w-1 rounded-full bg-amber-500" />
                   Local Cache Only
                 </span>
@@ -1631,7 +1632,7 @@ export default function AdminCollectionDetailPage({
               type="button"
               onClick={() => void loadOlderChats()}
               disabled={loadingOlderChats}
-              className="mx-auto block cursor-pointer rounded-full border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold text-emerald-500 transition hover:bg-emerald-500/10 disabled:cursor-wait disabled:opacity-60"
+              className="mx-auto block cursor-pointer rounded-lg border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold text-emerald-500 transition hover:bg-emerald-500/10 disabled:cursor-wait disabled:opacity-60"
             >
               {loadingOlderChats ? (
                 <AverQelLoading size="inline" label="Loading older messages" />
@@ -1732,7 +1733,7 @@ export default function AdminCollectionDetailPage({
 
                     {/* Floating Reactions Bar */}
                     {!isMsgDeleted && (
-                      <div className="bg-background/95 border-foreground/10 absolute -top-7 z-15 hidden items-center gap-1 rounded-full border px-2 py-1 shadow-lg backdrop-blur group-hover:flex dark:border-white/5">
+                      <div className="bg-background/95 border-foreground/10 absolute -top-7 z-15 hidden items-center gap-1 rounded-lg border px-2 py-1 shadow-lg backdrop-blur group-hover:flex dark:border-white/5">
                         {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
                           <button
                             key={emoji}
@@ -1814,7 +1815,7 @@ export default function AdminCollectionDetailPage({
                           onClick={() =>
                             setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id)
                           }
-                          className="bg-foreground/5 border-foreground/10 hover:text-foreground hover:bg-foreground/10 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border text-xs font-black text-slate-500 opacity-0 transition select-none group-hover:opacity-100"
+                          className="bg-foreground/5 border-foreground/10 hover:text-foreground hover:bg-foreground/10 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg border text-xs font-black text-slate-500 opacity-0 transition select-none group-hover:opacity-100"
                         >
                           ⋮
                         </button>
@@ -1845,7 +1846,7 @@ export default function AdminCollectionDetailPage({
                           {Object.entries(counts).map(([emoji, count]) => (
                             <div
                               key={emoji}
-                              className="bg-foreground/5 border-foreground/5 flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold shadow-none dark:border-white/5 dark:bg-slate-900"
+                              className="bg-foreground/5 border-foreground/5 flex items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[9px] font-bold shadow-none dark:border-white/5 dark:bg-slate-900"
                             >
                               <span>{emoji}</span>
                               {count > 1 && (
@@ -1909,7 +1910,7 @@ export default function AdminCollectionDetailPage({
                       <button
                         type="button"
                         onClick={() => setStagedFiles((prev) => prev.filter((_, i) => i !== idx))}
-                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-slate-900 text-[9px] font-bold text-slate-400 shadow-lg transition hover:text-white"
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-slate-900 text-[9px] font-bold text-slate-400 shadow-lg transition hover:text-white"
                       >
                         <X size={10} />
                       </button>
@@ -2245,16 +2246,19 @@ export default function AdminCollectionDetailPage({
                     Set message retention length. Expired messages are permanently wiped from all
                     client caches and database server records automatically.
                   </p>
-                  <select
-                    value={collection?.expiry_days || 0}
-                    onChange={(e) => void handleUpdateExpiry(Number(e.target.value))}
-                    className="w-full cursor-pointer rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
-                  >
-                    <option value={0}>∞ No Expiry (Default)</option>
-                    <option value={1}>⏱ 1 Day</option>
-                    <option value={7}>⏱ 7 Days</option>
-                    <option value={30}>⏱ 30 Days</option>
-                  </select>
+                  <RoundedSelect
+                    label="Collection expiry"
+                    value={String(collection?.expiry_days || 0)}
+                    onChange={(days) => void handleUpdateExpiry(Number(days))}
+                    options={[
+                      { value: "0", label: "∞ No Expiry (Default)" },
+                      { value: "1", label: "⏱ 1 Day" },
+                      { value: "7", label: "⏱ 7 Days" },
+                      { value: "30", label: "⏱ 30 Days" },
+                    ]}
+                    className="w-full"
+                    triggerClassName="w-full px-4 py-3 text-xs"
+                  />
                 </div>
               </div>
             )}
@@ -2335,7 +2339,7 @@ export default function AdminCollectionDetailPage({
             >
               <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600" />
               <div className="flex flex-col items-center space-y-4 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-500">
+                <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500">
                   <ShieldCheck size={28} className="animate-pulse" />
                 </div>
                 <div className="space-y-1.5">
@@ -2483,7 +2487,7 @@ export default function AdminCollectionDetailPage({
                   if (isAud) {
                     return (
                       <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-slate-900 p-6 text-center">
-                        <div className="text-emerald-450 flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/25 bg-emerald-500/10">
+                        <div className="text-emerald-450 flex h-16 w-16 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10">
                           <Volume2 size={32} className="animate-pulse" />
                         </div>
                         <div className="w-full">
@@ -2532,7 +2536,7 @@ export default function AdminCollectionDetailPage({
                   // Generic document preview card
                   return (
                     <div className="flex w-full max-w-sm flex-col items-center space-y-4 rounded-3xl border border-white/10 bg-slate-900 p-6 text-center">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-500">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-500">
                         <FileIcon size={32} />
                       </div>
                       <div>
@@ -2855,7 +2859,7 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-emerald-500 text-slate-950 transition hover:bg-emerald-400 active:scale-95"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-emerald-500 text-slate-950 transition hover:bg-emerald-400 active:scale-95"
         >
           {isPlaying ? (
             <Pause size={12} className="fill-current text-slate-950" />
@@ -2866,7 +2870,7 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
         <button
           type="button"
           onClick={onPreviewClick}
-          className="bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border text-[9px] font-black transition active:scale-95"
+          className="bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border text-[9px] font-black transition active:scale-95"
         >
           Open
         </button>

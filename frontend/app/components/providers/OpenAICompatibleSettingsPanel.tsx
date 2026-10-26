@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useState } from "react";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 export const REASONING_LEVELS = [
   "minimal",
@@ -300,8 +301,8 @@ export default function OpenAICompatibleSettingsPanel({
     onChange({ ...value, ...changes });
   const updateReasoning = (changes: Partial<OpenAICompatibleFormSettings["reasoning"]>) =>
     onChange({ ...value, reasoning: { ...value.reasoning, ...changes } });
-  const handleModeChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    update({ api_mode: event.target.value as OpenAICompatibleFormSettings["api_mode"] });
+  const handleModeChange = (apiMode: string) => {
+    update({ api_mode: apiMode as OpenAICompatibleFormSettings["api_mode"] });
   };
   const setSupportedEfforts = (next: ReasoningLevel[]) => {
     const builtInOrder = new Map<string, number>(
@@ -360,14 +361,17 @@ export default function OpenAICompatibleSettingsPanel({
             <span className="text-muted-foreground/70 block font-mono text-[9px] font-bold tracking-[0.16em] uppercase">
               API protocol
             </span>
-            <select
+            <RoundedSelect
+              label="API protocol"
               value={value.api_mode}
               onChange={handleModeChange}
-              className="border-glass-border bg-surface-1 text-foreground h-9 w-full rounded-lg border px-3 text-xs outline-none"
-            >
-              <option value="chat_completions">Chat Completions</option>
-              <option value="responses">Responses</option>
-            </select>
+              options={[
+                { value: "chat_completions", label: "Chat Completions" },
+                { value: "responses", label: "Responses" },
+              ]}
+              className="w-full"
+              triggerClassName="h-9 w-full"
+            />
           </label>
           <div className="grid gap-3 md:grid-cols-2">
             {value.api_mode === "chat_completions" ? (
@@ -401,21 +405,24 @@ export default function OpenAICompatibleSettingsPanel({
               <span className="text-muted-foreground/70 block font-mono text-[9px] font-bold tracking-[0.16em] uppercase">
                 Output token field
               </span>
-              <select
+              <RoundedSelect
+                label="Output token field"
                 value={value.max_tokens_parameter}
-                onChange={(event) =>
+                onChange={(nextValue) =>
                   update({
-                    max_tokens_parameter: event.target
-                      .value as OpenAICompatibleFormSettings["max_tokens_parameter"],
+                    max_tokens_parameter:
+                      nextValue as OpenAICompatibleFormSettings["max_tokens_parameter"],
                   })
                 }
-                className="border-glass-border bg-surface-1 text-foreground h-9 w-full rounded-lg border px-3 text-xs outline-none"
-              >
-                <option value="">Protocol default</option>
-                <option value="max_tokens">max_tokens</option>
-                <option value="max_completion_tokens">max_completion_tokens</option>
-                <option value="max_output_tokens">max_output_tokens</option>
-              </select>
+                options={[
+                  { value: "", label: "Protocol default" },
+                  { value: "max_tokens", label: "max_tokens" },
+                  { value: "max_completion_tokens", label: "max_completion_tokens" },
+                  { value: "max_output_tokens", label: "max_output_tokens" },
+                ]}
+                className="w-full"
+                triggerClassName="h-9 w-full"
+              />
             </label>
           </div>
           <Checkbox
@@ -451,16 +458,19 @@ export default function OpenAICompatibleSettingsPanel({
               <span className="text-muted-foreground/70 block font-mono text-[9px] font-bold tracking-[0.16em] uppercase">
                 API key format
               </span>
-              <select
+              <RoundedSelect
+                label="API key format"
                 value={value.auth_scheme}
-                onChange={(event) =>
-                  update({ auth_scheme: event.target.value === "raw" ? "raw" : "bearer" })
+                onChange={(nextValue) =>
+                  update({ auth_scheme: nextValue === "raw" ? "raw" : "bearer" })
                 }
-                className="border-glass-border bg-surface-1 text-foreground h-9 w-full rounded-lg border px-3 text-xs outline-none"
-              >
-                <option value="bearer">Bearer &lt;key&gt;</option>
-                <option value="raw">Raw key value</option>
-              </select>
+                options={[
+                  { value: "bearer", label: "Bearer <key>" },
+                  { value: "raw", label: "Raw key value" },
+                ]}
+                className="w-full"
+                triggerClassName="h-9 w-full"
+              />
             </label>
           </div>
         </section>

@@ -77,19 +77,21 @@ export default function AverQelDialogHost() {
           <motion.button
             type="button"
             aria-label="Close dialog"
-            className="absolute inset-0 cursor-default bg-slate-950/55 backdrop-blur-md"
+            className="absolute inset-0 cursor-default bg-slate-950/55"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             onClick={() => finish(request.kind === "confirm" ? false : null)}
           />
           <motion.section
             role="dialog"
             aria-modal="true"
             aria-labelledby="averqel-dialog-title"
-            initial={{ opacity: 0, y: 12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.14, ease: "easeOut" }}
             className="theme-panel border-primary/20 relative w-full max-w-md rounded-2xl border p-5 shadow-2xl"
           >
             <button

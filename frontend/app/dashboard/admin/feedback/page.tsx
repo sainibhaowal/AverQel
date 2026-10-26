@@ -491,7 +491,7 @@ export default function AdminFeedbackPage() {
                     <div className="flex-1 space-y-4">
                       <div className="flex items-center gap-3">
                         <span
-                          className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold tracking-wider uppercase ${styles.color}`}
+                          className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-[10px] font-bold tracking-wider uppercase ${styles.color}`}
                         >
                           {styles.icon}
                           {s.category.replace("_", " ")}
@@ -499,7 +499,7 @@ export default function AdminFeedbackPage() {
                         <span className="text-muted-foreground text-xs">
                           {new Date(s.created_at).toLocaleDateString()}
                         </span>
-                        <span className="text-foreground rounded-full border border-border bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase">
+                        <span className="text-foreground rounded-lg border border-border bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase">
                           {s.status?.replace("_", " ") ?? "new"}
                         </span>
                       </div>
@@ -538,7 +538,7 @@ export default function AdminFeedbackPage() {
             })}
             {visibleSubmissions.length === 0 && (
               <div className="border-border bg-surface-1 flex flex-col items-center justify-center rounded-3xl border border-dashed py-32 text-center">
-                <div className="theme-chip text-primary mb-4 rounded-full p-4">
+                <div className="theme-chip text-primary mb-4 rounded-lg p-4">
                   <MessageSquare size={32} />
                 </div>
                 <h3 className="text-foreground font-bold">
@@ -600,7 +600,7 @@ export default function AdminFeedbackPage() {
                             avatar={selectedSubmission.participants?.[0]?.avatar}
                             displayName={selectedSubmission.participants?.[0]?.display_name}
                             fallbackLabel="Feedback submitter"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8 rounded-lg"
                           />
                           <span>
                             Submitted by {selectedSubmission.participants?.[0]?.display_name || "user"}
@@ -683,7 +683,7 @@ export default function AdminFeedbackPage() {
                                 </time>
                               </div>
                               {message.is_internal && (
-                                <span className="mt-1 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-bold tracking-wide text-amber-950 uppercase dark:bg-amber-300/15 dark:text-amber-200">
+                                <span className="mt-1 inline-flex rounded-lg bg-amber-200 px-2 py-0.5 text-[9px] font-bold tracking-wide text-amber-950 uppercase dark:bg-amber-300/15 dark:text-amber-200">
                                   Internal note
                                 </span>
                               )}

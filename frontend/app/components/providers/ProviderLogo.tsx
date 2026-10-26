@@ -2,7 +2,13 @@ import Image from "next/image";
 import { Cable, Cpu, Search } from "lucide-react";
 
 export type ProviderLogoDefinition =
-  | { kind: "asset"; src: string; appearance: "brand" | "monochrome" }
+  | {
+      kind: "asset";
+      src: string;
+      appearance: "brand" | "monochrome";
+      fit?: "contain" | "cover";
+      objectPosition?: string;
+    }
   | { kind: "wordmark"; text: string }
   | { kind: "endpoint" };
 
@@ -34,6 +40,8 @@ export const providerLogoRegistry: Record<string, ProviderLogoDefinition> = {
     kind: "asset",
     src: "/AverQel%20Logo/AverQel_Icon.svg",
     appearance: "brand",
+    fit: "cover",
+    objectPosition: "43% 50%",
   },
   searxng: { kind: "asset", src: "/providers/searxng-color.svg", appearance: "brand" },
   tavily: { kind: "wordmark", text: "TAVILY" },
@@ -71,9 +79,12 @@ export default function ProviderLogo({
         width={size}
         height={size}
         unoptimized
-        className={`block shrink-0 object-contain ${
+        className={`block shrink-0 ${definition.fit === "cover" ? "object-cover" : "object-contain"} ${
           definition.appearance === "monochrome" ? "brightness-0 dark:invert" : ""
         } ${className}`}
+        style={
+          definition.objectPosition ? { objectPosition: definition.objectPosition } : undefined
+        }
       />
     );
   }

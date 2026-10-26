@@ -66,7 +66,7 @@ export function renderStructuredToolInput(toolName: string, toolInput: Record<st
                   ) : null}
                 </div>
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold tracking-[0.18em] uppercase ${statusChipClass(status)}`}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-bold tracking-[0.18em] uppercase ${statusChipClass(status)}`}
                 >
                   {status === "completed" ? <CheckCircle2 size={10} /> : <Clock3 size={10} />}
                   {status}

@@ -17,7 +17,7 @@ export default function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className="glass-card flex h-64 w-full flex-col items-center justify-center rounded-2xl border-dashed p-8 text-center">
-      <div className="text-muted-foreground bg-muted/50 mb-4 flex h-20 w-20 items-center justify-center rounded-full">
+      <div className="text-muted-foreground bg-muted/50 mb-4 flex h-20 w-20 items-center justify-center rounded-lg">
         {icon}
       </div>
       <h3 className="text-foreground mb-1 text-lg font-bold">{title}</h3>

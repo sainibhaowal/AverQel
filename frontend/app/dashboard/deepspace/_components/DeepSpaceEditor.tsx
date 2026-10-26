@@ -730,7 +730,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
         </div>
         <div className="relative flex flex-1 flex-col overflow-hidden">
           {showLibrarySave ? (
-            <div className="absolute inset-0 z-40 flex items-start justify-center bg-black/45 p-5 pt-20 backdrop-blur-sm">
+            <div className="absolute inset-0 z-40 flex items-start justify-center bg-black/45 p-5 pt-20 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
               <section
                 role="dialog"
                 aria-modal="true"

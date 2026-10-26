@@ -277,7 +277,7 @@ export default function FeaturesGrid() {
             {headerMeta.map(({ dot, label }) => (
               <span
                 key={label}
-                className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3.5 py-1.5"
+                className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-1.5"
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot} opacity-70`} />
                 <span className="text-muted-foreground font-mono text-[11px] tracking-wide">
@@ -374,7 +374,7 @@ export default function FeaturesGrid() {
                         >
                           {/* Left accent bar */}
                           <div
-                            className={`mt-[5px] h-3 w-[2px] shrink-0 rounded-full ${accent.capBar} transition-all duration-300 group-hover/row:h-4 group-hover/row:opacity-100`}
+                            className={`mt-[5px] h-3 w-[2px] shrink-0 rounded-sm ${accent.capBar} transition-all duration-300 group-hover/row:h-4 group-hover/row:opacity-100`}
                           />
 
                           <CapIcon

@@ -1,10 +1,9 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Columns2,
   GripVertical,
-  Loader2,
   PanelRightClose,
   Bot,
   Database,
@@ -142,7 +141,7 @@ function IconTooltipButton({
       }}
       onPointerUp={hide}
       onPointerCancel={hide}
-      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-all sm:h-10 sm:w-10 ${
+      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all sm:h-10 sm:w-10 ${
         active
           ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
           : "text-foreground/70 hover:bg-surface-2 hover:text-primary"
@@ -152,7 +151,7 @@ function IconTooltipButton({
       <span
         role="tooltip"
         aria-hidden={!open}
-        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
+        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-lg border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
       >
@@ -415,6 +414,15 @@ export default function DeepSpacePageClient() {
   // the workspace switcher and as the default left panel when split view is
   // explicitly enabled.
   const [panelMode, setPanelMode] = useState<WorkspacePanel>("chat");
+  const [visitedPanels, setVisitedPanels] = useState<Set<SplitWorkspacePanel>>(() => new Set());
+  const rememberPanel = useCallback((panel: SplitWorkspacePanel) => {
+    setVisitedPanels((current) => {
+      if (current.has(panel)) return current;
+      const next = new Set(current);
+      next.add(panel);
+      return next;
+    });
+  }, []);
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const noteVisualSourceRef = useRef(new Map<string, string>());
@@ -740,12 +748,13 @@ export default function DeepSpacePageClient() {
 
   useEffect(() => {
     const openLibrary = () => {
+      rememberPanel("library");
       if (isSplitView) setSplitWorkspacePanel("library");
       else setPanelMode("library");
     };
     window.addEventListener("deepspace-library-open", openLibrary);
     return () => window.removeEventListener("deepspace-library-open", openLibrary);
-  }, [isSplitView]);
+  }, [isSplitView, rememberPanel]);
 
   // ── Auto-save ────────────────────────────────────────────────────────────
 
@@ -1274,13 +1283,19 @@ export default function DeepSpacePageClient() {
   const showChatPanel = isSplitView || panelMode === "chat";
   const showMemoryPanel = visibleWorkspacePanel === "memory";
   const showSchedulesPanel = visibleWorkspacePanel === "schedules";
+  const hasVisitedWorkspacePanel =
+    visitedPanels.has("notes") ||
+    visitedPanels.has("library") ||
+    visitedPanels.has("memory") ||
+    visitedPanels.has("schedules");
   const panelTransition: Transition = {
-    duration: isStackedLayout ? 0.14 : 0.18,
-    ease: [0.22, 1, 0.36, 1],
+    duration: 0.12,
+    ease: "easeOut",
   };
   const shellTransitionClass = isStackedLayout ? "duration-150" : "duration-300";
 
   const selectWorkspacePanel = (nextPanel: SplitWorkspacePanel) => {
+    rememberPanel(nextPanel);
     if (isSplitView) setSplitWorkspacePanel(nextPanel);
     else setPanelMode(nextPanel);
   };
@@ -1288,10 +1303,16 @@ export default function DeepSpacePageClient() {
   const toggleSplitView = () => {
     if (isSplitView) {
       setIsSplitView(false);
+      rememberPanel(splitWorkspacePanel);
       setPanelMode(splitWorkspacePanel);
       return;
     }
-    if (panelMode !== "chat") setSplitWorkspacePanel(panelMode);
+    if (panelMode !== "chat") {
+      rememberPanel(panelMode);
+      setSplitWorkspacePanel(panelMode);
+    } else {
+      rememberPanel(splitWorkspacePanel);
+    }
     setIsSplitView(true);
   };
 
@@ -1304,17 +1325,20 @@ export default function DeepSpacePageClient() {
   useEffect(() => {
     if (isStackedLayout && isSplitView) {
       queueMicrotask(() => {
+        rememberPanel(splitWorkspacePanel);
         setIsSplitView(false);
         setPanelMode(splitWorkspacePanel);
       });
     }
-  }, [isSplitView, isStackedLayout, splitWorkspacePanel]);
+  }, [isSplitView, isStackedLayout, rememberPanel, splitWorkspacePanel]);
 
   if (isInitialLoading) {
     return (
-      <div className="deepspace-theme-scope theme-panel-muted flex h-full w-full items-center justify-center rounded-2xl">
-        <Loader2 className="text-primary h-8 w-8 animate-spin" />
-      </div>
+      <AverQelLoading
+        label="Loading DeepSpace workspace…"
+        size="section"
+        className="deepspace-theme-scope theme-panel-muted h-full w-full rounded-2xl"
+      />
     );
   }
 
@@ -1359,7 +1383,7 @@ export default function DeepSpacePageClient() {
 
           if (shouldRenderPortal) {
             return createPortal(
-              <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-full border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
+              <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-lg border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
                 <IconTooltipButton
                   label="Chat"
                   active={!isSplitView && panelMode === "chat"}
@@ -1417,124 +1441,183 @@ export default function DeepSpacePageClient() {
           ref={splitContainerRef}
           className={`relative flex h-full max-h-full min-h-0 flex-1 overflow-hidden ${isStackedLayout ? "flex-col" : "flex-row"}`}
         >
-          {visibleWorkspacePanel ? (
+          {hasVisitedWorkspacePanel ? (
             <motion.section
-              initial={{ opacity: 0, x: isStackedLayout ? 0 : -12, y: isStackedLayout ? -12 : 0 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
+              key="workspace-panel"
+              initial={{ opacity: 0, y: 4, display: "none" }}
+              animate={
+                visibleWorkspacePanel
+                  ? { opacity: 1, y: 0, display: "flex" }
+                  : { opacity: 0, y: 4, display: "none" }
+              }
               transition={panelTransition}
-              className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${isStackedLayout ? "h-full w-full flex-[1_1_auto]" : showChatPanel ? "h-full flex-[0_0_auto]" : "h-full w-full"}`}
-              style={!isStackedLayout && showChatPanel ? { flexBasis: `${leftWidth}%` } : undefined}
+              aria-hidden={!visibleWorkspacePanel}
+              inert={!visibleWorkspacePanel}
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
+                isSplitView
+                  ? isStackedLayout
+                    ? "relative h-full w-full flex-[1_1_auto]"
+                    : "relative h-full flex-[0_0_auto]"
+                  : "absolute inset-0 h-full w-full"
+              }`}
+              style={{
+                ...(isSplitView && !isStackedLayout ? { flexBasis: `${leftWidth}%` } : {}),
+                pointerEvents: visibleWorkspacePanel ? "auto" : "none",
+                zIndex: visibleWorkspacePanel ? 2 : 0,
+              }}
             >
-              <AnimatePresence initial={false} mode="sync">
-                {showNotesPanel ? (
-                  <motion.div
-                    key="notes-panel"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={panelTransition}
-                    className="absolute inset-0 flex flex-col will-change-transform"
-                  >
-                    {recoveryDraft?.conversationId === activeNote?.id ? (
-                      <div
-                        role="alert"
-                        className="text-foreground flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-400/30 bg-amber-400/[0.08] px-4 py-3 text-xs"
-                      >
-                        <span className="min-w-0 flex-1">
-                          A local draft and the saved note differ. Restore the local draft only if
-                          you want it to replace the newer saved note.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={restoreConflictingDraft}
-                          className="bg-surface-1 hover:bg-surface-2 rounded-lg border border-amber-300/40 px-3 py-1.5 font-semibold"
-                        >
-                          Restore local draft
-                        </button>
-                        <button
-                          type="button"
-                          onClick={discardConflictingDraft}
-                          className="text-muted-foreground hover:text-foreground px-2 py-1.5"
-                        >
-                          Discard draft
-                        </button>
-                      </div>
-                    ) : null}
+              {visitedPanels.has("notes") ? (
+                <motion.div
+                  key="notes-panel"
+                  initial={{ opacity: 0, y: 4, display: "none" }}
+                  animate={
+                    showNotesPanel
+                      ? { opacity: 1, y: 0, display: "flex" }
+                      : { opacity: 0, y: 4, display: "none" }
+                  }
+                  transition={panelTransition}
+                  aria-hidden={!showNotesPanel}
+                  inert={!showNotesPanel}
+                  className="absolute inset-0 flex flex-col"
+                  style={{
+                    pointerEvents: showNotesPanel ? "auto" : "none",
+                    zIndex: showNotesPanel ? 1 : 0,
+                  }}
+                >
+                  {recoveryDraft?.conversationId === activeNote?.id ? (
                     <div
-                      className="min-h-0 flex-1"
-                      inert={recoveryDraft?.conversationId === activeNote?.id}
+                      role="alert"
+                      className="text-foreground flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-400/30 bg-amber-400/[0.08] px-4 py-3 text-xs"
                     >
-                      <DeepSpaceEditor
-                        ref={editorRef}
-                        initialContent={activeNote?.content_html || ""}
-                        onChange={handleEditorChange}
-                        conversationId={activeNote?.id}
-                        saveStatus={activeNote ? (noteSaveStates[activeNote.id] ?? "idle") : "idle"}
-                        onRetrySave={() => {
-                          if (!activeNote) return;
-                          updateNoteSaveState(activeNote.id, "saving");
-                          scheduleNoteSave(activeNote.id, 0);
-                        }}
-                        agentPreview={agentNotePreview}
-                        showCollapseControls={false}
-                        panelMode={legacyPanelMode}
-                        onSetPanelMode={(mode) => {
-                          if (mode === "split") toggleSplitView();
-                          else {
-                            setIsSplitView(false);
-                            setPanelMode(mode);
-                          }
-                        }}
-                      />
+                      <span className="min-w-0 flex-1">
+                        A local draft and the saved note differ. Restore the local draft only if you
+                        want it to replace the newer saved note.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={restoreConflictingDraft}
+                        className="bg-surface-1 hover:bg-surface-2 rounded-lg border border-amber-300/40 px-3 py-1.5 font-semibold"
+                      >
+                        Restore local draft
+                      </button>
+                      <button
+                        type="button"
+                        onClick={discardConflictingDraft}
+                        className="text-muted-foreground hover:text-foreground px-2 py-1.5"
+                      >
+                        Discard draft
+                      </button>
                     </div>
-                  </motion.div>
-                ) : null}
-                {showLibraryPanel ? (
-                  <motion.div
-                    key="library-panel"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={panelTransition}
-                    className="absolute inset-0 will-change-transform"
+                  ) : null}
+                  <div
+                    className="min-h-0 flex-1"
+                    inert={recoveryDraft?.conversationId === activeNote?.id}
                   >
-                    <DeepSpaceLibraryDrawer
-                      open
-                      embedded
-                      conversationId={activeNote?.id ?? null}
-                      onClose={() => {
-                        if (isSplitView) setSplitWorkspacePanel("notes");
-                        else setPanelMode("chat");
+                    <DeepSpaceEditor
+                      ref={editorRef}
+                      initialContent={activeNote?.content_html || ""}
+                      onChange={handleEditorChange}
+                      conversationId={activeNote?.id}
+                      saveStatus={activeNote ? (noteSaveStates[activeNote.id] ?? "idle") : "idle"}
+                      onRetrySave={() => {
+                        if (!activeNote) return;
+                        updateNoteSaveState(activeNote.id, "saving");
+                        scheduleNoteSave(activeNote.id, 0);
                       }}
-                      onVisualArtifactChange={handleArtifactVisualChange}
+                      agentPreview={agentNotePreview}
+                      showCollapseControls={false}
+                      panelMode={legacyPanelMode}
+                      onSetPanelMode={(mode) => {
+                        if (mode === "split") toggleSplitView();
+                        else {
+                          setIsSplitView(false);
+                          if (mode !== "chat") rememberPanel(mode);
+                          setPanelMode(mode);
+                        }
+                      }}
                     />
-                  </motion.div>
-                ) : null}
-                {showMemoryPanel ? (
-                  <motion.div
-                    key="memory-panel"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={panelTransition}
-                    className="absolute inset-0 overflow-auto will-change-transform"
-                  >
-                    <MemoryPanel />
-                  </motion.div>
-                ) : null}
-                {showSchedulesPanel ? (
-                  <motion.div
-                    key="schedules-panel"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={panelTransition}
-                    className="absolute inset-0 overflow-auto will-change-transform"
-                  >
-                    <DeepSpaceSchedulesPanel conversationId={activeNote?.id ?? null} />
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
+                  </div>
+                </motion.div>
+              ) : null}
+              {visitedPanels.has("library") ? (
+                <motion.div
+                  key="library-panel"
+                  initial={{ opacity: 0, y: 4, display: "none" }}
+                  animate={
+                    showLibraryPanel
+                      ? { opacity: 1, y: 0, display: "block" }
+                      : { opacity: 0, y: 4, display: "none" }
+                  }
+                  transition={panelTransition}
+                  aria-hidden={!showLibraryPanel}
+                  inert={!showLibraryPanel}
+                  className="absolute inset-0"
+                  style={{
+                    pointerEvents: showLibraryPanel ? "auto" : "none",
+                    zIndex: showLibraryPanel ? 1 : 0,
+                  }}
+                >
+                  <DeepSpaceLibraryDrawer
+                    open={showLibraryPanel}
+                    embedded
+                    conversationId={activeNote?.id ?? null}
+                    onClose={() => {
+                      if (isSplitView) {
+                        rememberPanel("notes");
+                        setSplitWorkspacePanel("notes");
+                      } else {
+                        setPanelMode("chat");
+                      }
+                    }}
+                    onVisualArtifactChange={handleArtifactVisualChange}
+                  />
+                </motion.div>
+              ) : null}
+              {visitedPanels.has("memory") ? (
+                <motion.div
+                  key="memory-panel"
+                  initial={{ opacity: 0, y: 4, display: "none" }}
+                  animate={
+                    showMemoryPanel
+                      ? { opacity: 1, y: 0, display: "block" }
+                      : { opacity: 0, y: 4, display: "none" }
+                  }
+                  transition={panelTransition}
+                  aria-hidden={!showMemoryPanel}
+                  inert={!showMemoryPanel}
+                  className="absolute inset-0 overflow-auto"
+                  style={{
+                    pointerEvents: showMemoryPanel ? "auto" : "none",
+                    zIndex: showMemoryPanel ? 1 : 0,
+                  }}
+                >
+                  <MemoryPanel active={showMemoryPanel} />
+                </motion.div>
+              ) : null}
+              {visitedPanels.has("schedules") ? (
+                <motion.div
+                  key="schedules-panel"
+                  initial={{ opacity: 0, y: 4, display: "none" }}
+                  animate={
+                    showSchedulesPanel
+                      ? { opacity: 1, y: 0, display: "block" }
+                      : { opacity: 0, y: 4, display: "none" }
+                  }
+                  transition={panelTransition}
+                  aria-hidden={!showSchedulesPanel}
+                  inert={!showSchedulesPanel}
+                  className="absolute inset-0 overflow-auto"
+                  style={{
+                    pointerEvents: showSchedulesPanel ? "auto" : "none",
+                    zIndex: showSchedulesPanel ? 1 : 0,
+                  }}
+                >
+                  <DeepSpaceSchedulesPanel
+                    conversationId={activeNote?.id ?? null}
+                    isPanelActive={showSchedulesPanel}
+                  />
+                </motion.div>
+              ) : null}
             </motion.section>
           ) : null}
 
@@ -1561,73 +1644,86 @@ export default function DeepSpacePageClient() {
                 className={`bg-glass-border absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${isDragging ? "bg-primary/40" : ""}`}
               />
               <div className="pointer-events-none absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center justify-center">
-                <div className="bg-surface-0 border-glass-border rounded-full border p-1 opacity-40 shadow-lg group-hover:opacity-100">
+                <div className="bg-surface-0 border-glass-border rounded-lg border p-1 opacity-40 shadow-lg group-hover:opacity-100">
                   <GripVertical size={10} />
                 </div>
               </div>
             </div>
           ) : null}
 
-          <AnimatePresence initial={false} mode="popLayout">
-            {showChatPanel ? (
-              <motion.section
-                key="chat-panel"
-                initial={{ opacity: 0, x: isStackedLayout ? 0 : 24, y: isStackedLayout ? 24 : 0 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                exit={{ opacity: 0, x: isStackedLayout ? 0 : 24, y: isStackedLayout ? 24 : 0 }}
-                transition={panelTransition}
-                className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
-              >
-                <DeepSpaceChatClient
-                  activeConversationId={activeNote?.id ?? null}
-                  currentContent={activeNote?.content_html ?? ""}
-                  onConversationRenamed={(note) => {
-                    setNotes((prev) => prev.map((item) => (item.id === note.id ? note : item)));
-                    setActiveNote((prev) => (prev?.id === note.id ? note : prev));
-                  }}
-                  onConversationUnavailable={(conversationId) => {
-                    window.localStorage.removeItem(ACTIVE_NOTE_KEY);
-                    pendingNoteSavesRef.current.delete(conversationId);
-                    localDraftStoredRef.current.delete(conversationId);
-                    const timer = noteSaveTimersRef.current.get(conversationId);
-                    if (timer) window.clearTimeout(timer);
-                    noteSaveTimersRef.current.delete(conversationId);
-                    try {
-                      clearDeepSpaceNoteDraft(window.sessionStorage, conversationId);
-                    } catch {
-                      // The unavailable conversation will not be restored from this tab.
-                    }
-                    setNotes((previous) => previous.filter((item) => item.id !== conversationId));
-                    setActiveNote((active) => (active?.id === conversationId ? null : active));
-                  }}
-                  onSelectNote={(noteId) => {
-                    const note = notes.find((n) => n.id === noteId);
-                    if (note) {
-                      activateNote(note);
-                    }
-                  }}
-                  onNewNote={() => {
-                    return createNote();
-                  }}
-                  onInsertLatestAnswer={insertAnswer}
-                  onAgentNotePreview={handleAgentNotePreview}
-                  onAgentNoteCommitted={handleAgentNoteCommitted}
-                  onVisualBlockChange={handleVisualBlockChange}
-                  onSaveVisualArtifact={handleSaveVisualArtifact}
-                  panelMode={legacyPanelMode}
-                  onSetPanelMode={(mode) => {
-                    if (mode === "split") toggleSplitView();
-                    else {
-                      setIsSplitView(false);
-                      setPanelMode(mode);
-                    }
-                  }}
-                  isHistoryOpen={isHistoryOpen}
-                  onSetHistoryOpen={setIsHistoryOpen}
-                />
-              </motion.section>
-            ) : null}
-          </AnimatePresence>
+          <motion.section
+            key="chat-panel"
+            initial={false}
+            animate={
+              showChatPanel
+                ? { opacity: 1, y: 0, visibility: "visible" }
+                : { opacity: 0, y: 4, visibility: "hidden" }
+            }
+            transition={panelTransition}
+            aria-hidden={!showChatPanel}
+            inert={!showChatPanel}
+            className={`min-h-0 min-w-0 overflow-hidden ${
+              isSplitView
+                ? isStackedLayout
+                  ? "relative h-full w-full flex-[1_1_auto]"
+                  : "relative h-full flex-1"
+                : "absolute inset-0 h-full w-full"
+            }`}
+            style={{
+              pointerEvents: showChatPanel ? "auto" : "none",
+              zIndex: showChatPanel ? 1 : 0,
+            }}
+          >
+            <DeepSpaceChatClient
+              isPanelActive={showChatPanel}
+              activeConversationId={activeNote?.id ?? null}
+              currentContent={activeNote?.content_html ?? ""}
+              onConversationRenamed={(note) => {
+                setNotes((prev) => prev.map((item) => (item.id === note.id ? note : item)));
+                setActiveNote((prev) => (prev?.id === note.id ? note : prev));
+              }}
+              onConversationUnavailable={(conversationId) => {
+                window.localStorage.removeItem(ACTIVE_NOTE_KEY);
+                pendingNoteSavesRef.current.delete(conversationId);
+                localDraftStoredRef.current.delete(conversationId);
+                const timer = noteSaveTimersRef.current.get(conversationId);
+                if (timer) window.clearTimeout(timer);
+                noteSaveTimersRef.current.delete(conversationId);
+                try {
+                  clearDeepSpaceNoteDraft(window.sessionStorage, conversationId);
+                } catch {
+                  // The unavailable conversation will not be restored from this tab.
+                }
+                setNotes((previous) => previous.filter((item) => item.id !== conversationId));
+                setActiveNote((active) => (active?.id === conversationId ? null : active));
+              }}
+              onSelectNote={(noteId) => {
+                const note = notes.find((n) => n.id === noteId);
+                if (note) {
+                  activateNote(note);
+                }
+              }}
+              onNewNote={() => {
+                return createNote();
+              }}
+              onInsertLatestAnswer={insertAnswer}
+              onAgentNotePreview={handleAgentNotePreview}
+              onAgentNoteCommitted={handleAgentNoteCommitted}
+              onVisualBlockChange={handleVisualBlockChange}
+              onSaveVisualArtifact={handleSaveVisualArtifact}
+              panelMode={legacyPanelMode}
+              onSetPanelMode={(mode) => {
+                if (mode === "split") toggleSplitView();
+                else {
+                  setIsSplitView(false);
+                  if (mode !== "chat") rememberPanel(mode);
+                  setPanelMode(mode);
+                }
+              }}
+              isHistoryOpen={isHistoryOpen}
+              onSetHistoryOpen={setIsHistoryOpen}
+            />
+          </motion.section>
         </div>
       </div>
     </div>

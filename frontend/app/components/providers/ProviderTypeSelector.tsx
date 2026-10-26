@@ -2,6 +2,7 @@
 
 import { Cable } from "lucide-react";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import type { ProviderCatalogEntry } from "@/lib/providers-api";
 
 interface ProviderTypeSelectorProps {
@@ -31,19 +32,21 @@ export default function ProviderTypeSelector({
       </div>
 
       <div className="group relative">
-        <select
+        <RoundedSelect
           id="p-type"
+          label="Select Runtime Family"
           value={selectedType}
-          onChange={(e) => onChange(e.target.value)}
-          className="text-foreground w-full appearance-none rounded-xl border border-white/8 bg-white/[0.03] py-3.5 pr-10 pl-12 text-sm font-medium transition-all outline-none hover:bg-white/[0.06] focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-500/10"
-        >
-          <option value="">Choose a family...</option>
-          {catalog.map((entry) => (
-            <option key={entry.provider_type} value={entry.provider_type}>
-              {entry.display_name}
-            </option>
-          ))}
-        </select>
+          onChange={onChange}
+          options={[
+            { value: "", label: "Choose a family..." },
+            ...catalog.map((entry) => ({
+              value: entry.provider_type,
+              label: entry.display_name,
+            })),
+          ]}
+          className="w-full"
+          triggerClassName="w-full py-3.5 pr-10 pl-12 text-sm font-medium"
+        />
         {selectedType ? (
           <div className="text-foreground/80 pointer-events-none absolute top-1/2 left-4 -translate-y-1/2">
             <ProviderLogo providerType={selectedType} size={18} />
@@ -62,7 +65,7 @@ export default function ProviderTypeSelector({
               key={entry.provider_type}
               type="button"
               onClick={() => onChange(entry.provider_type)}
-              className={`rounded-full px-3 py-1 text-[10px] font-semibold transition-all ${
+              className={`rounded-lg px-3 py-1 text-[10px] font-semibold transition-all ${
                 selected
                   ? "bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.4)]"
                   : "text-foreground/40 hover:text-foreground/60 bg-white/5 hover:bg-white/10"

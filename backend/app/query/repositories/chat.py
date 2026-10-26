@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.ids import generate_uuid7_with_fallback
@@ -363,6 +363,70 @@ class ChatRepository:
             .limit(limit)
         )
         return self.db.execute(stmt).scalars().all()
+
+    def get_message_page(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        limit: int,
+        before_message_id: uuid.UUID | None = None,
+    ) -> tuple[list[Message], bool] | None:
+        """Return a bounded chronological page and whether older messages remain.
+
+        `None` means the cursor is not part of this authorized conversation.
+        The extra row is fetched only to compute `has_more`.
+        """
+        conversation = self.get_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+        if conversation is None:
+            return None
+
+        base = (
+            select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .options(selectinload(Message.versions), selectinload(Message.active_version))
+            .where(
+                Conversation.tenant_id == tenant_id,
+                Conversation.user_id == user_id,
+                Conversation.kind == "query",
+                Message.conversation_id == conversation_id,
+            )
+        )
+        if before_message_id is not None:
+            cursor = self.db.execute(
+                select(Message.created_at, Message.id)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.user_id == user_id,
+                    Conversation.kind == "query",
+                    Message.conversation_id == conversation_id,
+                    Message.id == before_message_id,
+                )
+            ).one_or_none()
+            if cursor is None:
+                return None
+            base = base.where(
+                or_(
+                    Message.created_at < cursor.created_at,
+                    and_(Message.created_at == cursor.created_at, Message.id < cursor.id),
+                )
+            )
+
+        rows = list(
+            self.db.execute(
+                base.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1)
+            )
+            .scalars()
+            .all()
+        )
+        has_more = len(rows) > limit
+        return list(reversed(rows[:limit])), has_more
 
     def _resolve_conversation(
         self,

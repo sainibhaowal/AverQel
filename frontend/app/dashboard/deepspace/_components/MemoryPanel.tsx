@@ -1,6 +1,5 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   Brain,
@@ -21,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { apiV1 } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 type MemoryScope = "user" | "session" | "global";
 
@@ -78,7 +78,7 @@ function scopeLabel(scope: MemoryScope) {
   return "Personal";
 }
 
-export default function MemoryPanel() {
+export default function MemoryPanel({ active = true }: { active?: boolean }) {
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [report, setReport] = useState<MemoryReport | null>(null);
   const [preferences, setPreferences] = useState<MemoryPreferences | null>(null);
@@ -93,9 +93,10 @@ export default function MemoryPanel() {
   const [tags, setTags] = useState("");
   const [importance, setImportance] = useState("0.5");
   const [confirmClear, setConfirmClear] = useState(false);
+  const hasLoadedMemoriesRef = useRef(false);
 
   const load = useCallback(async (query = "") => {
-    setLoading(true);
+    if (!hasLoadedMemoriesRef.current) setLoading(true);
     try {
       const [memoryData, reportData, preferencesData] = await Promise.all([
         query.trim()
@@ -109,6 +110,7 @@ export default function MemoryPanel() {
       setMemories(Array.isArray(memoryData) ? memoryData : memoryData.results || []);
       setReport(reportData);
       setPreferences(preferencesData);
+      hasLoadedMemoriesRef.current = true;
     } catch (error) {
       console.error("Failed to load DeepSpace memory", error);
       toast.error("Memory is temporarily unavailable.");
@@ -130,11 +132,22 @@ export default function MemoryPanel() {
   }, [load]);
   useEffect(() => {
     const handleMemoryUpdate = () => {
-      void loadRef.current(searchQuery);
+      if (active) void loadRef.current(searchQuery);
     };
     window.addEventListener("deepspace:memory-updated", handleMemoryUpdate);
     return () => window.removeEventListener("deepspace:memory-updated", handleMemoryUpdate);
-  }, [searchQuery]);
+  }, [active, searchQuery]);
+
+  const wasActiveRef = useRef(active);
+  useEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (active && !wasActive && hasLoadedMemoriesRef.current) {
+      queueMicrotask(() => {
+        if (wasActiveRef.current) void load(searchQuery);
+      });
+    }
+  }, [active, load, searchQuery]);
 
   const resetForm = () => {
     setShowForm(false);
@@ -298,7 +311,7 @@ export default function MemoryPanel() {
   );
 
   return (
-    <div className="bg-background/50 flex h-full min-h-0 flex-col overflow-hidden backdrop-blur-3xl">
+    <div className="bg-background/50 flex h-full min-h-0 flex-col overflow-hidden">
       <header className="shrink-0 border-b border-white/5 bg-white/[0.03] p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -456,9 +469,7 @@ export default function MemoryPanel() {
           </div>
         ) : null}
         {loading ? (
-          <div className="flex min-h-48 items-center justify-center">
-            <RefreshCw className="text-primary animate-spin" size={22} />
-          </div>
+          <AverQelLoading label="Loading DeepSpace memory…" size="section" className="min-h-48" />
         ) : memories.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] text-center">
             <Database size={34} className="text-foreground/25" />
@@ -468,101 +479,95 @@ export default function MemoryPanel() {
             </p>
           </div>
         ) : (
-          <AnimatePresence mode="popLayout">
-            <div className="space-y-3">
-              {candidates.length ? (
-                <section className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-bold text-amber-100">Review memory candidates</p>
-                    <span className="text-[10px] text-amber-100/60">
-                      {candidates.length} pending
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {candidates.map((memory) => (
-                      <CandidateCard
-                        key={memory.id}
-                        memory={memory}
-                        busy={busy}
-                        onReview={reviewCandidate}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              {activeMemories.map((memory) => (
-                <motion.article
-                  key={memory.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="group hover:border-primary/30 rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:bg-white/[0.06]"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-foreground/90 text-sm font-bold">{memory.key}</h3>
-                        <span className="text-primary/80 bg-primary/10 border-primary/20 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase">
-                          <ScopeIcon scope={memory.scope} /> {scopeLabel(memory.scope)}
-                        </span>
-                      </div>
-                      <p className="text-foreground/65 mt-2 text-sm leading-relaxed whitespace-pre-wrap">
-                        {memory.value}
-                      </p>
-                      <div className="text-foreground/35 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
-                        <span>{displayDate(memory.updated_at || memory.created_at)}</span>
-                        <span>Used {memory.access_count ?? 0} times</span>
-                        <span>Importance {Math.round((memory.importance_score ?? 0) * 100)}%</span>
-                        <span>Confidence {Math.round((memory.confidence_score ?? 1) * 100)}%</span>
-                        <span>{memory.pgvector_ready ? "Vector ready" : "Embedding pending"}</span>
-                        {memory.expires_at ? (
-                          <span>Expires {displayDate(memory.expires_at)}</span>
-                        ) : null}
-                      </div>
-                      {memory.source ? (
-                        <p className="text-foreground/30 mt-2 text-[10px]">
-                          Source: {memory.source.replace(/_/g, " ")}
-                        </p>
-                      ) : null}
-                      {memory.tags.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {memory.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-foreground/40 rounded border border-white/10 px-1.5 py-0.5 text-[9px]"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
+          <div className="space-y-3">
+            {candidates.length ? (
+              <section className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-amber-100">Review memory candidates</p>
+                  <span className="text-[10px] text-amber-100/60">
+                    {candidates.length} pending
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {candidates.map((memory) => (
+                    <CandidateCard
+                      key={memory.id}
+                      memory={memory}
+                      busy={busy}
+                      onReview={reviewCandidate}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {activeMemories.map((memory) => (
+              <article
+                key={memory.id}
+                className="group hover:border-primary/30 rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:bg-white/[0.06]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-foreground/90 text-sm font-bold">{memory.key}</h3>
+                      <span className="text-primary/80 bg-primary/10 border-primary/20 rounded-lg border px-2 py-0.5 text-[9px] font-bold uppercase">
+                        <ScopeIcon scope={memory.scope} /> {scopeLabel(memory.scope)}
+                      </span>
+                    </div>
+                    <p className="text-foreground/65 mt-2 text-sm leading-relaxed whitespace-pre-wrap">
+                      {memory.value}
+                    </p>
+                    <div className="text-foreground/35 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                      <span>{displayDate(memory.updated_at || memory.created_at)}</span>
+                      <span>Used {memory.access_count ?? 0} times</span>
+                      <span>Importance {Math.round((memory.importance_score ?? 0) * 100)}%</span>
+                      <span>Confidence {Math.round((memory.confidence_score ?? 1) * 100)}%</span>
+                      <span>{memory.pgvector_ready ? "Vector ready" : "Embedding pending"}</span>
+                      {memory.expires_at ? (
+                        <span>Expires {displayDate(memory.expires_at)}</span>
                       ) : null}
                     </div>
-                    {memory.scope !== "global" ? (
-                      <div className="flex shrink-0 gap-1 opacity-60 transition group-hover:opacity-100">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(memory)}
-                          className="theme-chip rounded-lg px-2 py-1.5 text-[10px]"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void forgetMemory(memory)}
-                          disabled={busy}
-                          aria-label="Forget memory"
-                          className="rounded-lg p-2 text-red-400/70 hover:bg-red-400/10 hover:text-red-400"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {memory.source ? (
+                      <p className="text-foreground/30 mt-2 text-[10px]">
+                        Source: {memory.source.replace(/_/g, " ")}
+                      </p>
+                    ) : null}
+                    {memory.tags.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {memory.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-foreground/40 rounded border border-white/10 px-1.5 py-0.5 text-[9px]"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
                       </div>
                     ) : null}
                   </div>
-                </motion.article>
-              ))}
-            </div>
-          </AnimatePresence>
+                  {memory.scope !== "global" ? (
+                    <div className="flex shrink-0 gap-1 opacity-60 transition group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(memory)}
+                        className="theme-chip rounded-lg px-2 py-1.5 text-[10px]"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void forgetMemory(memory)}
+                        disabled={busy}
+                        aria-label="Forget memory"
+                        className="rounded-lg p-2 text-red-400/70 hover:bg-red-400/10 hover:text-red-400"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
         )}
       </div>
 
@@ -594,7 +599,7 @@ export default function MemoryPanel() {
               type="button"
               onClick={() => setConfirmClear(true)}
               disabled={busy}
-              className="rounded-lg border border-red-400/20 px-2.5 py-1.5 text-[10px] text-red-300/80 hover:bg-red-400/10"
+              className="border-danger/50 text-danger hover:border-danger/70 hover:bg-danger/10 focus-visible:outline-danger/50 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Clear personal
             </button>

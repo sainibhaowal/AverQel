@@ -1378,7 +1378,7 @@ export default function DeepSpaceComposer({
               </span>
             </div>
             <div
-              className="deepspace-context-progress mt-1 h-1 w-full overflow-hidden rounded-full bg-cyan-950/15 ring-1 ring-cyan-900/15 dark:bg-cyan-950/15"
+              className="deepspace-context-progress mt-1 h-1 w-full overflow-hidden rounded-sm bg-cyan-950/15 ring-1 ring-cyan-900/15 dark:bg-cyan-950/15"
               role="progressbar"
               aria-label="Estimated provider context usage"
               aria-valuemin={0}
@@ -1391,7 +1391,7 @@ export default function DeepSpaceComposer({
               }
             >
               <div
-                className="deepspace-context-progress-fill h-full rounded-full bg-linear-to-r from-cyan-400 via-teal-400 to-emerald-400 transition-[width] duration-300 ease-out"
+                className="deepspace-context-progress-fill h-full rounded-sm bg-linear-to-r from-cyan-400 via-teal-400 to-emerald-400 transition-[width] duration-300 ease-out"
                 style={{ width: `${contextRatio * 100}%` }}
               />
             </div>
@@ -1415,7 +1415,7 @@ export default function DeepSpaceComposer({
                     <button
                       type="button"
                       onClick={() => setContextDialogOpen(false)}
-                      className="deepspace-diagnostics-close text-muted-foreground hover:text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors"
+                      className="deepspace-diagnostics-close text-muted-foreground hover:text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors"
                       aria-label="Close context details"
                     >
                       ×
@@ -2087,102 +2087,124 @@ export default function DeepSpaceComposer({
             document.body,
           )
         : null}
-      {attachmentPreview ? (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${attachmentPreview.name}`}
-          onClick={() => setAttachmentPreview(null)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950"
-            onClick={(event) => event.stopPropagation()}
+      <AnimatePresence initial={false}>
+        {attachmentPreview ? (
+          <motion.div
+            key="attachment-preview-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Preview ${attachmentPreview.name}`}
+            onClick={() => setAttachmentPreview(null)}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold">{attachmentPreview.name}</p>
-                <p className="text-xs text-emerald-700">
-                  Shared from this composer ·{" "}
-                  {attachmentPreview.status === "ready"
-                    ? "saved to Library"
-                    : attachmentPreview.status}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAttachmentPreview(null)}
-                aria-label="Close preview"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            {attachmentPreview.previewUrl ? (
-              <img
-                src={attachmentPreview.previewUrl}
-                alt={attachmentPreview.name}
-                className="max-h-[65vh] w-full rounded-xl object-contain"
-              />
-            ) : (
-              <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900">
-                <FileText size={34} />
-                <span className="mt-2 text-sm">Secure Library file preview</span>
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
+              className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{attachmentPreview.name}</p>
+                  <p className="text-xs text-emerald-700">
+                    Shared from this composer ·{" "}
+                    {attachmentPreview.status === "ready"
+                      ? "saved to Library"
+                      : attachmentPreview.status}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent("deepspace-library-open", {
-                        detail: { fileId: attachmentPreview.id },
-                      }),
-                    );
-                    setAttachmentPreview(null);
-                  }}
-                  className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold"
+                  onClick={() => setAttachmentPreview(null)}
+                  aria-label="Close preview"
                 >
-                  Open in Library
+                  <X size={18} />
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-      {libraryPickerOpen ? (
-        <div
-          className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
-          onClick={() => setLibraryPickerOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Attach from Library</h2>
-              <button type="button" onClick={() => setLibraryPickerOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="max-h-80 space-y-1 overflow-auto">
-              {libraryFiles.length ? (
-                libraryFiles.map((file) => (
-                  <button
-                    key={file.id}
-                    type="button"
-                    onClick={() => attachLibraryFile(file)}
-                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                  >
-                    <FileText size={16} className="text-emerald-600" />
-                    <span className="truncate">{file.name}</span>
-                  </button>
-                ))
+              {attachmentPreview.previewUrl ? (
+                <img
+                  src={attachmentPreview.previewUrl}
+                  alt={attachmentPreview.name}
+                  className="max-h-[65vh] w-full rounded-xl object-contain"
+                />
               ) : (
-                <p className="text-muted-foreground p-3 text-sm">
-                  No files in this Library folder yet.
-                </p>
+                <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900">
+                  <FileText size={34} />
+                  <span className="mt-2 text-sm">Secure Library file preview</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(
+                        new CustomEvent("deepspace-library-open", {
+                          detail: { fileId: attachmentPreview.id },
+                        }),
+                      );
+                      setAttachmentPreview(null);
+                    }}
+                    className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold"
+                  >
+                    Open in Library
+                  </button>
+                </div>
               )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {libraryPickerOpen ? (
+          <motion.div
+            key="library-picker-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+            className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4"
+            onClick={() => setLibraryPickerOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
+              className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-semibold">Attach from Library</h2>
+                <button type="button" onClick={() => setLibraryPickerOpen(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="max-h-80 space-y-1 overflow-auto">
+                {libraryFiles.length ? (
+                  libraryFiles.map((file) => (
+                    <button
+                      key={file.id}
+                      type="button"
+                      onClick={() => attachLibraryFile(file)}
+                      className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    >
+                      <FileText size={16} className="text-emerald-600" />
+                      <span className="truncate">{file.name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground p-3 text-sm">
+                    No files in this Library folder yet.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

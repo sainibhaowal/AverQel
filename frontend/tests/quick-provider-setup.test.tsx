@@ -78,6 +78,7 @@ describe("QuickProviderSetup", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Find chat models" }));
 
+    fireEvent.click(await screen.findByRole("combobox", { name: "Default chat model" }));
     await screen.findByRole("option", { name: "Claude Opus 4.7" });
     expect(mocks.previewProviderModels).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -148,6 +149,7 @@ describe("QuickProviderSetup", () => {
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "secret-test-key" } });
     fireEvent.click(screen.getByRole("button", { name: "Find chat models" }));
 
+    fireEvent.click(await screen.findByRole("combobox", { name: "Default chat model" }));
     await screen.findByRole("option", { name: "GPT Example" });
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
 
@@ -255,6 +257,7 @@ describe("QuickProviderSetup", () => {
 
     expect(await screen.findByLabelText("Runtime URL")).not.toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Find chat models" }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "Default chat model" }));
     await screen.findByRole("option", { name: "Llama 3.2" });
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
 

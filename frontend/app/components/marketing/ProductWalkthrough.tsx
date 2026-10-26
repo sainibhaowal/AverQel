@@ -253,7 +253,7 @@ export default function ProductWalkthrough() {
                 {steps.map((step, index) => (
                   <span
                     key={step.title}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                    className={`h-1.5 rounded-sm transition-all duration-300 ${
                       index === activeStep ? "w-9 bg-cyan-300" : "w-3 bg-white/15"
                     }`}
                   />

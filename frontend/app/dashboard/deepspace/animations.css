@@ -795,7 +795,7 @@
 }
 
 .ai-status-pill {
-  border-radius: 9999px;
+  border-radius: 0.75rem;
 }
 
 .ai-status-glass {

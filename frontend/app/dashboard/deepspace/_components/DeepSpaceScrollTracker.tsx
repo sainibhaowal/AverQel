@@ -90,9 +90,7 @@ function appendStructuredBlocks(content: string, blocks: StructuredBlock[] | und
     }
 
     if (block.type === "infographic" && !result.includes(fence + "infographic")) {
-      const payload = Object.fromEntries(
-        Object.entries(block).filter(([key]) => key !== "type"),
-      );
+      const payload = Object.fromEntries(Object.entries(block).filter(([key]) => key !== "type"));
       result +=
         "\n\n" + fence + "infographic\n" + JSON.stringify(payload, null, 2) + "\n" + fence + "\n";
     }
@@ -117,75 +115,70 @@ export default function DeepSpaceScrollTracker({
 }: DeepSpaceScrollTrackerProps) {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [tooltipMessageId, setTooltipMessageId] = useState<string | null>(null);
-  const messageObservationKey = useMemo(
-    () => messages.map((message) => message.id).join("\u0000"),
-    [messages],
-  );
 
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    let frame: number | null = null;
-    const updateActiveMessage = () => {
-      frame = null;
-      const containerRect = container.getBoundingClientRect();
-      const viewportHeight = container.clientHeight || containerRect.height;
-      if (!viewportHeight) return;
-
-      // Virtualized threads replace the message nodes while the user scrolls.
-      // Pick the message nearest a stable reading line instead of relying only
-      // on the IntersectionObserver batch that created the old node.
-      const readingLine = containerRect.top + viewportHeight * 0.3;
-      let bestId: string | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      container.querySelectorAll<HTMLElement>("[data-message-id]").forEach((element) => {
-        const rect = element.getBoundingClientRect();
-        const visible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
-        if (!visible) return;
-        const distance = Math.abs(rect.top + rect.height / 2 - readingLine);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestId = element.getAttribute("data-message-id");
-        }
-      });
-
-      if (bestId) {
-        setActiveMessageId((current) => (current === bestId ? current : bestId));
-      }
-    };
-    const scheduleActiveMessageUpdate = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(updateActiveMessage);
-    };
-
     const observer =
       typeof IntersectionObserver === "undefined"
         ? null
-        : new IntersectionObserver(() => scheduleActiveMessageUpdate(), {
-            root: container,
-            rootMargin: "-10% 0px -45% 0px",
-            threshold: [0, 0.25, 0.5, 0.75, 1],
-          });
+        : new IntersectionObserver(
+            (entries) => {
+              const rootRect = container.getBoundingClientRect();
+              const readingLine = rootRect.top + (container.clientHeight || rootRect.height) * 0.3;
+              let bestId: string | null = null;
+              let bestDistance = Number.POSITIVE_INFINITY;
+              for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                const id = entry.target.getAttribute("data-message-id");
+                if (!id) continue;
+                const distance = Math.abs(
+                  entry.boundingClientRect.top + entry.boundingClientRect.height / 2 - readingLine,
+                );
+                if (distance < bestDistance) {
+                  bestDistance = distance;
+                  bestId = id;
+                }
+              }
+              if (bestId) {
+                setActiveMessageId((current) => (current === bestId ? current : bestId));
+              }
+            },
+            {
+              root: container,
+              rootMargin: "-28% 0px -64% 0px",
+              threshold: [0, 0.25, 0.75, 1],
+            },
+          );
 
+    const observeMessageNodes = (node: Node) => {
+      if (!(node instanceof Element)) return;
+      if (node.matches("[data-message-id]")) observer?.observe(node);
+      node.querySelectorAll("[data-message-id]").forEach((element) => observer?.observe(element));
+    };
     container
       .querySelectorAll("[data-message-id]")
       .forEach((element) => observer?.observe(element));
-    container.addEventListener("scroll", scheduleActiveMessageUpdate, { passive: true });
-    window.addEventListener("resize", scheduleActiveMessageUpdate);
-
-    const mutationObserver = new MutationObserver(scheduleActiveMessageUpdate);
+    const mutationObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach(observeMessageNodes);
+        record.removedNodes.forEach((node) => {
+          if (!(node instanceof Element)) return;
+          if (node.matches("[data-message-id]")) observer?.unobserve(node);
+          node
+            .querySelectorAll("[data-message-id]")
+            .forEach((element) => observer?.unobserve(element));
+        });
+      }
+    });
     mutationObserver.observe(container, { childList: true, subtree: true });
-    scheduleActiveMessageUpdate();
 
     return () => {
       observer?.disconnect();
       mutationObserver.disconnect();
-      container.removeEventListener("scroll", scheduleActiveMessageUpdate);
-      window.removeEventListener("resize", scheduleActiveMessageUpdate);
-      if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [messageObservationKey, scrollContainerRef]);
+  }, [scrollContainerRef]);
 
   const effectiveActiveId =
     activeMessageId && messages.some((message) => message.id === activeMessageId)
@@ -244,11 +237,11 @@ export default function DeepSpaceScrollTracker({
                   onMouseEnter={() => setTooltipMessageId(message.id)}
                   onFocus={() => setTooltipMessageId(message.id)}
                   aria-label={label}
-                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full focus:ring-2 focus:ring-cyan-300/55 focus:ring-offset-2 focus:ring-offset-black/30 focus:outline-none"
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg focus:ring-2 focus:ring-cyan-300/55 focus:ring-offset-2 focus:ring-offset-black/30 focus:outline-none"
                 >
                   <span
                     className={[
-                      "deepspace-message-marker block rounded-full transition-colors duration-150",
+                      "deepspace-message-marker block rounded-sm transition-colors duration-150",
                       isUser
                         ? isActive
                           ? "deepspace-message-marker-user-active h-3 w-2.5 bg-[#c8b6ff]"
@@ -286,7 +279,7 @@ export default function DeepSpaceScrollTracker({
           }
         }}
         disabled={!focusedAssistantMessage}
-        className="deepspace-message-insert disabled:text-foreground/35 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-300/14 bg-cyan-300/8 text-cyan-100 shadow-[0_8px_18px_rgba(34,211,238,0.12)] transition-colors hover:bg-cyan-300/14 hover:text-white disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/5 disabled:shadow-none"
+        className="deepspace-message-insert disabled:text-foreground/35 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-300/14 bg-cyan-300/8 text-cyan-100 shadow-[0_8px_18px_rgba(34,211,238,0.12)] transition-colors hover:bg-cyan-300/14 hover:text-white disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/5 disabled:shadow-none"
       >
         <ArrowUp size={16} strokeWidth={2.5} />
       </button>

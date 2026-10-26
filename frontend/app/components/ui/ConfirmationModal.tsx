@@ -66,13 +66,15 @@ export default function ConfirmationModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60"
           />
           <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 10 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.14, ease: "easeOut" }}
             className="confirmation-modal relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-[#0f0f11] p-8 text-slate-100 shadow-2xl"
           >
             <div className="flex flex-col items-center text-center">

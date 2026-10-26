@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 import { updateMCPToolPolicy, type MCPTool, type MCPToolMode } from "@/lib/mcp-api";
 
@@ -73,7 +74,7 @@ export default function MCPToolPermissionTable({
                       {(tool.risk_labels.length ? tool.risk_labels : ["read"]).map((risk) => (
                         <span
                           key={risk}
-                          className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-white/60"
+                          className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/60"
                         >
                           {risk.replaceAll("_", " ")}
                         </span>
@@ -81,19 +82,17 @@ export default function MCPToolPermissionTable({
                     </div>
                   </td>
                   <td className="py-3">
-                    <select
-                      aria-label={`Permission for ${tool.name}`}
+                    <RoundedSelect
+                      label={`Permission for ${tool.name}`}
                       value={tool.mode}
                       disabled={saving === tool.name}
-                      onChange={(event) => void changeMode(tool, event.target.value as MCPToolMode)}
-                      className="rounded-lg border border-white/10 bg-[#111512] px-2 py-2 text-xs text-white"
-                    >
-                      {MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode.replaceAll("_", " ")}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(mode) => void changeMode(tool, mode as MCPToolMode)}
+                      options={MODES.map((mode) => ({
+                        value: mode,
+                        label: mode.replaceAll("_", " "),
+                      }))}
+                      triggerClassName="min-w-0 px-2 py-2 text-xs"
+                    />
                   </td>
                 </tr>
               ))}

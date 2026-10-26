@@ -138,9 +138,8 @@ describe("MCP connection controls", () => {
 
   it("updates a tool permission through the typed API boundary", async () => {
     render(<MCPToolPermissionTable serverId="server-1" tools={tools} />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Permission for search_mail" }), {
-      target: { value: "blocked" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Permission for search_mail" }));
+    fireEvent.click(screen.getByRole("option", { name: "blocked" }));
     await waitFor(() =>
       expect(updateMCPToolPolicyMock).toHaveBeenCalledWith("server-1", "search_mail", "blocked"),
     );

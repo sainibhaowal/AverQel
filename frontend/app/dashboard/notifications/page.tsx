@@ -210,7 +210,7 @@ export default function NotificationsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <strong className="text-foreground text-sm">{item.title}</strong>
                     {item.event_domain && (
-                      <span className="border-border text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] capitalize">
+                      <span className="border-border text-muted-foreground rounded-lg border px-2 py-0.5 text-[10px] capitalize">
                         {item.event_domain}
                       </span>
                     )}

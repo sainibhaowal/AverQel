@@ -91,7 +91,7 @@
 .heroNavLink:focus-visible,
 .heroAction:focus-visible,
 .heroTextLink:focus-visible {
-  border-radius: 999px;
+  border-radius: 0.75rem;
   outline: 2px solid #67e8f9;
   outline-offset: 4px;
 }
@@ -114,7 +114,7 @@
   align-items: center;
   gap: 0.7rem;
   border: 1px solid rgba(45, 212, 191, 0.24);
-  border-radius: 999px;
+  border-radius: 0.75rem;
   background: rgba(7, 24, 23, 0.78);
   padding: 0.45rem 0.85rem 0.45rem 0.5rem;
   color: rgba(226, 232, 240, 0.8);
@@ -948,7 +948,7 @@
   align-items: center;
   gap: 0.55rem;
   border: 1px solid rgba(94, 234, 212, 0.22);
-  border-radius: 999px;
+  border-radius: 0.75rem;
   background: rgba(20, 184, 166, 0.08);
   padding: 0.45rem 0.75rem;
   color: #8ff2d2;
@@ -1081,7 +1081,7 @@
 .ctaOrbitLabel {
   position: absolute;
   border: 1px solid rgba(103, 232, 249, 0.14);
-  border-radius: 999px;
+  border-radius: 0.5rem;
   background: rgba(4, 12, 18, 0.82);
   padding: 0.28rem 0.48rem;
   color: rgba(186, 230, 253, 0.78);

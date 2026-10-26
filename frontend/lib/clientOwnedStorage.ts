@@ -398,12 +398,24 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
     }
     case "db.chats.get_chat_history": {
       const conversationId = String(params.conversation_id ?? "");
+      const limitValue = Number(params.limit ?? 40);
+      const limit = Number.isInteger(limitValue) ? Math.max(1, Math.min(100, limitValue)) : 40;
+      const beforeMessageId = String(params.before_message_id ?? "");
       const messages = await listClientOwnedRecords<Record<string, unknown>>("chat.messages");
-      return messages
+      const conversationMessages = messages
         .filter((item) => String(item.conversation_id ?? "") === conversationId)
-        .sort((left, right) =>
-          String(left.created_at ?? "").localeCompare(String(right.created_at ?? "")),
-        )
+        .sort((left, right) => {
+          const byCreatedAt = String(left.created_at ?? "").localeCompare(
+            String(right.created_at ?? ""),
+          );
+          return byCreatedAt || String(left.id ?? "").localeCompare(String(right.id ?? ""));
+        });
+      const beforeIndex = beforeMessageId
+        ? conversationMessages.findIndex((item) => String(item.id ?? "") === beforeMessageId)
+        : conversationMessages.length;
+      if (beforeIndex < 0) return [];
+      return conversationMessages
+        .slice(Math.max(0, beforeIndex - limit - 1), beforeIndex)
         .map(publicMessage);
     }
     case "db.chats.get_message": {

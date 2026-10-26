@@ -6,6 +6,58 @@ import {
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
 
 describe("DeepSpace durable thread state", () => {
+  it("prepends older history without losing current messages or duplicating rows", () => {
+    const currentPage = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conversation-pages",
+      messages: [
+        {
+          id: "user-z",
+          role: "user",
+          content: "Second prompt",
+          created_at: "2026-01-02T00:00:00.000Z",
+          metadata_json: {},
+        },
+        {
+          id: "assistant-a",
+          role: "assistant",
+          content: "Current answer",
+          created_at: "2026-01-02T00:00:00.000Z",
+          metadata_json: {},
+        },
+      ],
+    });
+
+    const state = deepSpaceThreadReducer(currentPage, {
+      type: "prepend_history",
+      conversationId: "conversation-pages",
+      messages: [
+        {
+          id: "user-a",
+          role: "user",
+          content: "First prompt",
+          created_at: "2026-01-02T00:00:00.000Z",
+          metadata_json: {},
+        },
+        {
+          id: "user-z",
+          role: "user",
+          content: "Stale duplicate",
+          created_at: "2026-01-02T00:00:00.000Z",
+          metadata_json: {},
+        },
+      ],
+    });
+
+    expect(state.messages.map((message) => message.id)).toEqual([
+      "user-a",
+      "user-z",
+      "assistant-a",
+    ]);
+    expect(state.messages[1]?.content).toBe("Second prompt");
+    expect(state.messages[2]?.content).toBe("Current answer");
+  });
+
   it("restores a useful stale-worker error message from saved history", () => {
     const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",

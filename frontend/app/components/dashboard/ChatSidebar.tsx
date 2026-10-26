@@ -289,7 +289,7 @@ export default function ChatSidebar({
     <aside
       className={
         variant === "floating"
-          ? "dashboard-history-scope theme-panel relative flex h-full w-full flex-col rounded-[1.75rem] border p-4 shadow-[0_22px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl sm:p-5"
+          ? "dashboard-history-scope theme-panel relative flex h-full w-full flex-col rounded-[1.75rem] border p-4 shadow-[0_22px_80px_rgba(0,0,0,0.34)] sm:p-5"
           : "dashboard-history-scope theme-panel hidden w-80 shrink-0 border-l p-4 lg:flex lg:flex-col lg:p-5"
       }
     >
@@ -385,14 +385,20 @@ export default function ChatSidebar({
             {error}
           </div>
         ) : conversations.length > 0 ? (
-          <AnimatePresence mode="popLayout">
+          <AnimatePresence
+            initial={variant === "floating" ? false : undefined}
+            mode="popLayout"
+          >
             {conversations.map((conv) => (
               <motion.div
                 key={conv.id}
-                layout
-                initial={{ opacity: 0, x: -8 }}
+                layout={variant !== "floating"}
+                initial={variant === "floating" ? false : { opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 8 }}
+                exit={variant === "floating" ? { opacity: 0 } : { opacity: 0, x: 8 }}
+                transition={
+                  variant === "floating" ? { duration: 0.12, ease: "easeOut" } : undefined
+                }
                 role="button"
                 tabIndex={0}
                 onClick={() =>
@@ -464,7 +470,7 @@ export default function ChatSidebar({
                       {!showArchived && enableRename ? (
                         <button
                           onClick={(e) => handleRename(e, conv)}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 ${
                             currentConversationId === conv.id
                               ? "text-primary/70 hover:bg-primary/20 hover:text-primary dark:text-primary/70 dark:hover:bg-primary/20 dark:hover:text-primary"
                               : "text-foreground/30 hover:bg-primary/10 hover:text-primary"
@@ -477,7 +483,7 @@ export default function ChatSidebar({
                       {!showArchived && enableRetentionControls ? (
                         <button
                           onClick={(event) => void openRetentionControls(event, conv)}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 ${
                             currentConversationId === conv.id
                               ? "text-primary/70 hover:bg-primary/20 hover:text-primary dark:text-primary/70 dark:hover:bg-primary/20 dark:hover:text-primary"
                               : "text-foreground/30 hover:bg-primary/10 hover:text-primary"
@@ -491,7 +497,7 @@ export default function ChatSidebar({
                       {!showArchived ? (
                         <button
                           onClick={(e) => handleDelete(e, conv.id)}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 ${
                             currentConversationId === conv.id
                               ? "text-primary/70 dark:text-primary/70 hover:bg-red-500/20 hover:text-red-500 dark:hover:bg-red-500/20 dark:hover:text-red-400"
                               : "text-foreground/30 hover:bg-red-500/10 hover:text-red-500"
@@ -516,7 +522,7 @@ export default function ChatSidebar({
                               );
                             }
                           }}
-                          className="text-foreground/45 hover:bg-primary/10 hover:text-primary flex h-8 w-8 items-center justify-center rounded-full transition"
+                          className="text-foreground/45 hover:bg-primary/10 hover:text-primary flex h-8 w-8 items-center justify-center rounded-lg transition"
                           title="Restore conversation"
                           aria-label="Restore conversation"
                         >
@@ -573,10 +579,11 @@ export default function ChatSidebar({
       <AnimatePresence>
         {retentionDialog ? (
           <motion.div
-            className="absolute inset-0 z-20 flex items-end bg-black/45 p-3 backdrop-blur-sm"
+            className="absolute inset-0 z-20 flex items-end bg-black/45 p-3"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             role="dialog"
             aria-modal="true"
             aria-label={`Retention protection for ${retentionDialog.title}`}
@@ -586,6 +593,7 @@ export default function ChatSidebar({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
             >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>

@@ -9,6 +9,7 @@ import { isMermaidErrorSvg } from "../_lib/mermaid";
 
 import CodeBlock, { sanitizeMermaidSyntax } from "./CodeBlock";
 import GraphBlock from "./GraphBlock";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 interface DiagramBlockProps {
   block: StreamDiagramBlock;
@@ -612,7 +613,7 @@ export default function DiagramBlock({
   return (
     <section className="theme-panel w-full min-w-0 rounded-[1.8rem] px-5 py-5 shadow-[0_24px_70px_-44px_rgba(8,47,73,0.18)] sm:px-6 dark:shadow-[0_24px_70px_-44px_rgba(8,47,73,0.95)]">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="theme-accent-pill inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold tracking-[0.18em] uppercase">
+        <div className="theme-accent-pill inline-flex items-center gap-2 rounded-lg px-3 py-1 text-[11px] font-semibold tracking-[0.18em] uppercase">
           <GitBranch size={12} />
           {formatDiagramLabel(block.diagram_type)}
         </div>
@@ -673,7 +674,7 @@ export default function DiagramBlock({
 
       {expandedOverlay}
       <div className="theme-code-surface text-foreground/72 rounded-[1.45rem] p-4 text-sm">
-        <div className="theme-chip text-primary mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] tracking-[0.18em] uppercase">
+        <div className="theme-chip text-primary mb-3 inline-flex items-center gap-2 rounded-lg px-3 py-1 text-[11px] tracking-[0.18em] uppercase">
           <Sparkles size={12} />
           {block.incomplete
             ? "Streaming diagram..."
@@ -1071,23 +1072,23 @@ function NativeDiagramCanvas({
                       aria-label={`${task.name} duration`}
                       className="rounded border border-white/10 bg-black/20 px-1 py-1 text-[10px] text-white"
                     />
-                    <select
+                    <RoundedSelect
+                      label={`${task.name} dependency`}
                       value={task.dependency ?? ""}
-                      onChange={(event) =>
-                        updateGanttTask(node.id, { dependency: event.target.value || undefined })
+                      onChange={(dependency) =>
+                        updateGanttTask(node.id, { dependency: dependency || undefined })
                       }
-                      aria-label={`${task.name} dependency`}
-                      className="rounded border border-white/10 bg-black/20 px-1 py-1 text-[10px] text-white"
-                    >
-                      <option value="">No dependency</option>
-                      {draft.tasks
-                        .filter((candidate) => candidate.id !== task.id)
-                        .map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            After {candidate.name}
-                          </option>
-                        ))}
-                    </select>
+                      options={[
+                        { value: "", label: "No dependency" },
+                        ...draft.tasks
+                          .filter((candidate) => candidate.id !== task.id)
+                          .map((candidate) => ({
+                            value: candidate.id,
+                            label: `After ${candidate.name}`,
+                          })),
+                      ]}
+                      triggerClassName="min-w-0 px-1 py-1 text-[10px]"
+                    />
                   </div>
                 ) : null}
               </div>

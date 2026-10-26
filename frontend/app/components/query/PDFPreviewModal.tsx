@@ -509,7 +509,7 @@ export default function PDFPreviewModal({
               <Shield size={12} className="text-primary/50" />
               <span>Strictly confidential • Enterprise analysis workspace</span>
             </div>
-            <span className="border-glass-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 font-mono text-[9px]">
+            <span className="border-glass-border bg-muted text-muted-foreground rounded-lg border px-2 py-0.5 font-mono text-[9px]">
               ID: {documentId.substring(0, 8)}
             </span>
           </div>

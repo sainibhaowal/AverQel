@@ -390,7 +390,7 @@ export default function AuditLogsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`rounded-full px-2 py-1 text-[9px] font-bold tracking-wider uppercase ${getStatusBadgeClass(log.status)}`}
+                          className={`rounded-lg px-2 py-1 text-[9px] font-bold tracking-wider uppercase ${getStatusBadgeClass(log.status)}`}
                         >
                           {log.status}
                         </span>
@@ -488,7 +488,7 @@ export default function AuditLogsPage() {
                       <button
                         type="button"
                         onClick={() => void fetchLogs()}
-                        className="rounded-full border border-white/10 px-4 py-2 text-[10px] font-bold tracking-widest text-slate-300 uppercase transition-colors hover:text-white"
+                        className="rounded-lg border border-white/10 px-4 py-2 text-[10px] font-bold tracking-widest text-slate-300 uppercase transition-colors hover:text-white"
                       >
                         Retry
                       </button>

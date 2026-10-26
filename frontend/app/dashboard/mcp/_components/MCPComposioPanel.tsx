@@ -538,7 +538,7 @@ export default function MCPComposioPanel({
                           <p className="mt-1 truncate text-xs text-white/45">{app.slug}</p>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-full border border-white/10 px-2 py-1 text-xs text-white/55">
+                      <span className="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-white/55">
                         {app.tool_count.toLocaleString("en-US")} tools
                       </span>
                     </div>
@@ -549,7 +549,7 @@ export default function MCPComposioPanel({
                       {app.categories.slice(0, 3).map((category) => (
                         <span
                           key={category}
-                          className="mcp-composio-category-tag rounded-full bg-white/[0.06] px-2 py-1 text-[11px] text-white/55"
+                          className="mcp-composio-category-tag rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white/55"
                         >
                           {category}
                         </span>
@@ -557,13 +557,13 @@ export default function MCPComposioPanel({
                       {app.auth_schemes.slice(0, 2).map((scheme) => (
                         <span
                           key={scheme}
-                          className="mcp-composio-auth-tag rounded-full bg-cyan-400/[0.08] px-2 py-1 text-[11px] text-cyan-100/65"
+                          className="mcp-composio-auth-tag rounded-lg bg-cyan-400/[0.08] px-2 py-1 text-[11px] text-cyan-100/65"
                         >
                           {scheme}
                         </span>
                       ))}
                       {app.no_auth && (
-                        <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] text-white/55">
+                        <span className="rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white/55">
                           No account login
                         </span>
                       )}
@@ -809,7 +809,7 @@ export default function MCPComposioPanel({
                           <code className="text-xs font-semibold break-all text-white/85">
                             {tool.name}
                           </code>
-                          <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.06] px-2 py-0.5 text-[10px] text-amber-100/80 uppercase">
+                          <span className="rounded-lg border border-amber-300/20 bg-amber-300/[0.06] px-2 py-0.5 text-[10px] text-amber-100/80 uppercase">
                             {toolRiskLabel(tool.risk_labels[0] || "write")}
                           </span>
                         </div>

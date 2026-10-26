@@ -197,7 +197,7 @@ function PulseDot({ accentKey, pulseDelay }: { accentKey: string; pulseDelay: nu
       />
       {/* Outer ring + center dot */}
       <div
-        className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${styles.dot}`}
+        className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 ${styles.dot}`}
       >
         <div className={`h-2 w-2 rounded-full ${styles.dotInner}`} />
       </div>
@@ -276,7 +276,7 @@ export default function HowItWorks() {
                     transition: { type: "spring", stiffness: 120, damping: 20 },
                   },
                 }}
-                className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3.5 py-1.5"
+                className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-1.5"
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot} opacity-80`} />
                 <span className="text-muted-foreground font-mono text-[11px] tracking-wide">
@@ -396,7 +396,7 @@ export default function HowItWorks() {
                             >
                               {/* Left accent bar, grows on row hover */}
                               <div
-                                className={`mt-[5px] h-3 w-[2px] shrink-0 rounded-full ${styles.detailBar} transition-all duration-200 group-hover/row:h-4`}
+                                className={`mt-[5px] h-3 w-[2px] shrink-0 rounded-sm ${styles.detailBar} transition-all duration-200 group-hover/row:h-4`}
                               />
 
                               <DetailIcon

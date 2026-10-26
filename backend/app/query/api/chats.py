@@ -116,6 +116,8 @@ async def list_conversations(
 )
 async def get_chat_history(
     conversation_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=100)] = 40,
+    before_message_id: uuid.UUID | None = None,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
@@ -126,12 +128,22 @@ async def get_chat_history(
             str(auth.tenant_id),
             str(auth.user_id),
             "db.chats.get_chat_history",
-            {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
+            {
+                "conversation_id": str(conversation_id),
+                "user_id": str(auth.user_id),
+                "limit": limit,
+                "before_message_id": str(before_message_id) if before_message_id else None,
+            },
             channel="storage",
         )
-        # In proxy mode, messages_data is already formatted correctly as MessageSchema
+        messages = [MessageSchema.model_validate(item) for item in messages_data]
+        has_more = len(messages) > limit
         return ChatHistoryResponse(
-            messages=[MessageSchema.model_validate(item) for item in messages_data]
+            # The client-owned storage RPC returns chronological rows with one
+            # extra row at the front so the API can calculate `has_more`.
+            # Return the newest `limit` rows, matching the database path.
+            messages=messages[-limit:],
+            has_more=has_more,
         )
 
     repo = ChatRepository(db)
@@ -147,12 +159,24 @@ async def get_chat_history(
             status_code=404,
         )
 
-    messages = repo.get_messages(
+    page = repo.get_message_page(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         conversation_id=conversation_id,
+        limit=limit,
+        before_message_id=before_message_id,
     )
-    return ChatHistoryResponse(messages=[_serialize_message(item) for item in messages])
+    if page is None:
+        raise ApiError(
+            code="MESSAGE_NOT_FOUND",
+            message="History cursor not found in this conversation.",
+            status_code=404,
+        )
+    messages, has_more = page
+    return ChatHistoryResponse(
+        messages=[_serialize_message(item) for item in messages],
+        has_more=has_more,
+    )
 
 
 @router.patch(

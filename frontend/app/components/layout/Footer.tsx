@@ -102,7 +102,7 @@ export default function Footer() {
         <div className="border-glass-border mt-12 flex flex-col items-center justify-between gap-4 border-t pt-6 sm:mt-14 sm:flex-row sm:pt-8">
           <div className="flex items-center gap-3">
             <p className="text-muted-foreground/40 text-xs">© {BRAND_NAME}</p>
-            <span className="bg-primary/10 text-primary border-primary/20 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-[0.14em] uppercase">
+            <span className="bg-primary/10 text-primary border-primary/20 inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-bold tracking-[0.14em] uppercase">
               {APP_VERSION}
               {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown"
                 ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}`

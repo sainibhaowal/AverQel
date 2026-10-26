@@ -238,6 +238,7 @@ interface DeepSpaceChatClientProps {
   onConversationUnavailable?: (conversationId: string) => void;
   activeConversationId: string | null;
   currentContent?: string;
+  isPanelActive?: boolean;
   isMobileStacked?: boolean;
   panelMode?: "split" | "notes" | "chat" | "memory";
   onSetPanelMode?: (mode: "split" | "notes" | "chat" | "memory") => void;
@@ -336,6 +337,7 @@ export default function DeepSpaceChatClient({
   onConversationUnavailable,
   activeConversationId,
   currentContent,
+  isPanelActive = true,
   isMobileStacked,
   isHistoryOpen,
   onSetHistoryOpen,
@@ -361,11 +363,16 @@ export default function DeepSpaceChatClient({
   const [operationalSummary, setOperationalSummary] = useState<OperationalSummary | null>(null);
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const [historyLoadErrorId, setHistoryLoadErrorId] = useState<string | null>(null);
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  const [loadingOlderHistory, setLoadingOlderHistory] = useState(false);
   const [completionPulse, setCompletionPulse] = useState(false);
   const completionPulseTimeoutRef = useRef<number | null>(null);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
+  useEffect(() => {
+    if (!isPanelActive) setHistoryOpen(false);
+  }, [isPanelActive, setHistoryOpen]);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>("medium");
   const [threadScrollMetrics, setThreadScrollMetrics] = useState<{
     scrollTop: number;
@@ -562,6 +569,7 @@ export default function DeepSpaceChatClient({
   const queueReconnectRef = useRef<{ conversationId: string; requestId: string } | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const historyRequestVersionRef = useRef(0);
+  const olderHistoryLoadingRef = useRef(false);
   const queueRequestVersionRef = useRef(0);
   const pendingHistorySyncRef = useRef(false);
   const promptEditSubmissionInFlightRef = useRef(false);
@@ -837,9 +845,7 @@ export default function DeepSpaceChatClient({
           const validationMessages = Array.isArray(detail)
             ? detail
                 .map((item) =>
-                  item && typeof item === "object"
-                    ? (item as Record<string, unknown>).msg
-                    : null,
+                  item && typeof item === "object" ? (item as Record<string, unknown>).msg : null,
                 )
                 .filter((message): message is string => typeof message === "string")
                 .join("; ")
@@ -2372,9 +2378,13 @@ export default function DeepSpaceChatClient({
             `/deepspace/chats/${conversationId}/messages`,
           )) as Response;
           if (response.ok) {
-            const payload = (await response.json()) as { messages: DeepSpaceHistoryMessage[] };
+            const payload = (await response.json()) as {
+              messages: DeepSpaceHistoryMessage[];
+              has_more?: boolean;
+            };
             if (!isCurrentRequest()) return;
             dispatch({ type: "load_history", conversationId, messages: payload.messages });
+            setHasOlderHistory(Boolean(payload.has_more));
             setHistoryLoadErrorId(null);
             void loadQueuedTurns(conversationId);
             const queueStatePromise = loadQueueState(conversationId);
@@ -2441,10 +2451,12 @@ export default function DeepSpaceChatClient({
             return;
           }
         } catch (error) {
+          if (!isCurrentRequest()) return;
           if (attempt === 2) {
             console.error("Failed to load DeepSpace conversation history", error);
           }
         }
+        if (!isCurrentRequest()) return;
         await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
       }
       if (isCurrentRequest()) setHistoryLoadErrorId(conversationId);
@@ -2457,6 +2469,38 @@ export default function DeepSpaceChatClient({
       thinkingEnabled,
     ],
   );
+
+  const loadOlderHistory = useCallback(async () => {
+    const conversationId = getReadyConversationId();
+    const beforeMessageId = state.messages[0]?.id;
+    if (!conversationId || !beforeMessageId || !hasOlderHistory || olderHistoryLoadingRef.current) {
+      return 0;
+    }
+
+    olderHistoryLoadingRef.current = true;
+    setLoadingOlderHistory(true);
+    try {
+      const params = new URLSearchParams({ limit: "40", before_message_id: beforeMessageId });
+      const response = (await fetchWithAuth(
+        `/deepspace/chats/${conversationId}/messages?${params.toString()}`,
+      )) as Response;
+      if (!response.ok) throw new Error("History page request failed");
+      const payload = (await response.json()) as {
+        messages: DeepSpaceHistoryMessage[];
+        has_more?: boolean;
+      };
+      if (selectedConversationIdRef.current !== conversationId) return 0;
+      dispatch({ type: "prepend_history", conversationId, messages: payload.messages });
+      setHasOlderHistory(Boolean(payload.has_more));
+      return payload.messages.length;
+    } catch {
+      toast.error("Could not load older messages. Try again.");
+      return 0;
+    } finally {
+      olderHistoryLoadingRef.current = false;
+      setLoadingOlderHistory(false);
+    }
+  }, [getReadyConversationId, hasOlderHistory, state.messages]);
 
   useEffect(() => {
     loadConversationRef.current = loadConversation;
@@ -2535,6 +2579,8 @@ export default function DeepSpaceChatClient({
 
   useEffect(
     () => () => {
+      historyRequestVersionRef.current += 1;
+      queueRequestVersionRef.current += 1;
       if (scrollMetricsRafRef.current !== null) {
         window.cancelAnimationFrame(scrollMetricsRafRef.current);
       }
@@ -3779,7 +3825,7 @@ export default function DeepSpaceChatClient({
             messages={renderableMessages}
             scrollContainerRef={scrollContainerRef}
             onInsertActiveAnswer={onInsertLatestAnswer}
-            disabled={isConversationSwitching}
+            disabled={isConversationSwitching || !isPanelActive}
           />
 
           <div
@@ -3822,6 +3868,11 @@ export default function DeepSpaceChatClient({
             >
               <DeepSpaceThread
                 messages={renderableMessages}
+                active={isPanelActive}
+                historyScopeKey={activeConversationId ?? state.currentConversationId}
+                hasOlderMessages={hasOlderHistory}
+                loadingOlderMessages={loadingOlderHistory}
+                onLoadOlderMessages={loadOlderHistory}
                 emptyPrompts={EMPTY_PROMPTS}
                 userName={user?.display_name?.trim() || user?.email}
                 queuedAssistantId={activeRequestIsQueued ? state.activeAssistantId : null}
@@ -3978,7 +4029,7 @@ export default function DeepSpaceChatClient({
           </div>
         </div>
         {isConversationSwitching && !selectedConversationLoadFailed ? (
-          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center backdrop-blur-sm">
+          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center">
             <AverQelLoading
               label="Loading selected conversation…"
               size="section"
@@ -3988,22 +4039,23 @@ export default function DeepSpaceChatClient({
         ) : null}
       </div>
 
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {historyOpen && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
               onClick={() => setHistoryOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/35 backdrop-blur-[1.5px]"
+              className="fixed inset-0 z-[100] bg-black/35"
             />
             <motion.div
-              initial={{ x: 420, opacity: 0 }}
+              initial={{ x: 12, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 420, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
+              exit={{ x: 12, opacity: 0 }}
+              transition={{ duration: 0.14, ease: "easeOut" }}
+              className="fixed top-4 right-4 bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl sm:w-[320px]"
             >
               <ChatSidebar
                 endpointBase="/deepspace/chats"
