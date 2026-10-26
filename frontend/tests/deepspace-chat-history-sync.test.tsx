@@ -839,6 +839,36 @@ describe("DeepSpaceChatClient history sync", () => {
     ).toEqual(["/deepspace/chats/missing-conversation/messages"]);
   });
 
+  it("does not retry history after the chat client unmounts during a failed request", async () => {
+    let rejectHistoryRequest: ((reason: Error) => void) | null = null;
+    fetchWithAuthMock.mockImplementation((url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return new Promise((_, reject) => {
+          rejectHistoryRequest = reject;
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    const view = renderChat({ activeConversationId: "conv-1" });
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith("/deepspace/chats/conv-1/messages");
+    });
+    expect(rejectHistoryRequest).toBeTypeOf("function");
+
+    view.unmount();
+    await act(async () => {
+      rejectHistoryRequest?.(new Error("temporary network failure"));
+      await Promise.resolve();
+    });
+
+    expect(
+      fetchWithAuthMock.mock.calls.filter(
+        ([url]) => url === "/deepspace/chats/conv-1/messages",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("reconciles a stopped stream if the worker never sends its terminal event", async () => {
     let cancelAttempts = 0;
     fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {

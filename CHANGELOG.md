@@ -23,6 +23,10 @@ section retains the detailed changes made since `v1.3.4`.
   Add the `ix_messages_conversation_created_id` PostgreSQL index using
   `CREATE INDEX CONCURRENTLY` to support the chronological cursor without
   holding the normal table-write lock for the index build.
+- Stop stale conversation-history retries when the chat client unmounts, so a
+  late network failure cannot update a closed workspace or start more requests.
+- Keep a cached gallery image available when its original external URL fails
+  before the owned image preview finishes loading.
 - Improve workspace state handling for notes, Library, memory, schedules,
   chat scrolling, and Query follow-ups. Preserve the selected workspace state
   while the user moves between panels and avoid duplicate history requests.

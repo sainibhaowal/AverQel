@@ -2451,10 +2451,12 @@ export default function DeepSpaceChatClient({
             return;
           }
         } catch (error) {
+          if (!isCurrentRequest()) return;
           if (attempt === 2) {
             console.error("Failed to load DeepSpace conversation history", error);
           }
         }
+        if (!isCurrentRequest()) return;
         await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
       }
       if (isCurrentRequest()) setHistoryLoadErrorId(conversationId);
@@ -2577,6 +2579,8 @@ export default function DeepSpaceChatClient({
 
   useEffect(
     () => () => {
+      historyRequestVersionRef.current += 1;
+      queueRequestVersionRef.current += 1;
       if (scrollMetricsRafRef.current !== null) {
         window.cancelAnimationFrame(scrollMetricsRafRef.current);
       }
