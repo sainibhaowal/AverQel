@@ -93,6 +93,7 @@ class ConversationUpdate(BaseModel):
 
 class ChatHistoryResponse(BaseModel):
     messages: list[MessageSchema]
+    has_more: bool = False
 
     model_config = ConfigDict(extra="forbid")
 

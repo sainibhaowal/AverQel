@@ -167,7 +167,7 @@ export default function MCPInspectorClient() {
           </p>
         </div>
         <span
-          className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase ${server.status === "connected" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}
+          className={`rounded-lg border px-3 py-1 text-xs font-semibold uppercase ${server.status === "connected" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}
         >
           {server.status}
         </span>

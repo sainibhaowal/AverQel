@@ -86,7 +86,7 @@ function PhaseIcon({ phase }: { phase: StreamingTypingIndicatorProps["phase"] })
       return (
         <div className="relative flex h-5 w-5 items-center justify-center text-emerald-500">
           <motion.div
-            className="absolute inset-0 rounded-full border border-emerald-500/30"
+            className="absolute inset-0 rounded-lg border border-emerald-500/30"
             animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
             transition={{ duration: 2, repeat: Infinity }}
           />
@@ -157,7 +157,7 @@ export default function StreamingTypingIndicator({
 }: StreamingTypingIndicatorProps) {
   return (
     <div className={`rounded-[1.35rem] border bg-gradient-to-r px-4 py-3.5 ${PHASE_ACCENT[phase]}`}>
-      <div className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.22em] uppercase">
+      <div className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-[0.22em] uppercase">
         <PhaseIcon phase={phase} />
         {labelForPhase(phase)}
       </div>

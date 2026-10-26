@@ -38,7 +38,9 @@ describe("ParticleAccelerator", () => {
       .spyOn(window, "requestAnimationFrame")
       .mockReturnValueOnce(1)
       .mockReturnValueOnce(2);
-    const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const cancelAnimationFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
 
     const view = render(
       <ThemeProvider>
@@ -58,5 +60,41 @@ describe("ParticleAccelerator", () => {
     view.unmount();
     expect(disconnected).toBe(true);
     expect(cancelAnimationFrame).toHaveBeenCalledWith(2);
+  });
+
+  it("draws a still frame for reduced motion without scheduling animation frames", () => {
+    const gradient = { addColorStop: vi.fn() };
+    const context = {
+      arc: vi.fn(),
+      beginPath: vi.fn(),
+      clearRect: vi.fn(),
+      createRadialGradient: vi.fn(() => gradient),
+      fill: vi.fn(),
+      restore: vi.fn(),
+      save: vi.fn(),
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      context as unknown as CanvasRenderingContext2D,
+    );
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+
+    const view = render(
+      <ThemeProvider>
+        <ParticleAccelerator />
+      </ThemeProvider>,
+    );
+
+    expect(context.clearRect).toHaveBeenCalledOnce();
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+
+    view.unmount();
   });
 });

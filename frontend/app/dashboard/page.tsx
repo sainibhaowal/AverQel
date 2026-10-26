@@ -693,7 +693,7 @@ export default function DashboardPage() {
             </div>
             {planSummary && storagePercent !== null ? (
               <div
-                className="bg-foreground/10 mt-3 h-1.5 overflow-hidden rounded-full dark:bg-white/10"
+                className="bg-foreground/10 mt-3 h-1.5 overflow-hidden rounded-sm dark:bg-white/10"
                 role="progressbar"
                 aria-label="Plan storage used"
                 aria-valuemin={0}
@@ -701,7 +701,7 @@ export default function DashboardPage() {
                 aria-valuenow={storagePercent}
               >
                 <div
-                  className="bg-primary h-full rounded-full transition-all"
+                  className="bg-primary h-full rounded-sm transition-all"
                   style={{ width: `${storagePercent}%` }}
                 />
               </div>
@@ -835,7 +835,7 @@ export default function DashboardPage() {
                           {document.collection_names.slice(0, 2).map((name) => (
                             <span
                               key={name}
-                              className="theme-chip rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                              className="theme-chip rounded-lg px-2 py-0.5 text-[9px] font-semibold"
                             >
                               {name}
                             </span>
@@ -846,7 +846,7 @@ export default function DashboardPage() {
 
                     <div className="flex items-center gap-2">
                       {document.status !== "indexed" ? (
-                        <span className="theme-chip rounded-full px-2.5 py-1 text-[10px] font-medium">
+                        <span className="theme-chip rounded-lg px-2.5 py-1 text-[10px] font-medium">
                           {document.processing_progress}%
                         </span>
                       ) : null}
@@ -974,7 +974,7 @@ export default function DashboardPage() {
                             <p className="text-foreground group-hover:text-primary truncate text-sm font-bold tracking-tight transition-colors">
                               {config.label}
                               {isGroup && (
-                                <span className="bg-foreground/5 text-muted-foreground ml-2 rounded-full px-2 py-0.5 text-[9px] font-bold dark:bg-white/5">
+                                <span className="bg-foreground/5 text-muted-foreground ml-2 rounded-lg px-2 py-0.5 text-[9px] font-bold dark:bg-white/5">
                                   {group.items.length} events
                                 </span>
                               )}
@@ -1381,7 +1381,7 @@ function DashboardCapabilityGrid({
           </p>
         </div>
         <span
-          className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-[0.12em] uppercase ${statusClass(realtimeReady, !realtimeReady)}`}
+          className={`rounded-lg border px-3 py-1.5 text-[10px] font-black tracking-[0.12em] uppercase ${statusClass(realtimeReady, !realtimeReady)}`}
         >
           {realtimeReady ? "Live monitoring" : "Reconnecting"}
         </span>
@@ -1399,7 +1399,7 @@ function DashboardCapabilityGrid({
                   <Icon size={15} />
                 </span>
                 <span
-                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusClass(card.ready, card.value === "Check")}`}
+                  className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase ${statusClass(card.ready, card.value === "Check")}`}
                 >
                   {card.value}
                 </span>

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
@@ -425,6 +426,38 @@ def load_events(
         .scalars()
         .all()
     )
+
+
+def load_events_for_requests(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    client_request_ids: Iterable[str],
+) -> dict[str, list[DeepSpaceRunEvent]]:
+    """Load durable events for a history page with one tenant-scoped query."""
+    request_ids = tuple(dict.fromkeys(str(value).strip() for value in client_request_ids if value))
+    if not request_ids:
+        return {}
+    db.execute(
+        text("SELECT set_config('app.tenant_id', :tenant_id, false)"),
+        {"tenant_id": str(tenant_id)},
+    )
+    rows = db.execute(
+        select(DeepSpaceRunEvent)
+        .where(
+            DeepSpaceRunEvent.tenant_id == tenant_id,
+            DeepSpaceRunEvent.user_id == user_id,
+            DeepSpaceRunEvent.conversation_id == conversation_id,
+            DeepSpaceRunEvent.client_request_id.in_(request_ids),
+        )
+        .order_by(DeepSpaceRunEvent.client_request_id.asc(), DeepSpaceRunEvent.sequence.asc())
+    ).scalars()
+    grouped: dict[str, list[DeepSpaceRunEvent]] = defaultdict(list)
+    for event in rows:
+        grouped[event.client_request_id].append(event)
+    return dict(grouped)
 
 
 def latest_sequence(

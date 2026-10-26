@@ -67,7 +67,7 @@ export function CardLayoutAside({
               window.setTimeout(() => setCopied(false), 1400);
             });
           }}
-          className="theme-chip inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+          className="theme-chip inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
           aria-label={copied ? "Referral code copied" : "Copy referral code"}
           title={copied ? "Copied" : "Copy referral code"}
         >
@@ -87,7 +87,7 @@ export function CardLayoutBody({ block }: { block: StreamCardBlock }) {
     return (
       <div className="relative mt-4" data-testid="evaluation-card-summary">
         <div
-          className="h-2 w-full overflow-hidden rounded-full bg-surface-2 dark:bg-surface-0/10"
+          className="h-2 w-full overflow-hidden rounded-sm bg-surface-2 dark:bg-surface-0/10"
           role="progressbar"
           aria-label={block.title + " score"}
           aria-valuemin={0}
@@ -96,7 +96,7 @@ export function CardLayoutBody({ block }: { block: StreamCardBlock }) {
           aria-valuetext={scoreText(block.score.value) + " out of " + scoreText(block.score.max)}
         >
           <div
-            className={"h-full rounded-full transition-[width] duration-500 " + scoreFillClasses[tone]}
+            className={"h-full rounded-sm transition-[width] duration-500 " + scoreFillClasses[tone]}
             style={{ width: String(percent) + "%" }}
           />
         </div>
@@ -199,7 +199,7 @@ export function CardSourceBadges({ block }: { block: StreamCardBlock }) {
             href={href}
             target="_blank"
             rel="noreferrer noopener"
-            className="border-glass-border bg-surface-1 text-foreground inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] leading-4 dark:bg-surface-2"
+            className="border-glass-border bg-surface-1 text-foreground inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] leading-4 dark:bg-surface-2"
           >
             <span className="truncate">{source.title}</span>
             <ExternalLink size={11} aria-hidden="true" />

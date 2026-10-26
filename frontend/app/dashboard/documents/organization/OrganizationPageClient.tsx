@@ -21,6 +21,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import { hasAdminRole, hasDocumentOrganizationAdvancedAccess } from "@/lib/roles";
 import { averqelConfirm, averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import toast from "react-hot-toast";
 import SavedViewsPanel from "./SavedViewsPanel";
 import ClassificationRulesPanel from "./ClassificationRulesPanel";
@@ -891,7 +892,7 @@ export default function OrganizationPageClient({ kind }: { kind: PageKind }) {
                   return (
                     <label
                       key={item.id}
-                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition-all duration-200 ${isSelected ? "border-primary bg-primary text-primary-foreground ring-primary/30 shadow-[0_0_16px_rgba(16,185,129,0.35)] ring-2" : "border-glass-border bg-background/60 text-foreground/70 hover:border-primary/60 hover:text-primary"}`}
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition-all duration-200 ${isSelected ? "border-primary bg-primary text-primary-foreground ring-primary/30 shadow-[0_0_16px_rgba(16,185,129,0.35)] ring-2" : "border-glass-border bg-background/60 text-foreground/70 hover:border-primary/60 hover:text-primary"}`}
                     >
                       <input
                         type="checkbox"
@@ -1326,22 +1327,20 @@ function FolderExplorer() {
             <div className="bg-primary/5 mt-4 flex items-center justify-between rounded-xl p-3 text-xs">
               <span>{selectedFiles.size} selected</span>
               {folders.length > 1 ? (
-                <select
+                <RoundedSelect
+                  label="Move selected documents to folder"
                   defaultValue=""
-                  onChange={(event) => {
-                    if (event.target.value) void moveFiles([...selectedFiles], event.target.value);
+                  onChange={(folderId) => {
+                    if (folderId) void moveFiles([...selectedFiles], folderId);
                   }}
-                  className="theme-input rounded-lg px-3 py-2"
-                >
-                  <option value="">Move to…</option>
-                  {folders
-                    .filter((folder) => folder.id !== selectedFolder)
-                    .map((folder) => (
-                      <option key={folder.id} value={folder.id}>
-                        {folder.name}
-                      </option>
-                    ))}
-                </select>
+                  options={[
+                    { value: "", label: "Move to…" },
+                    ...folders
+                      .filter((folder) => folder.id !== selectedFolder)
+                      .map((folder) => ({ value: folder.id, label: folder.name })),
+                  ]}
+                  triggerClassName="px-3 py-2"
+                />
               ) : (
                 <span className="text-muted-foreground">Drop files on a folder to move them.</span>
               )}

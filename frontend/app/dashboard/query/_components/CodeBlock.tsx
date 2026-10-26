@@ -2497,7 +2497,7 @@ export default function CodeBlock({
         >
           {supportsRichPreview && isExpanded && !answerStreaming && renderedSvg && !isRendering ? (
             <div
-              className={`flex items-center gap-1 rounded-full border p-0.5 ${
+              className={`flex items-center gap-1 rounded-lg border p-0.5 ${
                 mermaidTheme === "dark"
                   ? "border-slate-700 bg-[#0b2444]"
                   : "border-slate-300 bg-white/95 shadow-sm"
@@ -2506,7 +2506,7 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => setPanEnabled((current) => !current)}
-                className={`rounded-full px-2 py-1.5 transition ${
+                className={`rounded-lg px-2 py-1.5 transition ${
                   panEnabled
                     ? "bg-primary/25 text-primary"
                     : mermaidTheme === "dark"
@@ -2520,7 +2520,7 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => zoomAtViewportCenter(1.2)}
-                className={`rounded-full px-2 py-1.5 transition ${
+                className={`rounded-lg px-2 py-1.5 transition ${
                   mermaidTheme === "dark"
                     ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -2532,7 +2532,7 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => zoomAtViewportCenter(1 / 1.2)}
-                className={`rounded-full px-2 py-1.5 transition ${
+                className={`rounded-lg px-2 py-1.5 transition ${
                   mermaidTheme === "dark"
                     ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -2544,7 +2544,7 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => fitDiagram()}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${
                   mermaidTheme === "dark"
                     ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -2556,7 +2556,7 @@ export default function CodeBlock({
               <button
                 type="button"
                 onClick={() => centerDiagram(scaleRef.current)}
-                className={`rounded-full px-2 py-1.5 transition ${
+                className={`rounded-lg px-2 py-1.5 transition ${
                   mermaidTheme === "dark"
                     ? "text-slate-200/75 hover:bg-white/10 hover:text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -2672,9 +2672,9 @@ export default function CodeBlock({
                 </div>
               </div>
               <div className="mt-5 space-y-2">
-                <div className="bg-primary/5 h-2 w-full animate-pulse rounded-full" />
-                <div className="bg-primary/5 h-2 w-3/4 animate-pulse rounded-full" />
-                <div className="bg-primary/5 h-2 w-5/6 animate-pulse rounded-full" />
+                <div className="bg-primary/5 h-2 w-full animate-pulse rounded-sm" />
+                <div className="bg-primary/5 h-2 w-3/4 animate-pulse rounded-sm" />
+                <div className="bg-primary/5 h-2 w-5/6 animate-pulse rounded-sm" />
               </div>
             </div>
           </div>

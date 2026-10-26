@@ -440,7 +440,7 @@ export function RichInfoCard({
               }}
               disabled={saving}
               aria-busy={saving}
-              className="theme-chip inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] disabled:opacity-50"
+              className="theme-chip inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] disabled:opacity-50"
               aria-label={editing ? "Save card" : "Edit card"}
             >
               {editing ? <Save size={14} /> : <Pencil size={14} />}
@@ -454,7 +454,7 @@ export function RichInfoCard({
               disabled={saving}
               aria-busy={saving}
               aria-label="Save card to Library"
-              className="theme-chip inline-flex h-8 items-center rounded-full px-2.5 text-[11px] disabled:opacity-50"
+              className="theme-chip inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -462,7 +462,7 @@ export function RichInfoCard({
           <button
             type="button"
             onClick={() => void copyContent()}
-            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label={copied ? "Card content copied" : "Copy card content"}
             title={copied ? "Copied" : "Copy card content"}
           >
@@ -471,7 +471,7 @@ export function RichInfoCard({
           <button
             type="button"
             onClick={downloadCard}
-            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label="Download information card"
             title="Download card JSON"
           >
@@ -666,7 +666,7 @@ function CardActionButton({
       <button
         type="button"
         onClick={() => void onCopy(action.content ?? action.label)}
-        className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+        className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
       >
         <Copy size={13} aria-hidden="true" /> {action.label}
       </button>
@@ -677,7 +677,7 @@ function CardActionButton({
       <button
         type="button"
         onClick={() => downloadTextFile(action.content ?? action.label, action.label)}
-        className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+        className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
       >
         <Download size={13} aria-hidden="true" /> {action.label}
       </button>
@@ -688,7 +688,7 @@ function CardActionButton({
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="theme-chip inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs"
+      className="theme-chip inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
     >
       <Play size={13} aria-hidden="true" /> {action.label}
     </a>

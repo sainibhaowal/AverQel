@@ -22,7 +22,7 @@ export default function SourcePanel({ citations }: SourcePanelProps) {
   if (!citations || citations.length === 0) {
     return (
       <div className="bg-muted/5 border-glass-border/30 flex w-full shrink-0 flex-col items-center justify-center border-l p-6 text-center sm:w-[min(400px,100vw)]">
-        <div className="bg-primary/10 text-primary/50 mb-4 flex h-12 w-12 items-center justify-center rounded-full">
+        <div className="bg-primary/10 text-primary/50 mb-4 flex h-12 w-12 items-center justify-center rounded-lg">
           <BookOpen strokeWidth={1.5} />
         </div>
         <p className="text-muted-foreground/60 text-sm">
@@ -39,7 +39,7 @@ export default function SourcePanel({ citations }: SourcePanelProps) {
         <h3 className="text-foreground text-sm font-bold tracking-wide uppercase">
           Grounded Evidence
         </h3>
-        <span className="text-primary bg-primary/10 border-primary/20 ml-auto rounded-full border px-2.5 py-0.5 text-[10px] font-bold">
+        <span className="text-primary bg-primary/10 border-primary/20 ml-auto rounded-lg border px-2.5 py-0.5 text-[10px] font-bold">
           {citations.length} Sources
         </span>
       </div>

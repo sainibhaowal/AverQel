@@ -99,6 +99,7 @@ class ConversationAppendContentRequest(BaseModel):
 
 class ChatHistoryResponse(BaseModel):
     messages: list[MessageSchema]
+    has_more: bool = False
 
 
 class ConversationListResponse(BaseModel):

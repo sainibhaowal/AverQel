@@ -154,7 +154,7 @@ export default function InfographicBlock({
             {layoutLabels[block.layout]}
             {block.layout === "steps" ? (
               <span
-                className={`rounded-full border border-glass-border bg-surface-1 px-2 py-1 text-[9px] tracking-[0.12em] text-foreground dark:bg-surface-2 ${
+                className={`rounded-lg border border-glass-border bg-surface-1 px-2 py-1 text-[9px] tracking-[0.12em] text-foreground dark:bg-surface-2 ${
                   isHorizontalFlow ? "hidden sm:inline-flex" : ""
                 }`}
               >

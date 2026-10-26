@@ -23,7 +23,7 @@ export default function ArtifactViewer({ artifact, onClose }: ArtifactViewerProp
           <button
             type="button"
             onClick={onClose}
-            className="theme-chip text-foreground/72 inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm"
+            className="theme-chip text-foreground/72 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
           >
             <X size={16} />
             Close

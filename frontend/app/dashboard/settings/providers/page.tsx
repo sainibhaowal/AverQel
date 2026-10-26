@@ -4,19 +4,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   Zap,
-  RefreshCw,
   Database,
-  Activity,
   ScanSearch,
   Bot,
   Globe2,
-  AlertCircle,
   CheckCircle2,
   LayoutGrid,
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  Link2Off,
   PlugZap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -26,8 +22,8 @@ import ProviderDeleteDialog from "@/app/components/providers/ProviderDeleteDialo
 import ProviderDisableDialog from "@/app/components/providers/ProviderDisableDialog";
 import ProviderForm from "@/app/components/providers/ProviderForm";
 import ProviderListTable from "@/app/components/providers/ProviderListTable";
-import ProviderHealthBadge from "@/app/components/providers/ProviderHealthBadge";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import ProviderRuntimeCard from "@/app/components/providers/ProviderRuntimeCard";
 import ComposioCredentialCard from "./_components/ComposioCredentialCard";
 import {
   providerHasConfiguredRuntime,
@@ -535,7 +531,7 @@ export default function ProvidersSettingsPage() {
               className={`col-span-12 ${isNarrowViewport ? "space-y-4" : "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"}`}
             >
               {runtimeCards.map((card) => (
-                <RuntimeCard
+                <ProviderRuntimeCard
                   key={card.key}
                   title={card.title}
                   provider={card.provider}
@@ -582,7 +578,7 @@ export default function ProvidersSettingsPage() {
                             : "Expand inventory contents"
                         }
                         onClick={() => setIsInventoryExpanded(!isInventoryExpanded)}
-                        className="text-zinc-500 transition-colors hover:text-white"
+                        className="text-muted-foreground transition-colors hover:text-foreground"
                       >
                         {isInventoryExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </button>
@@ -602,7 +598,7 @@ export default function ProvidersSettingsPage() {
                     }}
                     className={`rounded-lg p-1.5 transition-all ${
                       browsingCatalog
-                        ? "bg-primary rotate-45 text-slate-950"
+                        ? "bg-primary rotate-45 text-primary-foreground"
                         : "bg-surface-2 text-primary hover:bg-primary/10"
                     }`}
                   >
@@ -762,7 +758,7 @@ export default function ProvidersSettingsPage() {
                               {localRuntimeChecked && !localRuntimeAvailable ? (
                                 <div
                                   role="note"
-                                  className="mb-3 rounded-xl border border-slate-400/20 bg-slate-400/5 p-3 text-[11px] leading-5 text-slate-400"
+                                  className="border-glass-border bg-surface-1 text-foreground/80 mb-3 rounded-xl border p-3 text-[11px] leading-5"
                                 >
                                   LM Studio and Ollama run on your computer through AverQel Desktop.
                                   Open or install the desktop app to configure them.
@@ -814,9 +810,9 @@ export default function ProvidersSettingsPage() {
                                       }}
                                       className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
                                         selectedCatalogType === entry.provider_type
-                                          ? "border-primary/40 bg-primary/5 ring-primary/20 ring-1"
+                                          ? "border-primary/50 bg-primary/10 ring-primary/30 ring-1"
                                           : "border-glass-border bg-surface-0 hover:border-primary/20 hover:bg-surface-1"
-                                      } ${unavailable ? "cursor-not-allowed border-slate-500/10 bg-slate-500/5 opacity-45 hover:border-slate-500/10 hover:bg-slate-500/5" : ""}`}
+                                      } ${unavailable ? "cursor-not-allowed border-glass-border bg-surface-2 hover:border-glass-border hover:bg-surface-2" : ""}`}
                                     >
                                       <div className="flex h-8 w-8 items-center justify-center">
                                         <ProviderLogo
@@ -825,7 +821,9 @@ export default function ProvidersSettingsPage() {
                                         />
                                       </div>
                                       <div className="min-w-0">
-                                        <p className="text-foreground text-xs leading-none font-bold">
+                                        <p
+                                          className={`${unavailable ? "text-muted-foreground" : "text-foreground"} text-xs leading-none font-bold`}
+                                        >
                                           {entry.display_name}
                                         </p>
                                         <p className="text-muted-foreground mt-1 text-[9px] tracking-widest uppercase">
@@ -881,7 +879,7 @@ export default function ProvidersSettingsPage() {
                 )}
 
                 <div
-                  className={`theme-panel-strong providers-setup-panel relative isolate z-[2] flex flex-col rounded-2xl border bg-white/[0.02] ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
+                  className={`theme-panel-strong providers-setup-panel relative isolate z-[2] flex flex-col rounded-2xl border ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
                 >
                   <div
                     className={`flex-1 ${isNarrowViewport ? "" : "custom-scrollbar overflow-y-auto"} p-4 sm:p-8`}
@@ -958,7 +956,7 @@ export default function ProvidersSettingsPage() {
                           {isNarrowViewport && !isInventoryExpanded && (
                             <button
                               onClick={() => setIsInventoryExpanded(true)}
-                              className="theme-chip bg-primary mt-6 rounded-xl px-8 py-3 text-[10px] font-bold tracking-widest text-slate-950 uppercase"
+                              className="bg-primary text-primary-foreground mt-6 rounded-xl px-8 py-3 text-[10px] font-bold tracking-widest uppercase transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
                             >
                               Open Inventory
                             </button>
@@ -1022,103 +1020,5 @@ function NavItem({
         <motion.div layoutId="nav-pill" className="bg-primary absolute inset-x-0 bottom-0 h-0.5" />
       )}
     </button>
-  );
-}
-
-function RuntimeCard({
-  title,
-  provider,
-  pingState,
-  onPing,
-  onDisconnect,
-}: {
-  title: string;
-  provider: ProviderConfig | null;
-  pingState?: { status: string; message?: string; latency?: number };
-  onPing: () => void;
-  onDisconnect: () => void;
-}) {
-  return (
-    <div className="theme-card flex flex-col space-y-6 border border-white/5 bg-white/[0.02]">
-      <div className="flex items-start justify-between">
-        <div className="flex h-11 w-11 items-center justify-center">
-          {provider ? (
-            <ProviderLogo providerType={provider.provider_type} size={28} />
-          ) : title.includes("LLM") ? (
-            <Bot size={22} />
-          ) : title.includes("Embedding") ? (
-            <Database size={22} />
-          ) : (
-            <ScanSearch size={22} />
-          )}
-        </div>
-        <ProviderHealthBadge health={provider?.latest_health || null} />
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-muted-foreground font-mono text-[10px] tracking-[0.24em] uppercase">
-          {title}
-        </p>
-        <h3 className="text-foreground truncate text-xl font-bold">
-          {provider?.display_name ?? "None"}
-        </h3>
-        <p className="text-muted-foreground truncate text-sm">
-          {provider?.default_chat_model ||
-            provider?.default_embedding_model ||
-            provider?.default_reranker_model ||
-            "No model assigned"}
-        </p>
-      </div>
-
-      <div className="border-glass-border border-t pt-4">
-        {!pingState ? (
-          provider ? (
-            <p className="text-xs font-bold tracking-widest text-emerald-400/80 uppercase">
-              Ready by default
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-xs tracking-tighter uppercase">
-              Connectivity status unknown
-            </p>
-          )
-        ) : pingState.status === "pinging" ? (
-          <div className="text-primary flex items-center gap-2">
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            <span className="text-[11px] font-bold tracking-widest uppercase">Pinging...</span>
-          </div>
-        ) : pingState.status === "healthy" ? (
-          <div className="flex items-center gap-2 text-emerald-500">
-            <CheckCircle2 size={14} />
-            <span className="truncate text-[11px] font-bold tracking-widest uppercase">
-              {pingState.message}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-rose-500">
-            <AlertCircle size={14} />
-            <span className="truncate text-[11px] font-bold tracking-widest uppercase">
-              {pingState.message}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 pt-2">
-        <button
-          onClick={onPing}
-          className="theme-chip hover:text-primary flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-[10px] font-bold tracking-widest uppercase transition-colors"
-        >
-          <Activity size={12} />
-          Verify
-        </button>
-        <button
-          onClick={onDisconnect}
-          className="theme-chip flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-[10px] font-bold tracking-widest uppercase transition-colors hover:text-amber-400"
-        >
-          <Link2Off size={12} />
-          Terminate
-        </button>
-      </div>
-    </div>
   );
 }

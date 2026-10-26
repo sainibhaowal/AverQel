@@ -186,7 +186,7 @@ function AssignmentRow({
           )}
         </div>
         <div>
-          <div className="theme-chip text-foreground/55 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.2em] uppercase">
+          <div className="theme-chip text-foreground/55 inline-flex items-center gap-2 rounded-lg px-2.5 py-1 text-[10px] font-semibold tracking-[0.2em] uppercase">
             {meta.fallback ? <ArrowRightLeft size={11} /> : <Sparkles size={11} />}
             {meta.fallback ? "Fallback" : "Primary"}
           </div>
@@ -244,7 +244,7 @@ function AssignmentRow({
           (!selectedProviderId && !allowsServerDefault) ||
           (compatibleProviders.length === 0 && !allowsServerDefault)
         }
-        className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-lg bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
       >
         {saving ? "Saving..." : allowsServerDefault && !selectedProviderId ? "Use default" : "Save"}
       </button>

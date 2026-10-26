@@ -23,7 +23,7 @@ export default function GlobalError({
       </div>
 
       <div className="glass-card flex w-full max-w-md flex-col items-center p-8 text-center shadow-2xl">
-        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-lg bg-red-500/10 text-red-500">
           <AlertOctagon size={32} />
         </div>
 
@@ -39,7 +39,7 @@ export default function GlobalError({
 
         <button
           onClick={() => reset()}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20 flex items-center gap-2 rounded-full px-6 py-3 font-semibold shadow-lg transition-all"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20 flex items-center gap-2 rounded-lg px-6 py-3 font-semibold shadow-lg transition-all"
         >
           <RefreshCcw size={16} />
           Recover Session

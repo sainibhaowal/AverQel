@@ -81,7 +81,7 @@ export default function UserMessage({
                     )
                   }
                   disabled={activeVersionPosition === 0}
-                  className="rounded-full border border-white/10 px-2 py-0.5 disabled:opacity-40"
+                  className="rounded-lg border border-white/10 px-2 py-0.5 disabled:opacity-40"
                 >
                   ←
                 </button>
@@ -99,7 +99,7 @@ export default function UserMessage({
                     )
                   }
                   disabled={activeVersionPosition >= message.versionCount - 1}
-                  className="rounded-full border border-white/10 px-2 py-0.5 disabled:opacity-40"
+                  className="rounded-lg border border-white/10 px-2 py-0.5 disabled:opacity-40"
                 >
                   →
                 </button>

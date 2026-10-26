@@ -153,7 +153,7 @@ export default function ControlCenter() {
                 key={step}
                 className="relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-sm leading-6 text-slate-300"
               >
-                <span className="mb-4 flex h-7 w-7 items-center justify-center rounded-full border border-violet-400/25 bg-violet-500/[0.08] font-mono text-xs text-violet-200">
+                <span className="mb-4 flex h-7 w-7 items-center justify-center rounded-lg border border-violet-400/25 bg-violet-500/[0.08] font-mono text-xs text-violet-200">
                   {index + 1}
                 </span>
                 {step}

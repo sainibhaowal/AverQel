@@ -193,9 +193,9 @@ export default function SignupPage() {
             {formData.password && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
+                  <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-sm">
                     <div
-                      className={`h-full rounded-full transition-all ${strength.color}`}
+                      className={`h-full rounded-sm transition-all ${strength.color}`}
                       style={{ width: `${(strength.score / 5) * 100}%` }}
                     />
                   </div>

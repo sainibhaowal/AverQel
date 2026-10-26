@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -162,6 +164,39 @@ class DeepSpaceRuntimeStore:
             .limit(1)
         ).scalar_one_or_none()
 
+    def live_worker_runs_for_messages(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        assistant_message_ids: Sequence[uuid.UUID],
+        stale_after: timedelta = DEFAULT_RUN_STALE_AFTER,
+    ) -> dict[uuid.UUID, DeepSpaceAgentRun]:
+        """Fetch the newest live run for each history message in one query."""
+        if not assistant_message_ids:
+            return {}
+        cutoff = datetime.now(UTC) - stale_after
+        rows = self.db.execute(
+            select(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.assistant_message_id.in_(assistant_message_ids),
+                DeepSpaceAgentRun.status.in_(WORKER_RUN_STATUSES),
+                DeepSpaceAgentRun.cancel_requested.is_(False),
+                DeepSpaceAgentRun.heartbeat_at.is_not(None),
+                DeepSpaceAgentRun.heartbeat_at >= cutoff,
+            )
+            .order_by(DeepSpaceAgentRun.heartbeat_at.desc())
+        ).scalars()
+        result: dict[uuid.UUID, DeepSpaceAgentRun] = {}
+        for run in rows:
+            if run.assistant_message_id is not None:
+                result.setdefault(run.assistant_message_id, run)
+        return result
+
     def active_request_id(
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> str | None:
@@ -282,29 +317,54 @@ class DeepSpaceRuntimeStore:
         assistant_message_id: uuid.UUID,
     ) -> list[dict[str, object]]:
         """Return UI-safe durable activity from every attempt for an assistant turn."""
-        steps = (
-            self.db.execute(
-                select(DeepSpaceAgentStep)
-                .join(DeepSpaceAgentRun, DeepSpaceAgentRun.id == DeepSpaceAgentStep.run_id)
-                .where(
-                    DeepSpaceAgentRun.tenant_id == tenant_id,
-                    DeepSpaceAgentRun.user_id == user_id,
-                    DeepSpaceAgentRun.conversation_id == conversation_id,
-                    DeepSpaceAgentRun.assistant_message_id == assistant_message_id,
-                    DeepSpaceAgentStep.tenant_id == tenant_id,
-                    DeepSpaceAgentStep.user_id == user_id,
-                    DeepSpaceAgentStep.conversation_id == conversation_id,
-                )
-                .order_by(
-                    DeepSpaceAgentRun.created_at.asc(),
-                    DeepSpaceAgentRun.id.asc(),
-                    DeepSpaceAgentStep.sequence.asc(),
-                    DeepSpaceAgentStep.created_at.asc(),
-                )
+        return self.history_steps_for_messages(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            assistant_message_ids=[assistant_message_id],
+        ).get(assistant_message_id, [])
+
+    def history_steps_for_messages(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        assistant_message_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, list[dict[str, object]]]:
+        """Return UI-safe durable activity for a page of assistant turns in one query."""
+        if not assistant_message_ids:
+            return {}
+        rows = self.db.execute(
+            select(DeepSpaceAgentRun.assistant_message_id, DeepSpaceAgentStep)
+            .join(DeepSpaceAgentRun, DeepSpaceAgentRun.id == DeepSpaceAgentStep.run_id)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.assistant_message_id.in_(assistant_message_ids),
+                DeepSpaceAgentStep.tenant_id == tenant_id,
+                DeepSpaceAgentStep.user_id == user_id,
+                DeepSpaceAgentStep.conversation_id == conversation_id,
             )
-            .scalars()
-            .all()
-        )
+            .order_by(
+                DeepSpaceAgentRun.created_at.asc(),
+                DeepSpaceAgentRun.id.asc(),
+                DeepSpaceAgentStep.sequence.asc(),
+                DeepSpaceAgentStep.created_at.asc(),
+            )
+        ).all()
+        grouped_steps: dict[uuid.UUID, list[DeepSpaceAgentStep]] = defaultdict(list)
+        for message_id, step in rows:
+            if message_id is not None:
+                grouped_steps[message_id].append(step)
+        return {
+            message_id: self._serialize_history_steps(steps)
+            for message_id, steps in grouped_steps.items()
+        }
+
+    @staticmethod
+    def _serialize_history_steps(steps: Sequence[DeepSpaceAgentStep]) -> list[dict[str, object]]:
         result: list[dict[str, object]] = []
         for step in steps:
             if step.step_type == "model_message":

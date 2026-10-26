@@ -73,7 +73,7 @@ export default function TechStackMarquee() {
           <div className="animate-marquee flex hover:[animation-play-state:paused]">
             {[...technologies, ...technologies].map((tech, i) => (
               <div key={`${tech.name}-${i}`} className="mx-2.5 flex-shrink-0 sm:mx-3">
-                <div className="flex items-center gap-2.5 rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] sm:px-5">
+                <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] sm:px-5">
                   <span
                     className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                     style={{ backgroundColor: tech.color }}

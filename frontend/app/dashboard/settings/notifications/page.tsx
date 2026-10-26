@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { BellRing, Loader2, RefreshCw, Save } from "lucide-react";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 
 type Category = { code: string; label: string; channels: ("in_app" | "email")[] };
@@ -166,22 +167,24 @@ export default function NotificationSettingsPage() {
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="text-foreground grid gap-2 text-xs font-semibold">
                     Email cadence
-                    <select
+                    <RoundedSelect
+                      label="Digest frequency"
                       value={preferences.digest_frequency}
                       disabled={!preferences.email_enabled}
-                      onChange={(event) => {
+                      onChange={(digestFrequency) => {
                         setSaved(false);
                         setPreferences({
                           ...preferences,
-                          digest_frequency: event.target.value as Preferences["digest_frequency"],
+                          digest_frequency: digestFrequency as Preferences["digest_frequency"],
                         });
                       }}
-                      className="border-border bg-background rounded-lg border px-3 py-2"
-                    >
-                      <option value="none">As events happen</option>
-                      <option value="daily">Daily digest</option>
-                      <option value="weekly">Weekly digest</option>
-                    </select>
+                      options={[
+                        { value: "none", label: "As events happen" },
+                        { value: "daily", label: "Daily digest" },
+                        { value: "weekly", label: "Weekly digest" },
+                      ]}
+                      triggerClassName="px-3 py-2"
+                    />
                   </label>
                   <label className="text-foreground grid gap-2 text-xs font-semibold">
                     Digest time zone
@@ -241,7 +244,7 @@ export default function NotificationSettingsPage() {
                   />
                   <span className="min-w-0 flex-1 font-medium">{category.label}</span>
                   <span
-                    className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                    className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${
                       preferences.muted_domains.includes(category.code)
                         ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
                         : "bg-success/10 text-success"

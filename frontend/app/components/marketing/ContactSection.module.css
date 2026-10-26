@@ -62,7 +62,7 @@
   align-items: center;
   gap: 0.55rem;
   border: 1px solid rgba(94, 234, 212, 0.25);
-  border-radius: 999px;
+  border-radius: 0.75rem;
   background: rgba(20, 184, 166, 0.09);
   padding: 0.48rem 0.78rem;
   color: #a5f3dc;
@@ -321,7 +321,7 @@
   align-items: center;
   gap: 0.45rem;
   border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 999px;
+  border-radius: 0.625rem;
   background: rgba(15, 23, 42, 0.48);
   padding: 0.47rem 0.65rem;
   color: rgba(203, 213, 225, 0.74);
@@ -360,7 +360,7 @@
 .formProgress {
   height: 3px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 2px;
   background: rgba(148, 163, 184, 0.13);
 }
 
@@ -652,7 +652,7 @@
 .subjectStarters button {
   min-height: 1.85rem;
   border: 1px solid rgba(103, 232, 249, 0.14);
-  border-radius: 999px;
+  border-radius: 0.5rem;
   background: rgba(8, 145, 178, 0.055);
   padding: 0.34rem 0.62rem;
   color: rgba(186, 230, 253, 0.75);

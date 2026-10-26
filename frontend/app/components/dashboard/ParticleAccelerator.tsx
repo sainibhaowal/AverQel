@@ -46,6 +46,8 @@ export default function ParticleAccelerator() {
     let time = 0;
     let isDocumentVisible = !document.hidden;
     let isInViewport = true;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let isReducedMotion = motionPreference.matches;
 
     // Mouse tracking
     const mouse = { x: 0, y: 0, active: false, targetX: 0, targetY: 0 };
@@ -171,7 +173,7 @@ export default function ParticleAccelerator() {
     }
 
     const scheduleAnimation = () => {
-      if (animationFrameId || !isDocumentVisible || !isInViewport) return;
+      if (animationFrameId || !isDocumentVisible || !isInViewport || isReducedMotion) return;
       animationFrameId = window.requestAnimationFrame(animate);
     };
 
@@ -316,6 +318,29 @@ export default function ParticleAccelerator() {
       if (!isDocumentVisible && animationFrameId) {
         window.cancelAnimationFrame(animationFrameId);
         animationFrameId = 0;
+      } else if (isReducedMotion) {
+        animate();
+      } else {
+        scheduleAnimation();
+      }
+    };
+
+    const handleResize = () => {
+      resizeCanvas();
+      if (isReducedMotion) animate();
+      else scheduleAnimation();
+    };
+
+    const handleMotionPreferenceChange = () => {
+      isReducedMotion = motionPreference.matches;
+      if (isReducedMotion) {
+        if (animationFrameId) {
+          window.cancelAnimationFrame(animationFrameId);
+          animationFrameId = 0;
+        }
+        // Keep a single representative frame visible without a continuous
+        // canvas loop when the user requests reduced motion.
+        animate();
       } else {
         scheduleAnimation();
       }
@@ -329,6 +354,8 @@ export default function ParticleAccelerator() {
             if (!isInViewport && animationFrameId) {
               window.cancelAnimationFrame(animationFrameId);
               animationFrameId = 0;
+            } else if (isReducedMotion) {
+              animate();
             } else {
               scheduleAnimation();
             }
@@ -336,10 +363,15 @@ export default function ParticleAccelerator() {
 
     observer?.observe(canvas);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    scheduleAnimation();
+    window.addEventListener("resize", handleResize);
+    motionPreference.addEventListener("change", handleMotionPreferenceChange);
+    if (isReducedMotion) animate();
+    else scheduleAnimation();
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("resize", handleResize);
+      motionPreference.removeEventListener("change", handleMotionPreferenceChange);
       observer?.disconnect();
       if (parent) {
         parent.removeEventListener("mousemove", handleMouseMove);

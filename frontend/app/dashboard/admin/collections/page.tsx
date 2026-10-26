@@ -896,7 +896,7 @@ export default function AdminCollectionsPage() {
                       </span>
                       <div className="flex items-center gap-1.5">
                         {unreadCounts[col.id] > 0 && (
-                          <span className="flex h-4.5 min-w-[1.125rem] animate-pulse items-center justify-center rounded-full bg-emerald-600 px-1 text-[8px] font-extrabold text-white">
+                          <span className="flex h-4.5 min-w-[1.125rem] animate-pulse items-center justify-center rounded-lg bg-emerald-600 px-1 text-[8px] font-extrabold text-white">
                             {unreadCounts[col.id]}
                           </span>
                         )}
@@ -1213,7 +1213,7 @@ export default function AdminCollectionsPage() {
                       step="0.05"
                       value={zoom}
                       onChange={(e) => setZoom(parseFloat(e.target.value))}
-                      className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-800 accent-amber-500"
+                      className="h-1 w-full cursor-pointer appearance-none rounded-sm bg-slate-800 accent-amber-500"
                     />
                   </div>
                 )}

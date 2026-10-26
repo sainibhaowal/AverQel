@@ -88,7 +88,7 @@ export default function ArtifactsPanel({ artifacts, files = [] }: ArtifactsPanel
                 <a
                   href={file.url}
                   download={file.name}
-                  className="theme-chip text-foreground/70 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]"
+                  className="theme-chip text-foreground/70 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px]"
                 >
                   <Download size={12} />
                   Save
@@ -97,7 +97,7 @@ export default function ArtifactsPanel({ artifacts, files = [] }: ArtifactsPanel
                   href={file.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="theme-chip text-foreground/70 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-all"
+                  className="theme-chip text-foreground/70 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] transition-all"
                 >
                   <ExternalLink size={12} />
                   Open
@@ -118,7 +118,7 @@ export default function ArtifactsPanel({ artifacts, files = [] }: ArtifactsPanel
                 </div>
                 <div className="text-foreground/84 mt-1 text-sm font-medium">{artifact.title}</div>
               </div>
-              <span className="theme-chip text-foreground/70 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]">
+              <span className="theme-chip text-foreground/70 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px]">
                 <Eye size={12} />
                 Open
               </span>

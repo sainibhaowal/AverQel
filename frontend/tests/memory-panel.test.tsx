@@ -96,6 +96,11 @@ describe("MemoryPanel", () => {
     expect(
       await screen.findByText(/Prefer concise summaries before sending\./i),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear personal" })).toHaveClass(
+      "border-danger/50",
+      "text-danger",
+      "hover:bg-danger/10",
+    );
 
     const input = screen.getByPlaceholderText(/search memories/i);
     fireEvent.change(input, { target: { value: "urgent" } });
@@ -103,5 +108,43 @@ describe("MemoryPanel", () => {
 
     expect(await screen.findByText(/Urgent replies should be short\./i)).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith("/deepspace/chats/memory/search?query=urgent");
+  });
+
+  it("refreshes after returning to the panel without reloading while hidden", async () => {
+    getMock.mockReset();
+    getMock.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/deepspace/chats/memory") return [];
+      if (endpoint === "/deepspace/chats/memory/evaluation") {
+        return {
+          memory_count: 0,
+          embedded_count: 0,
+          pgvector_count: 0,
+          embedding_coverage: 0,
+          duplicate_count: 0,
+          stale_count: 0,
+          average_decay_score: 0,
+          memory_health_score: 100,
+          retention_risk_count: 0,
+        };
+      }
+      if (endpoint === "/deepspace/chats/memory/preferences") {
+        return {
+          automatic_capture_enabled: true,
+          review_inferred_memories: true,
+          memory_retrieval_enabled: true,
+        };
+      }
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    });
+
+    const view = render(<MemoryPanel active />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(3));
+
+    view.rerender(<MemoryPanel active={false} />);
+    fireEvent(window, new Event("deepspace:memory-updated"));
+    expect(getMock).toHaveBeenCalledTimes(3);
+
+    view.rerender(<MemoryPanel active />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(6));
   });
 });

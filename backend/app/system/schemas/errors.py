@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Week2ErrorCode(str, Enum):
+class Week2ErrorCode(str, Enum):  # noqa: UP042 - preserve the existing enum string representation
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     HTTP_ERROR = "HTTP_ERROR"

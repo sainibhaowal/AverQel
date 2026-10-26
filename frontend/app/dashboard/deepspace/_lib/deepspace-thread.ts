@@ -2174,6 +2174,7 @@ export interface DeepSpaceThreadState {
 
 export type DeepSpaceThreadAction =
   | { type: "load_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
+  | { type: "prepend_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
   | { type: "reset_thread" }
   | {
       type: "submit_query";
@@ -2873,8 +2874,11 @@ function reduceDeepSpaceThread(
         action.messages,
         action.messages.map(fromHistoryMessage),
       );
-      const localMessagesById = new Map(state.messages.map((message) => [message.id, message]));
-      const messages = incomingMessages.map((message) => {
+      const sameConversation = state.currentConversationId === action.conversationId;
+      const localMessagesById = new Map(
+        (sameConversation ? state.messages : []).map((message) => [message.id, message]),
+      );
+      const refreshedMessages = incomingMessages.map((message) => {
         const local = localMessagesById.get(message.id);
         // The server persists the final answer, while the browser has the
         // exact ordered SSE trajectory for the just-finished turn. Preserve
@@ -2888,6 +2892,14 @@ function reduceDeepSpaceThread(
           thinkingContent: local.thinkingContent ?? message.thinkingContent,
         };
       });
+      const mergedMessages = new Map<string, DeepSpaceMessage>();
+      if (sameConversation) {
+        for (const message of state.messages) mergedMessages.set(message.id, message);
+      }
+      for (const message of refreshedMessages) mergedMessages.set(message.id, message);
+      const messages = [...mergedMessages.values()].sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      );
       const activeHistoryIds = new Set(
         action.messages
           .filter(
@@ -2928,6 +2940,24 @@ function reduceDeepSpaceThread(
             (action.messages.findLast((m) => m.role === "assistant")?.metadata_json ??
               {}) as Record<string, unknown>,
           ) || null,
+      };
+    }
+    case "prepend_history": {
+      if (state.currentConversationId !== action.conversationId || action.messages.length === 0) {
+        return state;
+      }
+      const olderMessages = collapseAnsweredQuestionMessages(
+        action.messages,
+        action.messages.map(fromHistoryMessage),
+      );
+      const merged = new Map<string, DeepSpaceMessage>();
+      for (const message of olderMessages) merged.set(message.id, message);
+      for (const message of state.messages) merged.set(message.id, message);
+      return {
+        ...state,
+        messages: [...merged.values()].sort((left, right) =>
+          left.createdAt.localeCompare(right.createdAt),
+        ),
       };
     }
     case "reset_thread":

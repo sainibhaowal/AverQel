@@ -79,6 +79,7 @@ describe("storage details page", () => {
 
     await waitFor(() => expect(screen.getByLabelText("Inactivity period")).toBeInTheDocument());
     expect(screen.getByText("Archive-first · purge disabled")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Inactivity period" }));
     expect(screen.getByRole("option", { name: "Off" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "30 days" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "60 days" })).toBeInTheDocument();

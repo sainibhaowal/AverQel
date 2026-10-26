@@ -138,6 +138,11 @@ function formatUserName(value?: string | null): string {
 
 interface DeepSpaceThreadProps {
   messages: DeepSpaceMessage[];
+  active?: boolean;
+  historyScopeKey?: string | null;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => Promise<number>;
   emptyPrompts: string[];
   userName?: string | null;
   onPromptSelect: (prompt: string) => void;
@@ -234,7 +239,7 @@ function QuestionCard({
             <span className="deepspace-question-title text-[10px] font-semibold tracking-[0.12em] text-cyan-100/70 uppercase">
               Your input is needed
             </span>
-            <span className="deepspace-question-status rounded-full border border-cyan-200/15 bg-cyan-200/[0.06] px-2 py-0.5 text-[10px] font-medium text-cyan-100/65">
+            <span className="deepspace-question-status rounded-lg border border-cyan-200/15 bg-cyan-200/[0.06] px-2 py-0.5 text-[10px] font-medium text-cyan-100/65">
               Waiting for you
             </span>
           </div>
@@ -387,6 +392,7 @@ function ResponseLoadingIndicator() {
 const MessageBubble = memo(
   function MessageBubble({
     message,
+    active,
     onRegenerate,
     onStartEdit,
     onCancelEdit,
@@ -410,6 +416,7 @@ const MessageBubble = memo(
     promptEditSubmitting,
   }: {
     message: DeepSpaceMessage;
+    active: boolean;
     onRegenerate: (messageId: string) => void;
     onStartEdit: (messageId: string) => void;
     onCancelEdit: (messageId: string) => void;
@@ -456,6 +463,10 @@ const MessageBubble = memo(
       setShowExportMenu(false);
       setExportMenuPosition(null);
     }, []);
+    useEffect(() => {
+      if (active) return;
+      window.requestAnimationFrame(closeExportMenu);
+    }, [active, closeExportMenu]);
     const [approvalBusy, setApprovalBusy] = useState(false);
     const pendingApprovalStep = [...(message.agentSteps ?? [])]
       .reverse()
@@ -638,7 +649,7 @@ const MessageBubble = memo(
     if (message.role === "user") {
       return (
         <article
-          className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mx-auto w-full max-w-[min(100%,74rem)] px-2 py-4 motion-safe:duration-300 motion-safe:ease-out sm:px-3"
+          className="mx-auto w-full max-w-[min(100%,74rem)] px-2 py-4 sm:px-3"
           style={{
             containIntrinsicSize: "120px",
             overflowAnchor: "none",
@@ -706,7 +717,7 @@ const MessageBubble = memo(
 
               <div className="text-muted-foreground mt-2 flex items-center justify-end gap-3 text-[10px]">
                 {message.versionCount && message.versionCount > 1 && !message.isEditing && (
-                  <div className="border-glass-border flex items-center gap-2 rounded-full border px-2 py-0.5">
+                  <div className="border-glass-border flex items-center gap-2 rounded-lg border px-2 py-0.5">
                     <button
                       type="button"
                       aria-label="Show previous prompt version"
@@ -818,7 +829,7 @@ const MessageBubble = memo(
 
     return (
       <article
-        className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 motion-safe:duration-300 motion-safe:ease-out sm:px-3 sm:py-4"
+        className="mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 sm:px-3 sm:py-4"
         style={{ containIntrinsicSize: "220px", overflowAnchor: "none" }}
       >
         <div className="relative flex items-start gap-4 p-0">
@@ -1007,7 +1018,7 @@ const MessageBubble = memo(
                   {message.memoryUsed.map((memory) => (
                     <span
                       key={memory.id}
-                      className="rounded-full border border-cyan-300/15 bg-black/10 px-2 py-0.5"
+                      className="rounded-lg border border-cyan-300/15 bg-black/10 px-2 py-0.5"
                     >
                       {memory.key}
                     </span>
@@ -1036,7 +1047,7 @@ const MessageBubble = memo(
                           isRetryingFailedPrompt ? "Retrying failed prompt" : "Retry failed prompt"
                         }
                         title="Retry the saved prompt with its original attachments. If its checkpoint expired, completed actions may run again."
-                        className="deepspace-execution-error-retry inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-300/20 bg-red-300/[0.08] px-2.5 py-1 text-[10px] font-semibold text-red-100/80 transition-colors hover:border-red-300/35 hover:bg-red-300/[0.14] hover:text-red-50 focus-visible:ring-2 focus-visible:ring-red-300/50 focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                        className="deepspace-execution-error-retry inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-300/20 bg-red-300/[0.08] px-2.5 py-1 text-[10px] font-semibold text-red-100/80 transition-colors hover:border-red-300/35 hover:bg-red-300/[0.14] hover:text-red-50 focus-visible:ring-2 focus-visible:ring-red-300/50 focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
                       >
                         {isRetryingFailedPrompt ? (
                           <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
@@ -1069,7 +1080,7 @@ const MessageBubble = memo(
                       tabIndex={0}
                       title={speedDescription}
                       aria-label={`${speedLabel}. ${speedDescription}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
                     >
                       <Activity size={11} aria-hidden="true" />
                       {speedLabel}
@@ -1078,7 +1089,7 @@ const MessageBubble = memo(
                       tabIndex={0}
                       title="End-to-end time from the server beginning to handle this DeepSpace request to the first visible answer text. This includes routing, context preparation, provider waiting, and any reasoning or tool work before the answer."
                       aria-label={`Time to first token: ${ttftLabel}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
                     >
                       <Timer size={11} aria-hidden="true" />
                       TTFT {ttftLabel}
@@ -1088,7 +1099,7 @@ const MessageBubble = memo(
                         tabIndex={0}
                         title="Time from the first provider or connector request to its first output event, which may be reasoning, a tool call, or answer text. It is a connector-level measurement, not the provider's internal model-compute time; Codex timing includes the desktop relay."
                         aria-label={`Provider first output: ${providerFirstOutputLabel}`}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-2 py-1 font-medium text-white/55 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
                       >
                         <Timer size={11} aria-hidden="true" />
                         Provider {providerFirstOutputLabel}
@@ -1097,7 +1108,7 @@ const MessageBubble = memo(
                   </div>
                 ) : null}
                 <div
-                  className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 backdrop-blur-sm"
+                  className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-2 py-1 backdrop-blur-sm"
                   ref={exportMenuRef}
                 >
                   {message.versionCount && message.versionCount > 1 && (
@@ -1149,7 +1160,7 @@ const MessageBubble = memo(
                       type="button"
                       disabled={isSubmittingFeedback || feedbackState !== null}
                       onClick={() => submitFeedback(true)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-200 ${
                         feedbackState === "helpful"
                           ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-400"
                           : "text-white/40 hover:bg-white/5 hover:text-white/80"
@@ -1170,7 +1181,7 @@ const MessageBubble = memo(
                       type="button"
                       disabled={isSubmittingFeedback || feedbackState !== null}
                       onClick={() => submitFeedback(false)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-200 ${
                         feedbackState === "unhelpful"
                           ? "border border-red-500/30 bg-red-500/20 text-red-400"
                           : "text-white/40 hover:bg-white/5 hover:text-white/80"
@@ -1191,7 +1202,7 @@ const MessageBubble = memo(
                       type="button"
                       ref={exportButtonRef}
                       aria-label="Export response"
-                      aria-expanded={showExportMenu}
+                      aria-expanded={showExportMenu && active}
                       aria-controls={exportMenuId}
                       onClick={() => {
                         if (showExportMenu) {
@@ -1201,13 +1212,13 @@ const MessageBubble = memo(
                           setShowExportMenu(true);
                         }
                       }}
-                      className={`flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80 ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80 ${
                         showExportMenu ? "bg-white/10 text-white" : ""
                       }`}
                     >
                       <Download size={12} />
                     </button>
-                    {!showExportMenu ? (
+                    {!showExportMenu || !active ? (
                       <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                         <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                           Export
@@ -1215,7 +1226,7 @@ const MessageBubble = memo(
                       </div>
                     ) : null}
 
-                    {showExportMenu
+                    {showExportMenu && active
                       ? createPortal(
                           <div
                             id={exportMenuId}
@@ -1270,7 +1281,7 @@ const MessageBubble = memo(
                     <button
                       type="button"
                       onClick={() => submitFeedback(false)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-red-500/10 hover:text-red-400"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-white/40 transition-all duration-200 hover:bg-red-500/10 hover:text-red-400"
                     >
                       <Flag size={12} />
                     </button>
@@ -1289,7 +1300,7 @@ const MessageBubble = memo(
                       type="button"
                       onClick={handleCopy}
                       aria-label={copied ? "Copied" : "Copy"}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
                     >
                       {copied ? (
                         <Check size={12} className="text-emerald-400" />
@@ -1311,7 +1322,7 @@ const MessageBubble = memo(
                         type="button"
                         onClick={() => onRegenerate(message.id)}
                         aria-label="Regenerate response"
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
                       >
                         <RotateCw size={12} />
                       </button>
@@ -1336,6 +1347,7 @@ const MessageBubble = memo(
     previous.canRetryFailedPrompt === next.canRetryFailedPrompt &&
     previous.isRetryingFailedPrompt === next.isRetryingFailedPrompt &&
     previous.isRetryActionDisabled === next.isRetryActionDisabled &&
+    previous.active === next.active &&
     previous.onRetryFailedTurn === next.onRetryFailedTurn &&
     areMessageBubblesEqual(previous.message, next.message),
 );
@@ -1527,6 +1539,11 @@ function buildWindowedMessages(
 
 export default function DeepSpaceThread({
   messages,
+  active = true,
+  historyScopeKey = null,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
+  onLoadOlderMessages,
   emptyPrompts,
   userName,
   onPromptSelect,
@@ -1551,7 +1568,25 @@ export default function DeepSpaceThread({
   queuedAssistantId = null,
   scrollMetrics = null,
 }: DeepSpaceThreadProps) {
-  const [revealedHistoryCount, setRevealedHistoryCount] = useState(RECENT_MESSAGE_WINDOW);
+  const [revealedHistory, setRevealedHistory] = useState(() => ({
+    scopeKey: historyScopeKey,
+    count: RECENT_MESSAGE_WINDOW,
+  }));
+  const revealedHistoryCount =
+    revealedHistory.scopeKey === historyScopeKey ? revealedHistory.count : RECENT_MESSAGE_WINDOW;
+  const setRevealedHistoryCount = useCallback(
+    (nextCount: number | ((current: number) => number)) => {
+      setRevealedHistory((current) => {
+        const currentCount =
+          current.scopeKey === historyScopeKey ? current.count : RECENT_MESSAGE_WINDOW;
+        return {
+          scopeKey: historyScopeKey,
+          count: typeof nextCount === "function" ? nextCount(currentCount) : nextCount,
+        };
+      });
+    },
+    [historyScopeKey],
+  );
   const latestEditablePromptId = useMemo(() => {
     for (let index = messages.length - 2; index >= 0; index -= 1) {
       if (messages[index]?.role === "user" && messages[index + 1]?.role === "assistant") {
@@ -1568,27 +1603,8 @@ export default function DeepSpaceThread({
     return messages.slice(-Math.max(revealedHistoryCount, RECENT_MESSAGE_WINDOW));
   }, [messages, revealedHistoryCount]);
 
-  const renderSourceMessages = scrollMetrics ? messages : compactedHistoryMessages;
-
-  const isCompactedHistory =
-    !scrollMetrics &&
-    messages.length > LARGE_THREAD_THRESHOLD &&
-    compactedHistoryMessages.length < messages.length;
-  // While a response is streaming, the active message grows on every token.
-  // Virtualization estimates would therefore change the spacer heights on
-  // every render, making the viewport visibly jump and occasionally repaint
-  // the active text. Keep the live turn in a stable, non-virtualized layout;
-  // normal virtualization resumes as soon as generation finishes.
-  const hasStreamingMessage = renderSourceMessages.some(
-    (message) => message.status === "streaming",
-  );
-  // Agent turns contain variable-height thinking panels, tool payloads,
-  // question cards, media, and markdown blocks. The lightweight height
-  // estimator cannot safely represent those rows; virtualizing them causes
-  // spacer drift while the user scrolls, making content appear to vanish.
-  // Keep agentic turns in the normal flow and retain virtualization for
-  // simple text-only history where the estimate is stable.
-  const hasDynamicAgentContent = renderSourceMessages.some(
+  const hasStreamingMessage = messages.some((message) => message.status === "streaming");
+  const hasDynamicAgentContent = messages.some(
     (message) =>
       (message.agentSteps?.length ?? 0) > 0 ||
       (message.timeline?.length ?? 0) > 0 ||
@@ -1596,6 +1612,17 @@ export default function DeepSpaceThread({
       (message.blocks?.length ?? 0) > 0 ||
       (message.artifacts?.length ?? 0) > 0,
   );
+  // Variable-height agent output and live turns stay in a small, fully laid
+  // out window because static row estimates drift while those blocks change.
+  // Older content remains reachable through the history control below.
+  const shouldBoundHistory =
+    (hasStreamingMessage || hasDynamicAgentContent) && messages.length > LARGE_THREAD_THRESHOLD;
+  const renderSourceMessages =
+    shouldBoundHistory || !scrollMetrics ? compactedHistoryMessages : messages;
+  const isCompactedHistory =
+    (messages.length > LARGE_THREAD_THRESHOLD &&
+      compactedHistoryMessages.length < messages.length) ||
+    hasOlderMessages;
   const windowedMessages = useMemo(
     () =>
       buildWindowedMessages(
@@ -1673,7 +1700,7 @@ export default function DeepSpaceThread({
               aria-label="Insert latest answer"
               title="Insert latest answer"
               disabled
-              className="theme-panel-muted text-muted-foreground border-glass-border bg-surface-2/40 flex h-11 w-11 items-center justify-center rounded-full border opacity-35"
+              className="theme-panel-muted text-muted-foreground border-glass-border bg-surface-2/40 flex h-11 w-11 items-center justify-center rounded-lg border opacity-35"
             >
               <ArrowLeftToLine size={17} />
             </button>
@@ -1734,18 +1761,32 @@ export default function DeepSpaceThread({
           <div className="border-glass-border bg-surface-2/70 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-[11px] font-medium text-white/70">
             <span>
               Showing the most recent {compactedHistoryMessages.length} of {messages.length}{" "}
-              messages to keep large missions fast.
+              messages. Older messages stay available.
             </span>
             <button
               type="button"
-              onClick={() =>
-                setRevealedHistoryCount((current) =>
-                  Math.min(messages.length, current + HISTORY_REVEAL_BATCH),
-                )
-              }
+              disabled={loadingOlderMessages}
+              onClick={() => {
+                if (revealedHistoryCount < messages.length) {
+                  setRevealedHistoryCount((current) =>
+                    Math.min(messages.length, current + HISTORY_REVEAL_BATCH),
+                  );
+                  return;
+                }
+                void Promise.resolve(onLoadOlderMessages?.()).then((loadedCount) => {
+                  if (!loadedCount) return;
+                  setRevealedHistoryCount((current) =>
+                    Math.min(messages.length + loadedCount, current + HISTORY_REVEAL_BATCH),
+                  );
+                });
+              }}
               className="text-primary hover:text-primary/80 font-semibold"
             >
-              Load older messages
+              {loadingOlderMessages
+                ? "Loading older messages…"
+                : revealedHistoryCount < messages.length
+                  ? "Show older messages"
+                  : "Load older messages"}
             </button>
           </div>
         </div>
@@ -1760,6 +1801,7 @@ export default function DeepSpaceThread({
         const bubble = (
           <MessageBubble
             message={message}
+            active={active}
             isLast={renderIndex === renderSourceMessages.length - 1}
             onRegenerate={onRegenerate}
             onStartEdit={onStartEdit}

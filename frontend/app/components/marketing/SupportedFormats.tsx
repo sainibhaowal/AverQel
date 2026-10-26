@@ -183,7 +183,7 @@ export default function SupportedFormats() {
                   ].map((status) => (
                     <span
                       key={status}
-                      className={`rounded-full px-3 py-1 text-[10px] font-semibold ${
+                      className={`rounded-lg px-3 py-1 text-[10px] font-semibold ${
                         status === "indexed"
                           ? "border border-emerald-400/20 bg-emerald-500/[0.1] text-emerald-300"
                           : status === "failed" || status === "dead_lettered"

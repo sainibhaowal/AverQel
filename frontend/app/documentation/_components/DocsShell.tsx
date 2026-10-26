@@ -107,7 +107,7 @@ export function DocsShell({
         <article className="min-w-0 flex-1 lg:pl-0">
           <div className="space-y-12 pb-14 lg:hidden">
             <div className="mb-8 max-w-4xl">
-              <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
+              <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
                 <Zap size={10} className="animate-pulse" />
                 Product guides
               </div>
@@ -127,7 +127,7 @@ export function DocsShell({
                 <div className="workspace-fit-pane">
                   <div className="workspace-fit-scroll docs-scrollbar pr-1 lg:pr-3">
                     <div className="mb-16 w-full max-w-none">
-                      <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
+                      <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
                         <Zap size={10} className="animate-pulse" />
                         Product guides
                       </div>
@@ -235,7 +235,7 @@ export function DocsSection({ title, children }: { title: string; children: Reac
   return (
     <section className="theme-panel border-glass-border bg-background/40 hover:border-primary/20 rounded-3xl border p-8 backdrop-blur-md transition-all">
       <h2 className="text-foreground mb-6 flex items-center gap-3 text-2xl font-black">
-        <div className="bg-primary h-6 w-1.5 rounded-full" />
+        <div className="bg-primary h-6 w-1.5 rounded-sm" />
         {title}
       </h2>
       <div className="text-muted-foreground space-y-4 text-base leading-8 font-medium">

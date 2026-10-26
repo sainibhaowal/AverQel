@@ -27,7 +27,7 @@ export default function FollowUpSuggestions({ suggestions, onSelect }: FollowUpS
           <button
             key={idx}
             onClick={() => onSelect(suggestion)}
-            className="theme-chip text-foreground/80 hover:text-foreground rounded-full px-3.5 py-2 text-sm transition hover:border-cyan-400/24 hover:bg-cyan-500/[0.08] dark:hover:text-white"
+            className="theme-chip text-foreground/80 hover:text-foreground rounded-lg px-3.5 py-2 text-sm transition hover:border-cyan-400/24 hover:bg-cyan-500/[0.08] dark:hover:text-white"
           >
             {suggestion}
           </button>

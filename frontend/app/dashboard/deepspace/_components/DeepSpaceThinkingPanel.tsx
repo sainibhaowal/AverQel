@@ -394,7 +394,7 @@ const TimelineEntry = memo(function TimelineEntry({
           onClick={() => setOpen((value) => !value)}
           className="text-foreground/65 hover:text-foreground/85 relative flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
         >
-          <span className="deepspace-timeline-icon pointer-events-none absolute top-1/2 -left-7 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
+          <span className="deepspace-timeline-icon pointer-events-none absolute top-1/2 -left-7 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-lg border border-white/10 bg-[#101713]">
             <TimelineIcon step={step} />
           </span>
           <ChevronDown

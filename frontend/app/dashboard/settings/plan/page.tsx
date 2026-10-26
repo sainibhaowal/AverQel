@@ -139,9 +139,9 @@ export default function PlanPage() {
                     {formatLimit(data.current_plan.storage_limit_bytes)}
                   </span>
                 </div>
-                <div className="bg-muted/60 h-3 overflow-hidden rounded-full">
+                <div className="bg-muted/60 h-3 overflow-hidden rounded-sm">
                   <div
-                    className={`h-full rounded-full transition-all ${usagePercent >= 90 ? "bg-destructive" : "bg-primary"}`}
+                    className={`h-full rounded-sm transition-all ${usagePercent >= 90 ? "bg-destructive" : "bg-primary"}`}
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
@@ -171,7 +171,7 @@ export default function PlanPage() {
                   production release; your workspace carries over unchanged.
                 </p>
               </div>
-              <span className="bg-primary/10 text-primary shrink-0 rounded-full px-3 py-1 text-xs font-bold">
+              <span className="bg-primary/10 text-primary shrink-0 rounded-lg px-3 py-1 text-xs font-bold">
                 Beta · Free
               </span>
             </section>
@@ -188,7 +188,7 @@ export default function PlanPage() {
                 </p>
               </div>
               {isAdmin && (
-                <span className="bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-bold">
+                <span className="bg-primary/10 text-primary rounded-lg px-3 py-1 text-xs font-bold">
                   Admin account
                 </span>
               )}
@@ -208,7 +208,7 @@ export default function PlanPage() {
                       }`}
                     >
                       {current && (
-                        <span className="bg-primary text-primary-foreground absolute top-4 right-4 rounded-full px-2.5 py-1 text-[10px] font-black tracking-[0.12em] uppercase">
+                        <span className="bg-primary text-primary-foreground absolute top-4 right-4 rounded-lg px-2.5 py-1 text-[10px] font-black tracking-[0.12em] uppercase">
                           Current
                         </span>
                       )}

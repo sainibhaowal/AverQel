@@ -880,19 +880,19 @@ export default function ProviderForm({
                 Model Discovery
               </span>
               {waitingForToken ? (
-                <span className="waiting-token-sweep rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
+                <span className="waiting-token-sweep rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
                   ⊙ Waiting for token
                 </span>
               ) : waitingForCodex ? (
-                <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
+                <span className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
                   Connect account and choose model
                 </span>
               ) : discoveringModels ? (
-                <span className="border-primary/20 bg-primary/10 text-primary rounded-full border px-3 py-1 font-mono text-[9px] font-bold tracking-widest uppercase">
+                <span className="border-primary/20 bg-primary/10 text-primary rounded-lg border px-3 py-1 font-mono text-[9px] font-bold tracking-widest uppercase">
                   Discovery active
                 </span>
               ) : previewModels.length > 0 ? (
-                <span className="rounded-full border border-teal-500/40 bg-teal-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-teal-700 uppercase dark:text-teal-400">
+                <span className="rounded-lg border border-teal-500/40 bg-teal-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-teal-700 uppercase dark:text-teal-400">
                   {previewModels.length} models found
                 </span>
               ) : null}
@@ -988,7 +988,7 @@ export default function ProviderForm({
         {provider ? (
           <button
             onClick={() => onDisconnect?.(provider)}
-            className="flex items-center gap-2 text-xs font-bold tracking-widest text-amber-400/80 uppercase transition-colors hover:text-amber-300"
+            className="text-danger hover:text-danger/80 flex items-center gap-2 text-xs font-bold tracking-widest uppercase transition-colors dark:text-amber-400/80 dark:hover:text-amber-300"
           >
             <Link2Off size={14} />
             Terminate
@@ -1002,7 +1002,7 @@ export default function ProviderForm({
         <button
           onClick={handleLocalSubmit}
           disabled={saving || waitingForToken || waitingForCodex || localRuntimeUnavailable}
-          className="border-primary/35 to-primary/80 hover:border-primary/60 relative z-[3] flex items-center gap-3 rounded-xl border bg-gradient-to-r from-teal-500/80 px-8 py-3.5 text-sm font-bold text-white shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+          className="border-primary/35 bg-primary text-primary-foreground hover:border-primary/60 dark:to-primary/80 relative z-[3] flex items-center gap-3 rounded-xl border px-8 py-3.5 text-sm font-bold shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 dark:bg-gradient-to-r dark:from-teal-500/80 dark:text-white"
         >
           <Link2 size={16} />
           {saving ? "Saving..." : provider ? "Update Connectivity" : "Link Family"}
@@ -1017,7 +1017,7 @@ export default function ProviderForm({
           </p>
           <button
             onClick={() => onReconnect?.(provider)}
-            className="bg-primary mt-6 flex items-center gap-2 rounded-full px-8 py-3 text-sm font-bold text-slate-950 shadow-xl transition-transform hover:scale-[1.05]"
+            className="bg-primary mt-6 flex items-center gap-2 rounded-lg px-8 py-3 text-sm font-bold text-slate-950 shadow-xl transition-transform hover:scale-[1.05]"
           >
             <Link2 size={16} />
             Resume Connectivity

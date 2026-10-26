@@ -175,7 +175,7 @@ export default function StatusHistoryPanel({
               ) : null}
             </div>
             <span
-              className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stateClasses(latestEntry.state)}`}
+              className={`inline-flex shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-medium ${stateClasses(latestEntry.state)}`}
             >
               {isStreaming && latestEntry.state === "running" ? "live" : latestEntry.state}
             </span>
@@ -215,7 +215,7 @@ export default function StatusHistoryPanel({
                     ) : null}
                   </div>
                   <span
-                    className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stateClasses(entry.state)}`}
+                    className={`inline-flex shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-medium ${stateClasses(entry.state)}`}
                   >
                     {isStreaming && isLatest && entry.state === "running" ? "live" : entry.state}
                   </span>

@@ -790,6 +790,40 @@ describe("DeepSpaceThread streaming preview", () => {
     await waitFor(() => expect(screen.queryByRole("group", { name: "Export format" })).toBeNull());
   });
 
+  it("closes the export overlay when the chat panel becomes inactive", async () => {
+    const props = {
+      messages: [
+        {
+          id: "assistant_hidden_export_1",
+          role: "assistant" as const,
+          content: "Exportable response text",
+          rawContent: "Exportable response text",
+          createdAt: new Date().toISOString(),
+          status: "ready" as const,
+        },
+      ],
+      emptyPrompts: [],
+      onPromptSelect: () => {},
+      onInsertLatestAnswer: () => {},
+    };
+    const view = render(<DeepSpaceThread {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export response" }));
+    expect(await screen.findByRole("group", { name: "Export format" })).toBeInTheDocument();
+
+    view.rerender(<DeepSpaceThread {...props} active={false} />);
+    await waitFor(() => {
+      expect(screen.queryByRole("group", { name: "Export format" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Export response" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
+
+    view.rerender(<DeepSpaceThread {...props} active />);
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Export format" })).toBeNull());
+  });
+
   it("shows a request rejection as a request error, not provider downtime", () => {
     render(
       <DeepSpaceThread

@@ -82,7 +82,7 @@ export default function ProviderModelsPanel({
             type="button"
             onClick={onRefresh}
             disabled={!providerEnabled || loading}
-            className="theme-chip text-foreground/60 hover:text-foreground flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold tracking-widest uppercase disabled:opacity-40"
+            className="theme-chip text-foreground/60 hover:text-foreground flex items-center gap-2 rounded-lg px-4 py-2 text-[11px] font-bold tracking-widest uppercase disabled:opacity-40"
           >
             {loading ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             Synchronize
@@ -108,7 +108,7 @@ export default function ProviderModelsPanel({
       <div className="space-y-4">
         <div className="text-foreground/45 flex items-center gap-2 px-1 text-[10px] font-bold tracking-[0.2em] uppercase">
           Model Discovery Inventory
-          <span className="theme-chip rounded-full px-2 py-0.5 opacity-60">
+          <span className="theme-chip rounded-lg px-2 py-0.5 opacity-60">
             {filteredModels.length}
           </span>
         </div>
@@ -160,7 +160,7 @@ export default function ProviderModelsPanel({
       {/* Local Pull Controls (Scoped) */}
       {provider?.supports_model_install && (
         <div className="theme-panel-muted relative flex items-center gap-4 rounded-3xl p-4 ring-1 ring-white/5">
-          <div className="absolute -top-2.5 right-6 flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-900 px-2.5 py-0.5 text-[9px] font-bold tracking-widest text-cyan-400 uppercase">
+          <div className="absolute -top-2.5 right-6 flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900 px-2.5 py-0.5 text-[9px] font-bold tracking-widest text-cyan-400 uppercase">
             <Download size={10} />
             Runtime Pull
           </div>

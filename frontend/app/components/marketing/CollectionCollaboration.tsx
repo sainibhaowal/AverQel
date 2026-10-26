@@ -112,7 +112,7 @@ export default function CollectionCollaboration() {
             <div className="relative flex h-full flex-col justify-between gap-10">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/[0.08] px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-emerald-200 uppercase">
+                  <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/[0.08] px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-emerald-200 uppercase">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
                     <QelConnectMark size={16} />
                     Qel Connect room

@@ -10,7 +10,7 @@ export default function InsufficientEvidenceBanner() {
       animate={{ opacity: 1, y: 0 }}
       className="mb-4 flex w-full flex-col items-center justify-center rounded-3xl border-2 border-dashed border-red-500/20 bg-red-500/5 p-8 text-center"
     >
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.15)]">
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-lg bg-red-500/10 text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.15)]">
         <ShieldAlert size={32} />
       </div>
       <h3 className="mb-2 text-xl font-bold tracking-tight text-red-500">

@@ -208,21 +208,21 @@ export default function TrustCommitments() {
         <div className="flex flex-wrap justify-center gap-3">
           <Link
             href="/legal/privacy"
-            className="group bg-surface-0 border-glass-border text-muted-foreground hover:bg-muted hover:text-foreground relative isolate inline-flex items-center overflow-hidden rounded-full border px-5 py-2.5 text-sm font-bold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.14] hover:shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
+            className="group bg-surface-0 border-glass-border text-muted-foreground hover:bg-muted hover:text-foreground relative isolate inline-flex items-center overflow-hidden rounded-lg border px-5 py-2.5 text-sm font-bold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.14] hover:shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
           >
             <span className="pointer-events-none absolute inset-y-0 left-[-30%] w-[30%] -skew-x-12 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)] opacity-0 blur-[1px] transition-all duration-700 group-hover:translate-x-[420%] group-hover:opacity-100" />
             Privacy Policy
           </Link>
           <Link
             href="/legal/terms"
-            className="group bg-surface-0 border-glass-border text-muted-foreground hover:bg-muted hover:text-foreground relative isolate inline-flex items-center overflow-hidden rounded-full border px-5 py-2.5 text-sm font-bold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.14] hover:shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
+            className="group bg-surface-0 border-glass-border text-muted-foreground hover:bg-muted hover:text-foreground relative isolate inline-flex items-center overflow-hidden rounded-lg border px-5 py-2.5 text-sm font-bold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.14] hover:shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
           >
             <span className="pointer-events-none absolute inset-y-0 left-[-30%] w-[30%] -skew-x-12 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)] opacity-0 blur-[1px] transition-all duration-700 group-hover:translate-x-[420%] group-hover:opacity-100" />
             Terms of Service
           </Link>
           <Link
             href="/legal/security"
-            className="group relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full border border-emerald-400/20 bg-emerald-500/[0.08] px-5 py-2.5 text-sm font-semibold text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.02)] transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/30 hover:bg-emerald-500/[0.14] hover:text-emerald-100 hover:shadow-[0_16px_36px_rgba(16,185,129,0.12)]"
+            className="group relative isolate inline-flex items-center gap-2 overflow-hidden rounded-lg border border-emerald-400/20 bg-emerald-500/[0.08] px-5 py-2.5 text-sm font-semibold text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.02)] transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/30 hover:bg-emerald-500/[0.14] hover:text-emerald-100 hover:shadow-[0_16px_36px_rgba(16,185,129,0.12)]"
           >
             <span className="pointer-events-none absolute inset-y-0 left-[-30%] w-[30%] -skew-x-12 bg-[linear-gradient(90deg,transparent,rgba(153,255,216,0.22),transparent)] opacity-0 blur-[1px] transition-all duration-700 group-hover:translate-x-[420%] group-hover:opacity-100" />
             <ShieldCheck

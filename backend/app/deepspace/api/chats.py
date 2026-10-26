@@ -83,6 +83,7 @@ from app.deepspace.services.run_events import (
     is_terminal_event,
     latest_sequence,
     load_events,
+    load_events_for_requests,
     timeline_events,
 )
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
@@ -1228,6 +1229,8 @@ async def create_conversation(
 )
 async def get_chat_history(
     conversation_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=100)] = 40,
+    before_message_id: uuid.UUID | None = None,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
@@ -1237,13 +1240,19 @@ async def get_chat_history(
     )
 
     proxied_messages: list[MessageSchema] | None = None
+    has_more = False
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
         try:
             data = await client_proxy_registry.db_proxy_call(
                 str(auth.tenant_id),
                 str(auth.user_id),
                 "db.chats.get_chat_history",
-                {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
+                {
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(auth.user_id),
+                    "limit": limit,
+                    "before_message_id": str(before_message_id) if before_message_id else None,
+                },
                 timeout=INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
                 channel="storage",
             )
@@ -1267,6 +1276,7 @@ async def get_chat_history(
                         }
                     )
                 )
+            has_more = len(proxied_messages) > limit
         except Exception:  # noqa: BLE001
             # A suspended browser-side storage proxy must not hide the
             # server's durable chat history. Fall through to PostgreSQL,
@@ -1306,12 +1316,21 @@ async def get_chat_history(
                 message="Conversation not found",
                 status_code=404,
             )
-        messages = repo.get_messages(
+        page = repo.get_message_page(
             tenant_id=auth.tenant_id,
             conversation_id=conversation_id,
             user_id=auth.user_id,
             kind=CONVERSATION_KIND,
+            limit=limit,
+            before_message_id=before_message_id,
         )
+        if page is None:
+            raise ApiError(
+                code="MESSAGE_NOT_FOUND",
+                message="History cursor not found in this conversation.",
+                status_code=404,
+            )
+        messages, has_more = page
     else:
         messages = None
     runtime = DeepSpaceRuntimeStore(db)
@@ -1332,15 +1351,20 @@ async def get_chat_history(
                 kind=CONVERSATION_KIND,
             )
             if server_conversation is not None:
-                server_messages = [
-                    _serialize_message(item)
-                    for item in server_repo.get_messages(
-                        tenant_id=auth.tenant_id,
-                        conversation_id=conversation_id,
-                        user_id=auth.user_id,
-                        kind=CONVERSATION_KIND,
-                    )
-                ]
+                server_page = server_repo.get_message_page(
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=auth.user_id,
+                    kind=CONVERSATION_KIND,
+                    limit=limit,
+                    before_message_id=before_message_id,
+                )
+                if server_page is None:
+                    server_rows = []
+                else:
+                    server_rows, server_has_more = server_page
+                    has_more = has_more or server_has_more
+                server_messages = [_serialize_message(item) for item in server_rows]
                 server_by_id = {str(item.id): item for item in server_messages}
                 merged: list[MessageSchema] = []
                 for proxy_message in proxied_messages:
@@ -1376,12 +1400,60 @@ async def get_chat_history(
                 merged.extend(server_by_id.values())
                 serialized_messages = sorted(
                     merged,
-                    key=lambda item: (str(item.created_at), str(item.id)),
+                    # Keep the proxy page's canonical order for equal creation
+                    # timestamps; message IDs are not a reliable tie-breaker
+                    # for client-owned UUIDs.
+                    key=lambda item: str(item.created_at),
                 )
         except Exception:  # noqa: BLE001
             # A proxy-backed conversation may intentionally not exist in the
             # server database. Its local snapshot remains a valid fallback.
             logger.debug("DeepSpace durable history merge skipped", exc_info=True)
+    has_more = has_more or len(serialized_messages) > limit
+    serialized_messages = serialized_messages[-limit:]
+    assistant_ids: list[uuid.UUID] = []
+    request_ids_by_message: dict[uuid.UUID, list[str]] = {}
+    for serialized in serialized_messages:
+        if serialized.role != "assistant":
+            continue
+        try:
+            assistant_message_id = uuid.UUID(str(serialized.id))
+        except (TypeError, ValueError):
+            continue
+        assistant_ids.append(assistant_message_id)
+        request_ids_by_message[assistant_message_id] = list(
+            dict.fromkeys(
+                request_id
+                for request_id in (
+                    str(serialized.metadata_json.get("client_request_id") or "").strip(),
+                    str(serialized.metadata_json.get("retry_of_request_id") or "").strip(),
+                )
+                if request_id
+            )
+        )
+    live_runs = runtime.live_worker_runs_for_messages(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        assistant_message_ids=assistant_ids,
+    )
+    durable_steps_by_message = runtime.history_steps_for_messages(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        assistant_message_ids=assistant_ids,
+    )
+    request_events = load_events_for_requests(
+        db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        client_request_ids=(
+            request_id
+            for request_ids in request_ids_by_message.values()
+            for request_id in request_ids
+        ),
+    )
     for serialized in serialized_messages:
         if serialized.role == "assistant":
             try:
@@ -1390,12 +1462,7 @@ async def get_chat_history(
                 # A malformed proxy record must not prevent the rest of the
                 # conversation from loading.
                 continue
-            live_run = runtime.live_worker_run_for_message(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                assistant_message_id=assistant_message_id,
-            )
+            live_run = live_runs.get(assistant_message_id)
             if serialized.metadata_json.get("status") == "streaming":
                 serialized.metadata_json = {
                     **serialized.metadata_json,
@@ -1404,36 +1471,19 @@ async def get_chat_history(
                 if live_run is None:
                     serialized.metadata_json["status"] = "ready"
                     serialized.metadata_json["runtime_state"] = "expired"
-            durable_steps = runtime.history_steps_for_message(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                assistant_message_id=assistant_message_id,
-            )
+            durable_steps = durable_steps_by_message.get(assistant_message_id, [])
             if durable_steps:
                 serialized.metadata_json = {
                     **serialized.metadata_json,
                     "agent_steps": durable_steps,
                 }
-            request_ids = [
-                str(serialized.metadata_json.get("client_request_id") or "").strip(),
-                str(serialized.metadata_json.get("retry_of_request_id") or "").strip(),
-            ]
-            request_ids = list(
-                dict.fromkeys(request_id for request_id in request_ids if request_id)
-            )
+            request_ids = request_ids_by_message.get(assistant_message_id, [])
             if request_ids:
-                durable_events = []
-                for request_id in request_ids:
-                    durable_events.extend(
-                        load_events(
-                            db,
-                            tenant_id=auth.tenant_id,
-                            user_id=auth.user_id,
-                            conversation_id=conversation_id,
-                            client_request_id=request_id,
-                        )
-                    )
+                durable_events = [
+                    event
+                    for request_id in request_ids
+                    for event in request_events.get(request_id, [])
+                ]
                 ordered_events = timeline_events(
                     sorted(durable_events, key=lambda event: event.created_at)
                 )
@@ -1444,7 +1494,7 @@ async def get_chat_history(
                     }
         # The list is already populated for both the proxy and PostgreSQL
         # paths; this loop only enriches each message in place.
-    return ChatHistoryResponse(messages=serialized_messages)
+    return ChatHistoryResponse(messages=serialized_messages, has_more=has_more)
 
 
 @router.patch(

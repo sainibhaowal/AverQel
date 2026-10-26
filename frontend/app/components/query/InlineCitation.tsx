@@ -24,7 +24,7 @@ export default function InlineCitation({ index, onClick }: InlineCitationProps) 
           }, 3000);
         }
       }}
-      className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground mx-1 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full align-super text-[10px] font-bold tracking-tighter transition-colors"
+      className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground mx-1 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-lg align-super text-[10px] font-bold tracking-tighter transition-colors"
       aria-label={`Go to citation ${index}`}
     >
       {index}

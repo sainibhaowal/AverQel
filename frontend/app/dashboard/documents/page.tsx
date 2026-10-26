@@ -6,7 +6,6 @@ import {
   Plus,
   FileText,
   RefreshCcw,
-  ListChecks,
   X,
   Trash2,
   Database,
@@ -27,6 +26,7 @@ import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useRealtimeEvents } from "@/lib/realtime";
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
+import ProtocolMatrixDialog from "@/app/components/dashboard/documents/ProtocolMatrixDialog";
 import DocumentInspector from "@/app/components/dashboard/documents/DocumentInspector";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
@@ -253,19 +253,6 @@ function RoundedTagFilter({
   );
 }
 
-interface SupportedFormat {
-  extension: string;
-  category: string;
-  extraction_method: string;
-  needs_conversion: boolean;
-}
-
-interface SupportedFormatsResponse {
-  total_formats: number;
-  legacy_conversion_enabled: boolean;
-  items: SupportedFormat[];
-}
-
 interface DocumentObservability {
   status_counts: Record<string, number>;
   active_ingestion_jobs: number;
@@ -294,8 +281,6 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [showFormats, setShowFormats] = useState(false);
-  const [supportedFormats, setSupportedFormats] = useState<SupportedFormatsResponse | null>(null);
   const [observability, setObservability] = useState<DocumentObservability | null>(null);
   const [duplicateCount, setDuplicateCount] = useState<number | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
@@ -499,20 +484,6 @@ export default function DocumentsPage() {
       cancelled = true;
       eventSource?.close();
     };
-  }, []);
-
-  useEffect(() => {
-    const fetchSupportedFormats = async () => {
-      try {
-        const response = (await fetchWithAuth("/documents/supported-formats")) as Response;
-        if (!response.ok) return;
-        const data = (await response.json()) as SupportedFormatsResponse;
-        setSupportedFormats(data);
-      } catch (error) {
-        console.error("Failed to load supported format list", error);
-      }
-    };
-    fetchSupportedFormats();
   }, []);
 
   const openRawViewer = async (id: string, name: string) => {
@@ -862,13 +833,7 @@ export default function DocumentsPage() {
           accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.35)]"
           actions={
             <>
-              <button
-                onClick={() => setShowFormats(true)}
-                className="theme-pill hover-yellow border-accent/10 h-12 px-6 transition-all"
-              >
-                <ListChecks size={18} className="stroke-[2.5]" />
-                <span className="font-bold">Protocol Matrix</span>
-              </button>
+              <ProtocolMatrixDialog />
               <button
                 onClick={() => fetchDocuments()}
                 disabled={loading}
@@ -1069,7 +1034,7 @@ export default function DocumentsPage() {
                 <div className="bg-foreground/5 h-4 w-1/4 rounded" />
                 <div className="bg-foreground/5 h-3 w-1/6 rounded" />
               </div>
-              <div className="bg-foreground/5 h-6 w-20 rounded-full" />
+              <div className="bg-foreground/5 h-6 w-20 rounded-lg" />
             </div>
           ))}
         </div>
@@ -1196,9 +1161,9 @@ export default function DocumentsPage() {
                       {(doc.processing_progress > 0 ||
                         doc.status === "queued" ||
                         doc.status === "downloading") && (
-                        <div className="bg-foreground/5 mt-3 h-1.5 w-full max-w-[100px] overflow-hidden rounded-full">
+                        <div className="bg-foreground/5 mt-3 h-1.5 w-full max-w-[100px] overflow-hidden rounded-sm">
                           <div
-                            className="bg-primary h-full rounded-full shadow-[0_0_10px_rgba(var(--primary),0.3)] transition-all duration-700"
+                            className="bg-primary h-full rounded-sm shadow-[0_0_10px_rgba(var(--primary),0.3)] transition-all duration-700"
                             style={{ width: `${doc.processing_progress}%` }}
                           />
                         </div>
@@ -1476,7 +1441,7 @@ export default function DocumentsPage() {
                       >
                         <button
                           onClick={() => saveToNotes("selection", selection.text)}
-                          className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-xl ring-4 ring-black/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+                          className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-lg px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-xl ring-4 ring-black/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
                         >
                           <Plus size={14} className="stroke-[3]" />
                           <span>Add to Note</span>
@@ -1742,87 +1707,6 @@ export default function DocumentsPage() {
               </>
             )}
           </AnimatePresence>,
-          document.body,
-        )}
-
-      {mounted &&
-        typeof document !== "undefined" &&
-        showFormats &&
-        createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowFormats(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-surface-0 border-glass-border relative max-h-[85vh] w-[min(96vw,64rem)] overflow-hidden rounded-3xl border p-5 shadow-2xl sm:p-8"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-foreground text-2xl font-extrabold tracking-tight">
-                    Supported Formats
-                  </h3>
-                  <p className="text-foreground/40 mt-1 text-sm font-medium">
-                    Native pipeline coverage coverage currently available.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowFormats(false)}
-                  className="bg-foreground/5 text-foreground/40 hover:text-foreground hover:bg-foreground/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
-                >
-                  <X size={20} className="stroke-[2.5]" />
-                </button>
-              </div>
-
-              <div className="border-glass-border bg-foreground/[0.01] max-h-[60vh] overflow-y-auto rounded-2xl border shadow-inner">
-                <table className="w-full table-fixed border-collapse text-left">
-                  <thead className="bg-surface-0/80 border-glass-border sticky top-0 z-10 border-b backdrop-blur-sm">
-                    <tr className="text-foreground/40 text-[10px] font-bold tracking-[0.2em] uppercase">
-                      <th className="w-[24%] px-3 py-3 sm:px-5 sm:py-4">Extension</th>
-                      <th className="w-[28%] px-3 py-3 sm:px-5 sm:py-4">Category</th>
-                      <th className="hidden w-[28%] px-3 py-3 sm:table-cell sm:px-5 sm:py-4">
-                        Method
-                      </th>
-                      <th className="w-[48%] px-3 py-3 text-right sm:w-[20%] sm:px-5 sm:py-4">
-                        Mode
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-glass-border divide-y">
-                    {(supportedFormats?.items ?? []).map((item) => (
-                      <tr
-                        key={`${item.extension}-${item.extraction_method}`}
-                        className="hover-yellow transition-colors"
-                      >
-                        <td className="text-primary truncate px-3 py-3 font-mono text-[12px] font-bold sm:px-5 sm:py-4 sm:text-[13px]">
-                          {item.extension}
-                        </td>
-                        <td className="text-foreground/60 truncate px-3 py-3 text-[12px] font-medium sm:px-5 sm:py-4 sm:text-[13px]">
-                          {item.category}
-                        </td>
-                        <td className="text-foreground/30 hidden truncate px-3 py-3 font-mono text-[11px] italic sm:table-cell sm:px-5 sm:py-4">
-                          {item.extraction_method}
-                        </td>
-                        <td className="px-3 py-3 text-right sm:px-5 sm:py-4">
-                          <span
-                            className={`theme-pill ${
-                              item.needs_conversion
-                                ? "!text-warning !bg-warning/10 !border-warning/20"
-                                : "!text-primary !bg-primary/10 !border-primary/20"
-                            }`}
-                          >
-                            {item.needs_conversion ? "conversion" : "native"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
-          </div>,
           document.body,
         )}
     </div>

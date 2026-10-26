@@ -405,7 +405,7 @@ export default function GalleryBlock({
                 }
               }}
               disabled={artifactSaving}
-              className="theme-chip inline-flex items-center gap-1 rounded-full px-2.5 py-2 text-[11px]"
+              className="theme-chip inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-[11px]"
               aria-label={editing ? "Save gallery" : "Edit gallery"}
             >
               {editing ? <Save size={14} /> : <Pencil size={14} />}
@@ -418,7 +418,7 @@ export default function GalleryBlock({
               disabled={artifactSaving}
               aria-busy={artifactSaving}
               aria-label="Save gallery to Library"
-              className="theme-chip rounded-full px-2.5 py-2 text-[11px] disabled:opacity-50"
+              className="theme-chip rounded-lg px-2.5 py-2 text-[11px] disabled:opacity-50"
             >
               {artifactSaving ? "Saving…" : artifactSaved ? "Saved" : "Save"}
             </button>
@@ -426,7 +426,7 @@ export default function GalleryBlock({
           <button
             type="button"
             onClick={() => void downloadCurrentImage()}
-            className="theme-chip rounded-full p-2"
+            className="theme-chip rounded-lg p-2"
             aria-label="Download image"
             disabled={importing}
           >
@@ -437,7 +437,7 @@ export default function GalleryBlock({
               href={open}
               target="_blank"
               rel="noreferrer noopener"
-              className="theme-chip rounded-full p-2"
+              className="theme-chip rounded-lg p-2"
               aria-label="Open image"
             >
               <ExternalLink size={14} />
@@ -559,7 +559,7 @@ export default function GalleryBlock({
             <button
               type="button"
               onClick={() => setIndex((current) => (current - 1 + items.length) % items.length)}
-              className="absolute top-1/2 left-3 -translate-y-1/2 rounded-full bg-black/55 p-2 text-white"
+              className="absolute top-1/2 left-3 -translate-y-1/2 rounded-lg bg-black/55 p-2 text-white"
               aria-label="Previous image"
             >
               <ChevronLeft size={16} />
@@ -567,7 +567,7 @@ export default function GalleryBlock({
             <button
               type="button"
               onClick={() => setIndex((current) => (current + 1) % items.length)}
-              className="absolute top-1/2 right-3 -translate-y-1/2 rounded-full bg-black/55 p-2 text-white"
+              className="absolute top-1/2 right-3 -translate-y-1/2 rounded-lg bg-black/55 p-2 text-white"
               aria-label="Next image"
             >
               <ChevronRight size={16} />
@@ -584,7 +584,7 @@ export default function GalleryBlock({
         <button
           type="button"
           onClick={() => void retainCurrentImage()}
-          className="theme-chip mt-2 rounded-full px-2.5 py-1.5 text-[11px]"
+          className="theme-chip mt-2 rounded-lg px-2.5 py-1.5 text-[11px]"
         >
           Save image to Library
         </button>
@@ -597,7 +597,7 @@ export default function GalleryBlock({
             attemptedImports.current.delete(item.src);
             void importImage(item.src);
           }}
-          className="theme-chip mt-2 rounded-full px-2.5 py-1.5 text-[11px]"
+          className="theme-chip mt-2 rounded-lg px-2.5 py-1.5 text-[11px]"
         >
           Retry image import
         </button>

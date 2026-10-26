@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DeepSpaceScrollTracker from "../app/dashboard/query/_components/DeepSpaceScrollTracker";
+import DeepSpaceThreadScrollTracker from "../app/dashboard/deepspace/_components/DeepSpaceScrollTracker";
 import type { QueryThreadMessage } from "../app/dashboard/query/_lib/stream-protocol";
 
 describe("deepspace scroll tracker", () => {
@@ -147,6 +148,64 @@ describe("deepspace scroll tracker", () => {
 
     expect(stats?.instances ?? 0).toBe(1);
     expect(stats?.disconnects ?? 0).toBe(0);
+  });
+
+  it("does not measure every message again on each scroll event", () => {
+    const container = document.createElement("div");
+    const message = document.createElement("div");
+    message.setAttribute("data-message-id", "assistant-1");
+    const measure = vi.spyOn(message, "getBoundingClientRect");
+    container.appendChild(message);
+
+    render(
+      <DeepSpaceScrollTracker
+        messages={[
+          {
+            id: "assistant-1",
+            role: "assistant",
+            content: "Answer",
+            rawContent: "Answer",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+          },
+        ]}
+        scrollContainerRef={{ current: container }}
+      />,
+    );
+
+    fireEvent.scroll(container);
+    fireEvent.scroll(container);
+
+    expect(measure).not.toHaveBeenCalled();
+  });
+
+  it("uses intersection updates instead of rescanning message geometry during DeepSpace scroll", () => {
+    const container = document.createElement("div");
+    const message = document.createElement("div");
+    message.setAttribute("data-message-id", "deep-space-1");
+    const measure = vi.spyOn(message, "getBoundingClientRect");
+    container.appendChild(message);
+
+    render(
+      <DeepSpaceThreadScrollTracker
+        messages={[
+          {
+            id: "deep-space-1",
+            role: "assistant",
+            content: "Answer",
+            rawContent: "Answer",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+          },
+        ]}
+        scrollContainerRef={{ current: container }}
+      />,
+    );
+
+    fireEvent.scroll(container);
+    fireEvent.scroll(container);
+
+    expect(measure).not.toHaveBeenCalled();
   });
 
   it("lazily assembles structured content when inserting the focused answer", () => {

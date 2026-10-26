@@ -80,6 +80,23 @@ describe("provider logos", () => {
     expect(container).not.toHaveTextContent("0");
   });
 
+  it("fills the square provider slot with the AverQel mark without changing other logo fitting", () => {
+    const { container } = render(
+      <div>
+        <ProviderLogo providerType="openai" size={20} />
+        <ProviderLogo providerType="sentence-transformers" size={20} />
+      </div>,
+    );
+    const openAILogo = container.querySelector('img[src="/providers/openai.svg"]');
+    const averqelLogo = container.querySelector("img.object-cover");
+
+    expect(openAILogo).toHaveClass("object-contain");
+    expect(averqelLogo).toHaveClass("object-cover");
+    expect(averqelLogo).toHaveStyle({ objectPosition: "43% 50%" });
+    expect(averqelLogo).toHaveAttribute("width", "20");
+    expect(averqelLogo).toHaveAttribute("height", "20");
+  });
+
   it("keeps provider logos visible in the provider assignment dropdown", () => {
     const onChange = vi.fn();
 

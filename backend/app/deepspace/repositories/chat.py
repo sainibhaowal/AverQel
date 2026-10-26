@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import String, delete, exists, select, text, update
+from sqlalchemy import String, and_, delete, exists, or_, select, text, update
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Session, selectinload
 
@@ -557,6 +557,69 @@ class DeepSpaceChatRepository:
             .order_by(Message.created_at.asc(), Message.id.asc())
         )
         return self.db.execute(stmt).scalars().unique().all()
+
+    def get_message_page(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        limit: int,
+        before_message_id: uuid.UUID | None = None,
+        kind: str = "deepspace",
+    ) -> tuple[list[Message], bool] | None:
+        """Return a bounded chronological page scoped to its owner and tenant."""
+        conversation = self.get_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            kind=kind,
+        )
+        if conversation is None:
+            return None
+
+        base = (
+            select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Conversation.tenant_id == tenant_id,
+                Conversation.user_id == user_id,
+                Conversation.id == conversation_id,
+                Conversation.kind == kind,
+            )
+            .options(selectinload(Message.versions), selectinload(Message.active_version))
+        )
+        if before_message_id is not None:
+            cursor = self.db.execute(
+                select(Message.created_at, Message.id)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.user_id == user_id,
+                    Conversation.id == conversation_id,
+                    Conversation.kind == kind,
+                    Message.id == before_message_id,
+                )
+            ).one_or_none()
+            if cursor is None:
+                return None
+            base = base.where(
+                or_(
+                    Message.created_at < cursor.created_at,
+                    and_(Message.created_at == cursor.created_at, Message.id < cursor.id),
+                )
+            )
+
+        rows = list(
+            self.db.execute(
+                base.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1)
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+        has_more = len(rows) > limit
+        return list(reversed(rows[:limit])), has_more
 
     def get_message_by_conversation(
         self,
