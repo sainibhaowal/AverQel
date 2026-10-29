@@ -28,11 +28,13 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceChatClient", () => ({
   default: ({
     onInsertLatestAnswer,
     onSelectNote,
+    isPanelActive,
   }: {
     onInsertLatestAnswer?: (content: string) => void;
     onSelectNote?: (noteId: string) => void;
+    isPanelActive?: boolean;
   }) => (
-    <div>
+    <div data-testid="mock-deepspace-chat" data-active={isPanelActive}>
       <div>Mock DeepSpace Chat</div>
       <button onClick={() => onSelectNote?.("note-2")}>Select second note</button>
       <button
@@ -43,6 +45,22 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceChatClient", () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock("../app/dashboard/deepspace/_components/DeepSpaceLibraryDrawer", () => ({
+  default: ({ open }: { open: boolean }) => (
+    <div data-testid="mock-deepspace-library" data-open={open}>
+      Mock DeepSpace Library
+    </div>
+  ),
+}));
+
+vi.mock("../app/dashboard/deepspace/_components/MemoryPanel", () => ({
+  default: () => <div data-testid="mock-deepspace-memory">Mock DeepSpace Memory</div>,
+}));
+
+vi.mock("../app/dashboard/deepspace/_components/DeepSpaceSchedulesPanel", () => ({
+  default: () => <div data-testid="mock-deepspace-schedules">Mock DeepSpace Schedules</div>,
 }));
 
 vi.mock("../app/dashboard/deepspace/_components/DeepSpaceEditor", () => {
@@ -290,8 +308,44 @@ describe("deepspace page", () => {
     expect(screen.getByRole("separator", { name: /resize deepspace panels/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /split view/i }));
-    await waitFor(() => expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(/mock deepspace chat/i).closest('[aria-hidden="true"]'),
+      ).not.toBeNull(),
+    );
     expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
+  });
+
+  it("keeps visited workspace panels mounted while switching between tabs", async () => {
+    render(<DeepSpacePageClient />);
+    const chat = await screen.findByTestId("mock-deepspace-chat");
+
+    fireEvent.click(await screen.findByRole("button", { name: /memory/i }));
+    const memory = await screen.findByTestId("mock-deepspace-memory");
+
+    fireEvent.click(screen.getByRole("button", { name: /library/i }));
+    const library = await screen.findByTestId("mock-deepspace-library");
+
+    fireEvent.click(screen.getByRole("button", { name: /notes/i }));
+    const editor = await screen.findByLabelText(/writing canvas editor/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /schedules/i }));
+    const schedules = await screen.findByTestId("mock-deepspace-schedules");
+
+    fireEvent.click(screen.getByRole("button", { name: /memory/i }));
+    expect(screen.getByTestId("mock-deepspace-memory")).toBe(memory);
+
+    fireEvent.click(screen.getByRole("button", { name: /library/i }));
+    expect(screen.getByTestId("mock-deepspace-library")).toBe(library);
+
+    fireEvent.click(screen.getByRole("button", { name: /notes/i }));
+    expect(screen.getByLabelText(/writing canvas editor/i)).toBe(editor);
+
+    fireEvent.click(screen.getByRole("button", { name: /schedules/i }));
+    expect(screen.getByTestId("mock-deepspace-schedules")).toBe(schedules);
+
+    fireEvent.click(screen.getByRole("button", { name: /chat/i }));
+    expect(screen.getByTestId("mock-deepspace-chat")).toBe(chat);
   });
 
   it(
@@ -501,7 +555,9 @@ describe("deepspace page", () => {
       "<p>Newer server copy</p>",
     );
     expect(screen.getByLabelText(/writing canvas editor/i).closest("[inert]")).not.toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent(/local draft and the saved note differ/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /local draft and the saved note differ/i,
+    );
     expect(
       fetchWithAuthMock.mock.calls.some(
         ([endpoint, options]) =>
@@ -568,18 +624,18 @@ describe("deepspace page", () => {
       expect(screen.queryByText(/^Message 1$/)).not.toBeInTheDocument();
       expect(screen.getByText("Message 47")).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: /load older messages/i }));
+      fireEvent.click(screen.getByRole("button", { name: /(?:show|load) older messages/i }));
 
       expect(screen.getByText(/showing the most recent 34 of 60 messages/i)).toBeInTheDocument();
       expect(screen.getByText(/^Message 27$/)).toBeInTheDocument();
       expect(screen.queryByText(/^Message 1$/)).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: /load older messages/i }));
+      fireEvent.click(screen.getByRole("button", { name: /(?:show|load) older messages/i }));
 
       expect(screen.getByText(/showing the most recent 54 of 60 messages/i)).toBeInTheDocument();
       expect(screen.queryByText(/^Message 1$/)).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: /load older messages/i }));
+      fireEvent.click(screen.getByRole("button", { name: /(?:show|load) older messages/i }));
 
       expect(screen.queryByText(/showing the most recent/i)).not.toBeInTheDocument();
       expect(screen.getByText(/^Message 1$/)).toBeInTheDocument();
@@ -592,7 +648,7 @@ describe("deepspace page", () => {
     fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
     await screen.findByLabelText(/writing canvas editor/i);
     fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
-    fireEvent.click(screen.getByRole("button", { name: /insert latest answer/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /insert latest answer/i }));
 
     expect(
       await screen.findByDisplayValue(/deepspace answer for the draft\./i),

@@ -471,15 +471,15 @@ export default function NotificationCenter() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[9998] bg-black/60"
           />
           <motion.div
             initial={{ x: "100%", opacity: 0.9 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: "100%", opacity: 0.9 }}
-            transition={{ type: "spring", damping: 30, stiffness: 350 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
             style={{ background: "var(--panel-strong)" }}
-            className="border-glass-border fixed inset-y-0 right-0 z-[9999] flex w-[28rem] max-w-full flex-col overflow-hidden rounded-l-[2rem] border-l shadow-[-20px_0_60px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
+            className="border-glass-border fixed inset-y-0 right-0 z-[9999] flex w-[28rem] max-w-full flex-col overflow-hidden rounded-l-[2rem] border-l shadow-[-20px_0_60px_rgba(0,0,0,0.5)]"
           >
             <div className="border-glass-border flex items-center justify-between border-b px-6 py-5">
               <div>
@@ -678,7 +678,7 @@ export default function NotificationCenter() {
       >
         {unreadCount > 0 ? <BellRing size={16} /> : <Bell size={16} />}
         {unreadCount > 0 ? (
-          <span className="bg-primary text-primary-foreground absolute -top-1.5 -right-1.5 inline-flex min-w-[1.2rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+          <span className="bg-primary text-primary-foreground absolute -top-1.5 -right-1.5 inline-flex min-w-[1.2rem] items-center justify-center rounded-lg px-1.5 py-0.5 text-[10px] font-bold">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         ) : null}

@@ -489,7 +489,7 @@ export default function FeedbackPage() {
                   exit={{ opacity: 0, y: -20 }}
                   className="flex flex-col items-center justify-center py-20 text-center"
                 >
-                  <div className="mb-6 rounded-full bg-emerald-100 p-4 text-emerald-800 shadow-[0_0_30px_rgba(16,185,129,0.14)] dark:bg-emerald-400/15 dark:text-emerald-300">
+                  <div className="mb-6 rounded-lg bg-emerald-100 p-4 text-emerald-800 shadow-[0_0_30px_rgba(16,185,129,0.14)] dark:bg-emerald-400/15 dark:text-emerald-300">
                     <CheckCircle2 size={48} />
                   </div>
                   <h2 className="text-foreground text-2xl font-bold">Thank You!</h2>
@@ -659,7 +659,7 @@ export default function FeedbackPage() {
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span
-                        className={`theme-chip feedback-status-chip rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${feedbackStatusColor(submission.status)}`}
+                        className={`theme-chip feedback-status-chip rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize ${feedbackStatusColor(submission.status)}`}
                       >
                         {submission.status.replaceAll("_", " ")}
                       </span>

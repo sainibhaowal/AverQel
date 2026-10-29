@@ -221,7 +221,7 @@ function InstalledCard({
           )}
         </div>
         <span
-          className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase ${statusTone}`}
+          className={`rounded-lg border px-3 py-1 text-xs font-semibold uppercase ${statusTone}`}
         >
           {server.status}
         </span>

@@ -92,7 +92,7 @@ function Badge({
     amber: "border-amber-400/25 bg-amber-400/10 text-amber-200",
   };
   return (
-    <span className={`rounded-full border px-2 py-1 text-[11px] ${tones[tone]}`}>{children}</span>
+    <span className={`rounded-lg border px-2 py-1 text-[11px] ${tones[tone]}`}>{children}</span>
   );
 }
 
@@ -197,7 +197,7 @@ export default function MCPMarketplaceCard({
             {preview.slice(0, 3).map((tool) => (
               <span
                 key={tool.name}
-                className="rounded-full border border-white/10 bg-black/10 px-2.5 py-1 text-xs text-white/65"
+                className="rounded-lg border border-white/10 bg-black/10 px-2.5 py-1 text-xs text-white/65"
               >
                 {tool.name}
               </span>

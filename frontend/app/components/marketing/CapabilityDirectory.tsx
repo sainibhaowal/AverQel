@@ -271,7 +271,7 @@ export default function CapabilityDirectory() {
                             >
                               <Icon size={18} />
                             </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.09] px-2.5 py-1 text-[9px] font-bold tracking-[0.12em] text-slate-400 uppercase">
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] px-2.5 py-1 text-[9px] font-bold tracking-[0.12em] text-slate-400 uppercase">
                               <ShieldCheck size={11} className="text-[#00ffa3]" />
                               {capability.status}
                             </span>

@@ -75,12 +75,12 @@ export default function MCPProviderDetails({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold text-white">{entry.name}</h1>
               {entry.official && !isCommunity && (
-                <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-200">
+                <span className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-200">
                   Official
                 </span>
               )}
               {entry.verified && (
-                <span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-200">
+                <span className="rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-200">
                   Verified
                 </span>
               )}
@@ -166,13 +166,13 @@ export default function MCPProviderDetails({
                       {(tool.risk_labels.length ? tool.risk_labels : ["read"]).map((risk) => (
                         <span
                           key={risk}
-                          className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-white/60"
+                          className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/60"
                         >
                           {riskLabel(risk)}
                         </span>
                       ))}
                       {tool.category && (
-                        <span className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-white/45">
+                        <span className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/45">
                           {tool.category}
                         </span>
                       )}

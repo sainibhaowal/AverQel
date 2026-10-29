@@ -70,7 +70,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
             <div className="mb-10 flex items-center justify-between">
               <div className="flex flex-col">
                 <h2 className="text-foreground flex items-center gap-3 text-2xl font-black tracking-tight">
-                  <div className="bg-primary h-8 w-1.5 rounded-full shadow-[0_0_15px_rgba(var(--primary),0.3)]" />
+                  <div className="bg-primary h-8 w-1.5 rounded-sm shadow-[0_0_15px_rgba(var(--primary),0.3)]" />
                   Documents Hub
                 </h2>
                 <p className="text-muted-foreground/60 border-primary/20 mt-1 ml-4 border-l-2 py-0.5 pl-3 text-[11px] font-black tracking-widest uppercase">
@@ -123,7 +123,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
                   <div className="mb-8 flex items-center justify-between">
                     <div>
                       <h3 className="flex items-center gap-2 text-xl font-extrabold tracking-tight">
-                        <div className="bg-primary h-6 w-1 rounded-full shadow-[0_0_10px_rgba(var(--primary),0.3)]" />
+                        <div className="bg-primary h-6 w-1 rounded-sm shadow-[0_0_10px_rgba(var(--primary),0.3)]" />
                         Supported Matrix
                       </h3>
                       <p className="text-foreground/80 mt-1 text-[10px] font-black tracking-widest uppercase">

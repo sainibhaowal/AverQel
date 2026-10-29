@@ -104,7 +104,7 @@ export default function BetaNoticeBanner() {
             writeNoticeState({ dismissedForever: true, lastShown: Date.now() });
             setVisible(false);
           }}
-          className="border-border/70 text-muted-foreground hover:text-foreground rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
+          className="border-border/70 text-muted-foreground hover:text-foreground rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors"
         >
           Don&apos;t show again
         </button>
@@ -115,7 +115,7 @@ export default function BetaNoticeBanner() {
             setVisible(false);
           }}
           aria-label="Dismiss beta notice"
-          className="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors"
+          className="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors"
         >
           <X size={15} />
         </button>

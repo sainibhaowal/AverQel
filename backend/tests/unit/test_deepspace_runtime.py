@@ -227,6 +227,7 @@ def test_runtime_store_bounds_retained_step_payload() -> None:
 def test_history_steps_include_multiple_runtime_attempts_for_one_assistant_message() -> None:
     first_run_id = uuid.uuid4()
     retry_run_id = uuid.uuid4()
+    assistant_message_id = uuid.uuid4()
     created_at = datetime(2026, 10, 10, tzinfo=UTC)
     steps = [
         SimpleNamespace(
@@ -259,8 +260,8 @@ def test_history_steps_include_multiple_runtime_attempts_for_one_assistant_messa
         def scalars(self) -> FakeResult:
             return self
 
-        def all(self) -> list[SimpleNamespace]:
-            return steps
+        def all(self) -> list[tuple[uuid.UUID, SimpleNamespace]]:
+            return [(assistant_message_id, step) for step in steps]
 
     class FakeSession:
         def execute(self, _statement: object) -> FakeResult:
@@ -270,7 +271,7 @@ def test_history_steps_include_multiple_runtime_attempts_for_one_assistant_messa
         tenant_id=uuid.uuid4(),
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
-        assistant_message_id=uuid.uuid4(),
+        assistant_message_id=assistant_message_id,
     )
 
     assert [item["output"] for item in result] == ["First attempt", "Retry attempt"]

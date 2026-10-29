@@ -33,9 +33,8 @@ describe("MCPConnectionPolicyPanel", () => {
 
   it("applies the master permission to all tools by clearing individual overrides", async () => {
     render(<MCPConnectionPolicyPanel serverId="server-1" policy={policy} />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Master tool permission" }), {
-      target: { value: "always_allow" },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Master tool permission" }));
+    fireEvent.click(screen.getByRole("option", { name: "always allow" }));
     fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
     await waitFor(() =>
       expect(updateMCPPolicy).toHaveBeenCalledWith(

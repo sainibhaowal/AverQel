@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import OpenAICodexLoginPanel from "@/app/components/providers/OpenAICodexLoginPanel";
 import AverQelLoading from "@/app/components/ui/AverQelLoading";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import {
   createProvider,
   listSupportedProviderTypes,
@@ -368,17 +369,14 @@ export default function QuickProviderSetup({ onConfigured, onOpenSettings, onBus
             {codexModels.length ? (
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-slate-200">Default Codex model</span>
-                <select
+                <RoundedSelect
+                  label="Default Codex model"
                   value={codexModelName}
-                  onChange={(event) => setCodexModelName(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm text-slate-100"
-                >
-                  {codexModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCodexModelName}
+                  options={codexModels.map((model) => ({ value: model.id, label: model.name }))}
+                  className="w-full"
+                  triggerClassName="h-10 w-full text-sm"
+                />
               </label>
             ) : null}
             <button
@@ -598,18 +596,18 @@ export default function QuickProviderSetup({ onConfigured, onOpenSettings, onBus
               {models.length ? (
                 <label className="min-w-[180px] flex-1 space-y-1.5">
                   <span className="text-xs font-medium text-slate-300">Default chat model</span>
-                  <select
+                  <RoundedSelect
+                    label="Default chat model"
                     value={modelName}
-                    onChange={(event) => setModelName(event.target.value)}
+                    onChange={setModelName}
+                    options={models.map((model) => ({
+                      value: model.model_name,
+                      label: model.display_name || model.model_name,
+                    }))}
                     disabled={localRuntimeUnavailable}
-                    className="h-10 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm text-slate-100"
-                  >
-                    {models.map((model) => (
-                      <option key={model.model_name} value={model.model_name}>
-                        {model.display_name || model.model_name}
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full"
+                    triggerClassName="h-10 w-full text-sm"
+                  />
                 </label>
               ) : null}
             </div>

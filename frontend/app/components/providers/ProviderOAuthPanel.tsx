@@ -43,7 +43,7 @@ export default function ProviderOAuthPanel({
           type="button"
           onClick={onConnect}
           disabled={!status?.available || connecting}
-          className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ExternalLink size={14} />
           {status?.connected ? "Reconnect" : "Connect OpenAI / Codex"}
@@ -52,14 +52,14 @@ export default function ProviderOAuthPanel({
           type="button"
           onClick={onDisconnect}
           disabled={!status?.connected || disconnecting}
-          className="text-foreground/72 hover:text-foreground inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/15 px-5 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          className="text-foreground/72 hover:text-foreground inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-5 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Link2Off size={14} />
           Disconnect
         </button>
       </div>
 
-      <div className="text-foreground/55 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/15 px-3 py-1 text-[11px] font-semibold tracking-[0.22em] uppercase">
+      <div className="text-foreground/55 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-3 py-1 text-[11px] font-semibold tracking-[0.22em] uppercase">
         <ShieldCheck size={12} />
         {status?.connected ? "Connected via official provider flow" : "No linked OpenAI account"}
       </div>

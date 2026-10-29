@@ -384,7 +384,7 @@ export default function PrivacySettingsPage() {
               type="button"
               onClick={() => void handleExport()}
               disabled={exporting}
-              className="border-primary/40 bg-primary/15 text-primary hover:border-primary/50 hover:bg-primary/20 inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-bold tracking-[0.18em] uppercase transition-all disabled:opacity-60"
+              className="border-primary/40 bg-primary/15 text-primary hover:border-primary/50 hover:bg-primary/20 inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-xs font-bold tracking-[0.18em] uppercase transition-all disabled:opacity-60"
             >
               {exporting ? "Exporting..." : "Export My Data"}
             </motion.button>
@@ -395,7 +395,7 @@ export default function PrivacySettingsPage() {
               type="button"
               onClick={() => setShowDeleteModal(true)}
               disabled={deleting}
-              className="rounded-full border border-red-500/40 bg-red-500/15 px-5 py-2.5 text-xs font-bold tracking-[0.18em] text-red-600 uppercase transition-all hover:border-red-500/50 hover:bg-red-500/20 disabled:opacity-60"
+              className="rounded-lg border border-red-500/40 bg-red-500/15 px-5 py-2.5 text-xs font-bold tracking-[0.18em] text-red-600 uppercase transition-all hover:border-red-500/50 hover:bg-red-500/20 disabled:opacity-60"
             >
               {deleting ? "Deleting..." : "Delete My Account"}
             </motion.button>
@@ -432,7 +432,7 @@ export default function PrivacySettingsPage() {
                         {item.resource_type} &middot; {formatDate(item.created_at)}
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-[10px] font-black tracking-[0.18em] text-emerald-700 uppercase">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-[10px] font-black tracking-[0.18em] text-emerald-700 uppercase">
                       <span className="settings-status-dot bg-emerald-500" />
                       {item.status}
                     </span>

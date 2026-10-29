@@ -25,12 +25,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchWithAuth, uploadWithAuthProgress } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import {
   libraryFileNeedsServerVisualPreview,
   LIBRARY_MAX_BROWSER_PREVIEW_BYTES,
 } from "./DeepSpaceLibraryFormats";
 
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import {
   deletePersistedUpload,
   getPersistedUpload,
@@ -161,6 +163,7 @@ export default function DeepSpaceLibraryDrawer({
   const [selected, setSelected] = useState<LibraryFile | null>(null);
   const [selectedFileTargetId, setSelectedFileTargetId] = useState<string | null>(null);
   const selectedFileIdRef = useRef<string | null>(null);
+  const [hasLoadedEntries, setHasLoadedEntries] = useState(false);
   const selectFileRef = useRef<(file: LibraryFile | string) => Promise<void>>(async () => {});
   const refreshRequestRef = useRef<{
     key: string;
@@ -294,6 +297,7 @@ export default function DeepSpaceLibraryDrawer({
       }
       const entries = (await response.json()) as { files: LibraryFile[]; folders: LibraryFolder[] };
       if (controller.signal.aborted || refreshRequestRef.current !== request) return;
+      setHasLoadedEntries(true);
       const nextFiles = entries.files ?? [];
       setFolders(entries.folders ?? []);
       setFiles(nextFiles);
@@ -338,11 +342,11 @@ export default function DeepSpaceLibraryDrawer({
     const onLibraryUpdated = (event: Event) => {
       const updatedConversationId = (event as CustomEvent<{ conversationId?: string }>).detail
         ?.conversationId;
-      if (updatedConversationId === conversationId) void refresh();
+      if (open && updatedConversationId === conversationId) void refresh();
     };
     window.addEventListener("deepspace-library-updated", onLibraryUpdated);
     return () => window.removeEventListener("deepspace-library-updated", onLibraryUpdated);
-  }, [conversationId, refresh]);
+  }, [conversationId, open, refresh]);
 
   useEffect(() => {
     if (open) queueMicrotask(() => void refresh());
@@ -1196,9 +1200,9 @@ export default function DeepSpaceLibraryDrawer({
   const fileList = (
     <motion.div
       key={currentFolderId ?? "library-root"}
-      initial={{ opacity: 0, x: 10 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.16, ease: "easeOut" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.12, ease: "easeOut" }}
       className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2 ${dragActive ? "bg-primary/[0.06]" : ""}`}
       onDragEnter={(event) => {
         event.preventDefault();
@@ -1372,7 +1376,7 @@ export default function DeepSpaceLibraryDrawer({
                   <span>Uploading {uploadItems.length} file(s)</span>
                   <span>{percent}%</span>
                 </div>
-                <div className="bg-surface-0 h-1.5 overflow-hidden rounded-full">
+                <div className="bg-surface-0 h-1.5 overflow-hidden rounded-sm">
                   <div
                     className="bg-primary h-full transition-[width]"
                     style={{ width: `${percent}%` }}
@@ -1423,12 +1427,12 @@ export default function DeepSpaceLibraryDrawer({
             );
           })()
         : null}
-      {loading && !files.length ? (
+      {loading && !files.length && !hasLoadedEntries ? (
         <div className="flex justify-center p-5">
-          <Loader2 size={16} className="text-primary animate-spin" />
+          <AverQelLoading label="Loading DeepSpace Library…" size="compact" />
         </div>
       ) : null}
-      {files.length === 0 && !loading ? (
+      {files.length === 0 && (!loading || hasLoadedEntries) ? (
         <p className="text-foreground/45 px-2 py-4 text-center text-[11px] leading-5">
           Import a file, save a named copy from the note editor, or ask DeepSpace to create a named
           file.
@@ -1780,11 +1784,11 @@ export default function DeepSpaceLibraryDrawer({
             </button>
           ) : null}
           {selected ? (
-            <select
-              aria-label="Export file format"
+            <RoundedSelect
+              label="Export file format"
               defaultValue="original"
-              onChange={(event) => {
-                const format = event.target.value as
+              onChange={(selectedFormat) => {
+                const format = selectedFormat as
                   | "original"
                   | "txt"
                   | "md"
@@ -1794,16 +1798,17 @@ export default function DeepSpaceLibraryDrawer({
                   | "xlsx";
                 if (format !== "original") void exportFile(selected, format);
               }}
-              className="border-glass-border bg-surface-2 text-foreground/70 rounded-lg border px-1.5 py-1 text-[10px]"
-            >
-              <option value="original">Export…</option>
-              <option value="pdf">PDF</option>
-              <option value="docx">DOCX</option>
-              <option value="pptx">PPTX</option>
-              <option value="md">Markdown</option>
-              <option value="txt">Text</option>
-              <option value="xlsx">XLSX</option>
-            </select>
+              options={[
+                { value: "original", label: "Export…" },
+                { value: "pdf", label: "PDF" },
+                { value: "docx", label: "DOCX" },
+                { value: "pptx", label: "PPTX" },
+                { value: "md", label: "Markdown" },
+                { value: "txt", label: "Text" },
+                { value: "xlsx", label: "XLSX" },
+              ]}
+              triggerClassName="px-1.5 py-1 text-[10px]"
+            />
           ) : null}
           {selected &&
           (!selected.is_binary ||

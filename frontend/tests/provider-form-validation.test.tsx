@@ -258,7 +258,7 @@ describe("provider form validation", () => {
     );
   });
 
-  it("explains that a reachable Cline catalog does not verify chat access", async () => {
+  it("keeps provider action colors readable and explains Cline chat verification", async () => {
     const provider: ProviderConfig = {
       id: "cline-provider",
       tenant_id: "tenant",
@@ -314,6 +314,19 @@ describe("provider form validation", () => {
       await Promise.resolve();
     });
 
+    expect(screen.getByRole("button", { name: /terminate/i })).toHaveClass(
+      "text-danger",
+      "dark:text-amber-400/80",
+    );
+    expect(screen.getByRole("button", { name: /update connectivity/i })).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground",
+      "dark:bg-gradient-to-r",
+      "dark:text-white",
+    );
+    expect(screen.getByRole("button", { name: /update connectivity/i })).not.toHaveClass(
+      "text-white",
+    );
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("Catalog reachable; chat access not verified.")).toBeInTheDocument();
   });

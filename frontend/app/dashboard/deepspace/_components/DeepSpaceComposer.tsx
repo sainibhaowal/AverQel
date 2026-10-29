@@ -23,8 +23,6 @@ import {
   RotateCw,
   FolderOpen,
   Pencil,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchWithAuth } from "@/lib/api";
@@ -369,6 +367,7 @@ export default function DeepSpaceComposer({
     }>
   >([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [hoveredVoiceControl, setHoveredVoiceControl] = useState<"stt" | "tts" | null>(null);
 
   const showAttachmentTooltip = (
     kind: AttachmentTooltipKind,
@@ -1378,7 +1377,7 @@ export default function DeepSpaceComposer({
               </span>
             </div>
             <div
-              className="deepspace-context-progress mt-1 h-1 w-full overflow-hidden rounded-full bg-cyan-950/15 ring-1 ring-cyan-900/15 dark:bg-cyan-950/15"
+              className="deepspace-context-progress mt-1 h-1 w-full overflow-hidden rounded-sm bg-cyan-950/15 ring-1 ring-cyan-900/15 dark:bg-cyan-950/15"
               role="progressbar"
               aria-label="Estimated provider context usage"
               aria-valuemin={0}
@@ -1391,7 +1390,7 @@ export default function DeepSpaceComposer({
               }
             >
               <div
-                className="deepspace-context-progress-fill h-full rounded-full bg-linear-to-r from-cyan-400 via-teal-400 to-emerald-400 transition-[width] duration-300 ease-out"
+                className="deepspace-context-progress-fill h-full rounded-sm bg-linear-to-r from-cyan-400 via-teal-400 to-emerald-400 transition-[width] duration-300 ease-out"
                 style={{ width: `${contextRatio * 100}%` }}
               />
             </div>
@@ -1415,7 +1414,7 @@ export default function DeepSpaceComposer({
                     <button
                       type="button"
                       onClick={() => setContextDialogOpen(false)}
-                      className="deepspace-diagnostics-close text-muted-foreground hover:text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors"
+                      className="deepspace-diagnostics-close text-muted-foreground hover:text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors"
                       aria-label="Close context details"
                     >
                       ×
@@ -1823,15 +1822,16 @@ export default function DeepSpaceComposer({
               >
                 {/* Dictation stays in the composer for review before sending. */}
                 <div className="group relative">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={dictationSessionOpen && sttActive ? onDictationPause : onSttToggle}
+                    onMouseEnter={() => setHoveredVoiceControl("stt")}
+                    onMouseLeave={() => setHoveredVoiceControl((current) => (current === "stt" ? null : current))}
                     disabled={dictationControlPending}
-                    className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
-                      sttActive
-                        ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
-                        : "border border-transparent text-white/40 hover:text-white/80"
-                    }`}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                    className="relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] focus:outline-none"
                     aria-label={
                       dictationSessionOpen
                         ? sttActive
@@ -1841,15 +1841,49 @@ export default function DeepSpaceComposer({
                     }
                     aria-pressed={sttActive}
                   >
-                    {sttActive ? (
-                      <Mic
-                        size={13}
-                        className={voiceState === "listening" ? "animate-pulse" : ""}
+                    {/* Active Mode Slider Switch Pill */}
+                    {sttActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-active-pill"
+                        className="absolute inset-0 rounded-[0.35rem] border border-emerald-500/40 bg-emerald-500/25 shadow-[0_2px_10px_rgba(16,185,129,0.35)]"
+                        transition={{ type: "spring", stiffness: 420, damping: 28 }}
                       />
-                    ) : (
-                      <MicOff size={13} />
                     )}
-                  </button>
+
+                    {/* Hover Slider Pill */}
+                    {hoveredVoiceControl === "stt" && !sttActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-hover-pill"
+                        className="pointer-events-none absolute inset-0 rounded-[0.35rem] border border-white/10 bg-white/[0.08]"
+                        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Interactive Voice-to-Text Microphone Icon */}
+                    <div className="relative z-10 flex items-center justify-center">
+                      {sttActive ? (
+                        <motion.div
+                          animate={voiceState === "listening" ? { scale: [1, 1.14, 1] } : {}}
+                          transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+                          className="relative flex items-center justify-center text-emerald-300"
+                        >
+                          <Mic size={13} className="drop-shadow-[0_0_6px_rgba(52,211,153,0.75)]" />
+                          {voiceState === "listening" && (
+                            <motion.span
+                              className="absolute -inset-1 rounded-full border border-emerald-400/50"
+                              animate={{ scale: [1, 1.5], opacity: [0.75, 0] }}
+                              transition={{ repeat: Infinity, duration: 1.1, ease: "easeOut" }}
+                            />
+                          )}
+                        </motion.div>
+                      ) : (
+                        <MicOff
+                          size={13}
+                          className="text-white/45 transition-colors duration-200 group-hover:text-white/90"
+                        />
+                      )}
+                    </div>
+                  </motion.button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                       {dictationSessionOpen
@@ -1863,26 +1897,95 @@ export default function DeepSpaceComposer({
 
                 {/* Voice conversation uses the active DeepSpace chat for both directions. */}
                 <div className="group relative">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={onTtsToggle}
-                    className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
-                      ttsActive
-                        ? "bg-primary/20 text-primary border-primary/35 border shadow-[0_2px_8px_rgba(var(--primary),0.3)]"
-                        : "border border-transparent text-white/40 hover:text-white/80"
-                    }`}
+                    onMouseEnter={() => setHoveredVoiceControl("tts")}
+                    onMouseLeave={() => setHoveredVoiceControl((current) => (current === "tts" ? null : current))}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                    className="relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] focus:outline-none"
                     aria-label="Voice conversation"
                     aria-pressed={ttsActive}
                   >
-                    {ttsActive ? (
-                      <Volume2
-                        size={13}
-                        className={voiceState === "speaking" ? "animate-bounce" : ""}
+                    {/* Active Mode Slider Switch Pill */}
+                    {ttsActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-active-pill"
+                        className="absolute inset-0 rounded-[0.35rem] border border-cyan-500/40 bg-cyan-500/25 shadow-[0_2px_10px_rgba(6,182,212,0.35)]"
+                        transition={{ type: "spring", stiffness: 420, damping: 28 }}
                       />
-                    ) : (
-                      <VolumeX size={13} />
                     )}
-                  </button>
+
+                    {/* Hover Slider Pill */}
+                    {hoveredVoiceControl === "tts" && !ttsActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-hover-pill"
+                        className="pointer-events-none absolute inset-0 rounded-[0.35rem] border border-white/10 bg-white/[0.08]"
+                        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Interactive Voice Agent Icon (Side-by-side companion + conversational sound waves) */}
+                    <div className="relative z-10 flex items-center justify-center">
+                      {ttsActive ? (
+                        <motion.svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-3.5 w-3.5 text-cyan-300 drop-shadow-[0_0_6px_rgba(34,211,238,0.75)]"
+                        >
+                          {/* Companion Persona */}
+                          <circle cx="8" cy="8.5" r="3.5" />
+                          <path d="M2.5 19.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5" />
+                          {/* Conversational Voice Sound Waves */}
+                          <motion.path
+                            d="M15.5 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5"
+                            animate={
+                              voiceState === "speaking"
+                                ? { opacity: [0.35, 1, 0.35], scale: [0.95, 1.12, 0.95] }
+                                : hoveredVoiceControl === "tts"
+                                  ? { opacity: [0.5, 1, 0.5], x: [0, 0.5, 0] }
+                                  : { opacity: 0.9 }
+                            }
+                            transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut" }}
+                          />
+                          <motion.path
+                            d="M18.8 6c2.2 1.8 3.2 4 3.2 6s-1 4.2-3.2 6"
+                            animate={
+                              voiceState === "speaking"
+                                ? { opacity: [0.2, 1, 0.2], scale: [0.9, 1.18, 0.9] }
+                                : hoveredVoiceControl === "tts"
+                                  ? { opacity: [0.4, 0.9, 0.4], x: [0, 1, 0] }
+                                  : { opacity: 0.7 }
+                            }
+                            transition={{ repeat: Infinity, duration: 0.8, delay: 0.15, ease: "easeInOut" }}
+                          />
+                        </motion.svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-3.5 w-3.5 text-white/45 transition-colors duration-200 group-hover:text-white/90"
+                        >
+                          {/* Dormant Companion Persona */}
+                          <circle cx="8" cy="8.5" r="3.5" />
+                          <path d="M2.5 19.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5" />
+                          {/* Dormant Speech Waves */}
+                          <path d="M15.5 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5" opacity="0.6" />
+                          <path d="M18.8 6c2.2 1.8 3.2 4 3.2 6s-1 4.2-3.2 6" opacity="0.35" />
+                        </svg>
+                      )}
+                    </div>
+                  </motion.button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                       Voice conversation
@@ -2087,102 +2190,124 @@ export default function DeepSpaceComposer({
             document.body,
           )
         : null}
-      {attachmentPreview ? (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${attachmentPreview.name}`}
-          onClick={() => setAttachmentPreview(null)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950"
-            onClick={(event) => event.stopPropagation()}
+      <AnimatePresence initial={false}>
+        {attachmentPreview ? (
+          <motion.div
+            key="attachment-preview-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Preview ${attachmentPreview.name}`}
+            onClick={() => setAttachmentPreview(null)}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold">{attachmentPreview.name}</p>
-                <p className="text-xs text-emerald-700">
-                  Shared from this composer ·{" "}
-                  {attachmentPreview.status === "ready"
-                    ? "saved to Library"
-                    : attachmentPreview.status}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAttachmentPreview(null)}
-                aria-label="Close preview"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            {attachmentPreview.previewUrl ? (
-              <img
-                src={attachmentPreview.previewUrl}
-                alt={attachmentPreview.name}
-                className="max-h-[65vh] w-full rounded-xl object-contain"
-              />
-            ) : (
-              <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900">
-                <FileText size={34} />
-                <span className="mt-2 text-sm">Secure Library file preview</span>
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
+              className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{attachmentPreview.name}</p>
+                  <p className="text-xs text-emerald-700">
+                    Shared from this composer ·{" "}
+                    {attachmentPreview.status === "ready"
+                      ? "saved to Library"
+                      : attachmentPreview.status}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent("deepspace-library-open", {
-                        detail: { fileId: attachmentPreview.id },
-                      }),
-                    );
-                    setAttachmentPreview(null);
-                  }}
-                  className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold"
+                  onClick={() => setAttachmentPreview(null)}
+                  aria-label="Close preview"
                 >
-                  Open in Library
+                  <X size={18} />
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-      {libraryPickerOpen ? (
-        <div
-          className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
-          onClick={() => setLibraryPickerOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Attach from Library</h2>
-              <button type="button" onClick={() => setLibraryPickerOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="max-h-80 space-y-1 overflow-auto">
-              {libraryFiles.length ? (
-                libraryFiles.map((file) => (
-                  <button
-                    key={file.id}
-                    type="button"
-                    onClick={() => attachLibraryFile(file)}
-                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                  >
-                    <FileText size={16} className="text-emerald-600" />
-                    <span className="truncate">{file.name}</span>
-                  </button>
-                ))
+              {attachmentPreview.previewUrl ? (
+                <img
+                  src={attachmentPreview.previewUrl}
+                  alt={attachmentPreview.name}
+                  className="max-h-[65vh] w-full rounded-xl object-contain"
+                />
               ) : (
-                <p className="text-muted-foreground p-3 text-sm">
-                  No files in this Library folder yet.
-                </p>
+                <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900">
+                  <FileText size={34} />
+                  <span className="mt-2 text-sm">Secure Library file preview</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(
+                        new CustomEvent("deepspace-library-open", {
+                          detail: { fileId: attachmentPreview.id },
+                        }),
+                      );
+                      setAttachmentPreview(null);
+                    }}
+                    className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold"
+                  >
+                    Open in Library
+                  </button>
+                </div>
               )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {libraryPickerOpen ? (
+          <motion.div
+            key="library-picker-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+            className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4"
+            onClick={() => setLibraryPickerOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.12, ease: "easeOut" }}
+              className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-semibold">Attach from Library</h2>
+                <button type="button" onClick={() => setLibraryPickerOpen(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="max-h-80 space-y-1 overflow-auto">
+                {libraryFiles.length ? (
+                  libraryFiles.map((file) => (
+                    <button
+                      key={file.id}
+                      type="button"
+                      onClick={() => attachLibraryFile(file)}
+                      className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    >
+                      <FileText size={16} className="text-emerald-600" />
+                      <span className="truncate">{file.name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground p-3 text-sm">
+                    No files in this Library folder yet.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

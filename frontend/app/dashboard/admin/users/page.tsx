@@ -261,7 +261,7 @@ export default function AdminUsersPage() {
         backHref="/dashboard"
         backLabel="Back To Dashboard"
         actions={
-          <div className="theme-chip rounded-full px-4 py-2 text-xs font-semibold tracking-[0.18em] uppercase">
+          <div className="theme-chip rounded-lg px-4 py-2 text-xs font-semibold tracking-[0.18em] uppercase">
             Admin Console
           </div>
         }
@@ -277,7 +277,7 @@ export default function AdminUsersPage() {
               <button
                 type="button"
                 onClick={() => void loadUsers()}
-                className="theme-chip rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] uppercase"
+                className="theme-chip rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] uppercase"
               >
                 Refresh
               </button>
@@ -321,7 +321,7 @@ export default function AdminUsersPage() {
                           </p>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-[10px] font-bold tracking-[0.16em] uppercase ${
+                          className={`rounded-lg px-2.5 py-1 text-[10px] font-bold tracking-[0.16em] uppercase ${
                             user.is_active
                               ? "bg-success/10 text-success"
                               : "bg-danger/10 text-danger"
@@ -378,12 +378,12 @@ export default function AdminUsersPage() {
                       {selectedUser.roles.map((role) => (
                         <span
                           key={role}
-                          className="theme-chip rounded-full px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase"
+                          className="theme-chip rounded-lg px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase"
                         >
                           {getRoleLabel(role)}
                         </span>
                       ))}
-                      <span className="theme-chip rounded-full px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase">
+                      <span className="theme-chip rounded-lg px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase">
                         {selectedUser.totp_enabled ? "2FA enabled" : "2FA disabled"}
                       </span>
                     </div>

@@ -22,27 +22,27 @@ export default function ProvidersErrorPage({
         title="Providers"
         subtitle="Runtime Control Plane"
         icon={Cable}
-        accentClassName="bg-cyan-400 text-cyan-300"
-        accentGlowClassName="shadow-[0_0_18px_rgba(34,211,238,0.3)]"
+        accentClassName="bg-primary text-primary"
+        accentGlowClassName="shadow-[0_0_18px_hsl(var(--primary)/0.28)]"
         backHref="/dashboard/settings"
         backLabel="Back"
       />
 
       <div className="settings-section p-6">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-400/10 text-amber-300">
+        <div className="border-warning/25 bg-warning/10 text-warning mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border">
           <AlertTriangle size={20} />
         </div>
         <h2 className="text-foreground text-xl font-semibold tracking-tight">
           Providers failed to render
         </h2>
-        <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
+        <p className="text-foreground/80 mt-2 max-w-2xl text-sm leading-6">
           The providers control plane hit a client-side rendering error. Retry the route without
           refreshing the whole app first.
         </p>
         <button
           type="button"
           onClick={() => reset()}
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-900/20 transition-shadow hover:shadow-cyan-800/30"
+          className="bg-primary text-primary-foreground shadow-primary/20 mt-5 inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-lg transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
         >
           <RefreshCw size={14} />
           Retry Providers

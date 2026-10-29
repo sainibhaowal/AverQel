@@ -43,6 +43,49 @@ describe("deepSpaceThreadReducer tool streaming", () => {
     expect(started.messages[0]?.status).toBe("streaming");
   });
 
+  it("deduplicates post-stream history by durable ID when request metadata is absent", () => {
+    const conversationId = "conv-history-without-request-id";
+    const initial = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId,
+      messages: [],
+    });
+    const submitted = deepSpaceThreadReducer(initial, {
+      type: "submit_query",
+      query: "Compare these production needs",
+      clientRequestId: "request-history-without-id",
+    });
+    const started = deepSpaceThreadReducer(submitted, {
+      type: "stream_event",
+      event: {
+        event: "start",
+        data: {
+          conversation_id: conversationId,
+          message_id: "assistant-durable-id",
+        },
+      },
+    });
+    const reloaded = deepSpaceThreadReducer(started, {
+      type: "load_history",
+      conversationId,
+      messages: [
+        {
+          id: "assistant-durable-id",
+          role: "assistant",
+          content: "Saved response",
+          created_at: new Date().toISOString(),
+          metadata_json: {},
+        },
+      ],
+    });
+
+    expect(reloaded.messages.filter((message) => message.role === "assistant")).toHaveLength(1);
+    expect(reloaded.messages.find((message) => message.role === "assistant")?.content).toBe(
+      "Saved response",
+    );
+    expect(reloaded.messages.filter((message) => message.role === "user")).toHaveLength(1);
+  });
+
   it("keeps a durable streaming turn active while history reconnects", () => {
     const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",

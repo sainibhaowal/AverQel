@@ -284,7 +284,7 @@ export default function PlatformSurfaces() {
                           delay: bulletIndex * 0.02,
                         }}
                       >
-                        <span className="pointer-events-none absolute inset-y-0 left-0 w-[3px] scale-y-0 rounded-full bg-current opacity-70 transition-transform duration-300 group-hover:scale-y-100" />
+                        <span className="pointer-events-none absolute inset-y-0 left-0 w-[3px] scale-y-0 rounded-lg bg-current opacity-70 transition-transform duration-300 group-hover:scale-y-100" />
                         <CheckCircle2
                           size={14}
                           className={`mt-0.5 shrink-0 ${accent.text} transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_currentColor]`}
@@ -318,7 +318,7 @@ export default function PlatformSurfaces() {
                 return (
                   <div
                     key={item.text}
-                    className="bg-surface-0 border-glass-border text-muted-foreground flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold shadow-sm"
+                    className="bg-surface-0 border-glass-border text-muted-foreground flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold shadow-sm"
                   >
                     <Icon size={13} className="text-primary" />
                     {item.text}

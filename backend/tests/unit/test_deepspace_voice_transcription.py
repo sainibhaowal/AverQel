@@ -339,8 +339,144 @@ async def test_voice_mode_acknowledgement_echoes_mode_and_request_id():
         "stt": True,
         "tts": False,
         "request_id": "mode-request-7",
+        "ready": True,
     }
     assert options == {"reliable": True, "topic": "voice-control"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fails,superseded", [(False, False), (True, False), (False, True)])
+async def test_mode_waits_for_model_and_reports_readiness(monkeypatch, fails, superseded):
+    import json
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def load_model():
+        started.set()
+        release.wait(2)
+        if fails:
+            raise RuntimeError("model unavailable")
+        return object()
+
+    class Participant:
+        def __init__(self):
+            self.messages = []
+
+        async def publish_data(self, payload, **_options):
+            self.messages.append(json.loads(payload))
+
+        async def publish_track(self, _track):
+            pass
+
+    class Room(FakeRoom):
+        def __init__(self):
+            super().__init__("mode-readiness-test")
+            self.local_participant = Participant()
+            self.remote_participants = {}
+            self.handlers = {}
+
+        def on(self, event):
+            def register(handler):
+                self.handlers[event] = handler
+                return handler
+
+            return register
+
+    room = Room()
+
+    class Context:
+        def add_shutdown_callback(self, callback):
+            self.cleanup = callback
+
+        async def connect(self):
+            payload = json.dumps(
+                {"type": "set-mode", "stt": True, "tts": False, "request_id": "request"}
+            ).encode()
+            room.handlers["data_received"](SimpleNamespace(data=payload))
+
+    ctx = Context()
+    ctx.room = room
+    monkeypatch.setattr(voice_agent, "get_stt", load_model)
+    monkeypatch.setattr(voice_agent.silero.VAD, "load", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        voice_agent.rtc, "AudioSource", lambda *_args: SimpleNamespace(clear_queue=lambda: None)
+    )
+    monkeypatch.setattr(
+        voice_agent.rtc.LocalAudioTrack, "create_audio_track", lambda *_args: object()
+    )
+    await voice_agent.entrypoint(ctx)
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert room.local_participant.messages == []
+        if superseded:
+            payload = json.dumps(
+                {"type": "set-mode", "stt": False, "tts": False, "request_id": "new"}
+            ).encode()
+            room.handlers["data_received"](SimpleNamespace(data=payload))
+            for _ in range(100):
+                if room.local_participant.messages:
+                    break
+                await asyncio.sleep(0.01)
+        release.set()
+        for _ in range(100):
+            if room.local_participant.messages:
+                break
+            await asyncio.sleep(0.01)
+        assert room.local_participant.messages[0]["ready"] is not fails
+        if superseded:
+            await asyncio.sleep(0.05)
+            assert room.local_participant.messages[0]["request_id"] == "new"
+            assert len(room.local_participant.messages) == 1
+            assert voice_agent.session_stt[room.name] is False
+        else:
+            assert voice_agent.session_stt[room.name] is not fails
+    finally:
+        release.set()
+        await ctx.cleanup()
+
+
+def test_prewarm_does_not_load_speech_models(monkeypatch):
+    def forbidden():
+        raise AssertionError("model loading blocks worker initialization")
+
+    monkeypatch.setattr(voice_agent, "get_stt", forbidden)
+    monkeypatch.setattr(voice_agent, "get_tts", forbidden)
+    voice_agent.prewarm(SimpleNamespace(pid=123))
+
+
+@pytest.mark.asyncio
+async def test_tts_generation_does_not_block_event_loop_and_can_be_interrupted(monkeypatch):
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class Model:
+        def get_state_for_audio_prompt(self, _voice):
+            return object()
+
+        def generate_audio_stream(self, _state, _text):
+            started.set()
+            release.wait(2)
+            yield np.ones(960, dtype=np.float32)
+
+    class Source:
+        async def capture_frame(self, _frame):
+            raise AssertionError("interrupted speech must not play")
+
+    room = FakeRoom("tts-interruption-test")
+    monkeypatch.setattr(voice_agent, "get_tts", lambda: Model())
+    monkeypatch.setattr(voice_agent, "broadcast_state", _ignore_state)
+    task = asyncio.create_task(voice_agent.synthesize_and_speak("hello", Source(), room))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 0.5)
+    finally:
+        release.set()
 
 
 async def _return_transcript(*_args, **_kwargs):

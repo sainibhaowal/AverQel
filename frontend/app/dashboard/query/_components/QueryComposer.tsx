@@ -502,9 +502,9 @@ export default function QueryComposer({
         {contextLimit && contextLimit > 0 ? (
           <div className="mt-1 flex items-center gap-2 px-2 text-[9px] text-white/50">
             <span className="shrink-0 tracking-[0.14em] uppercase">Context</span>
-            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-white/10">
               <div
-                className={`h-full rounded-full transition-[width] duration-200 ${
+                className={`h-full rounded-sm transition-[width] duration-200 ${
                   (contextUsedTokens ?? 0) / contextLimit > 0.9
                     ? "bg-red-400"
                     : (contextUsedTokens ?? 0) / contextLimit > 0.7
@@ -574,7 +574,7 @@ export default function QueryComposer({
                     transition={{ duration: 0.16, ease: "easeOut" }}
                     className="border-glass-border bg-surface-0/95 absolute bottom-full left-0 z-50 mb-2 flex max-h-[min(26rem,70vh)] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur-xl"
                   >
-                    <label className="border-glass-border flex shrink-0 items-center gap-2 border-b px-3 py-2">
+                    <label className="border-glass-border focus-within:border-primary/50 flex shrink-0 items-center gap-2 border-b px-3 py-2">
                       <Search size={14} className="text-foreground/45 shrink-0" />
                       <input
                         ref={modelSearchRef}
@@ -589,7 +589,7 @@ export default function QueryComposer({
                             modelTriggerRef.current?.focus();
                           }
                         }}
-                        className="text-foreground placeholder:text-foreground/40 min-w-0 flex-1 !rounded-none !border-0 !bg-transparent p-0 text-xs !shadow-none outline-none focus:!border-0 focus:!ring-0"
+                        className="search-shell-input text-foreground placeholder:text-foreground/40 min-w-0 flex-1 p-0 text-xs"
                       />
                       {modelSearch ? (
                         <button
@@ -782,11 +782,22 @@ export default function QueryComposer({
                     ? "Add query to queue"
                     : "Send grounded query"
               }
-              className="border-primary/40 from-primary to-primary/80 text-primary-foreground disabled:bg-muted disabled:text-muted-foreground relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br shadow-lg transition-all hover:scale-105 hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:border-transparent disabled:shadow-none"
+              className="border-primary bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground hover:bg-primary/90 dark:border-primary/40 dark:from-primary dark:to-primary/80 relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border shadow-lg transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:border-transparent disabled:shadow-none dark:bg-gradient-to-br dark:hover:bg-gradient-to-br dark:hover:brightness-110"
               whileHover={canSubmit ? { scale: 1.05 } : {}}
               whileTap={canSubmit ? { scale: 0.95 } : {}}
             >
-              {requestActive ? <ListPlus size={17} /> : <ArrowUp size={18} strokeWidth={2.5} />}
+              {requestActive ? (
+                <ListPlus
+                  className={canSubmit ? "!text-primary-foreground" : "!text-muted-foreground"}
+                  size={17}
+                />
+              ) : (
+                <ArrowUp
+                  className={canSubmit ? "!text-primary-foreground" : "!text-muted-foreground"}
+                  size={18}
+                  strokeWidth={2.5}
+                />
+              )}
             </motion.button>
           </div>
           <AnimatePresence>
@@ -799,7 +810,7 @@ export default function QueryComposer({
                 role="dialog"
                 aria-label="Choose Documents Hub files"
               >
-                <div className="border-glass-border flex items-center gap-2 border-b p-2.5">
+                <div className="border-glass-border focus-within:border-primary/50 flex items-center gap-2 border-b p-2.5">
                   <Search size={15} className="text-foreground/45 shrink-0" />
                   <input
                     autoFocus
@@ -811,7 +822,7 @@ export default function QueryComposer({
                     }}
                     placeholder="Search indexed Documents Hub files"
                     aria-label="Search Documents Hub files"
-                    className="text-foreground placeholder:text-foreground/40 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    className="search-shell-input text-foreground placeholder:text-foreground/40 min-w-0 flex-1 text-sm"
                   />
                   <button
                     type="button"

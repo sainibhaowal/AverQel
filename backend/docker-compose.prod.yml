@@ -122,7 +122,7 @@ services:
       AKS_ENV: ${AKS_ENV:-production}
       AKS_API_WORKERS: ${AKS_API_WORKERS:-2}
       AKS_API_LIMIT_CONCURRENCY: ${AKS_API_LIMIT_CONCURRENCY:-200}
-      AKS_API_KEEP_ALIVE_SECONDS: ${AKS_API_KEEP_ALIVE_SECONDS:-5}
+      AKS_API_KEEP_ALIVE_SECONDS: ${AKS_API_KEEP_ALIVE_SECONDS:-30}
       AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
       AKS_REDIS_URL: redis://:${AVERQEL_REDIS_PASSWORD}@redis:6379/0
       AKS_MINIO_ENDPOINT: minio:9000
@@ -172,7 +172,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-      start_period: 30s
+      start_period: 120s
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

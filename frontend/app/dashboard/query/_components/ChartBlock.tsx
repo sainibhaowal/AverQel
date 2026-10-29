@@ -15,6 +15,7 @@ import {
   ScatterChart as ScatterChartIcon,
   ShieldCheck,
 } from "lucide-react";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 import type {
   StreamChartBlock,
@@ -321,11 +322,11 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
                   <h4 className="visual-chart-title text-foreground m-0 text-[15px] leading-5 font-semibold tracking-[-0.015em]">
                     {chartTitle}
                   </h4>
-                  <span className="theme-accent-pill rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase">
+                  <span className="theme-accent-pill rounded-lg px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase">
                     {block.chart_type}
                   </span>
                   {block.is_streaming ? (
-                    <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] text-amber-700 uppercase dark:text-amber-200">
+                    <span className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] text-amber-700 uppercase dark:text-amber-200">
                       live
                     </span>
                   ) : null}
@@ -502,23 +503,24 @@ const ChartBlock = memo(function ChartBlock({ block, onChange, onSaveArtifact }:
                         }
                         className="border-glass-border bg-background/70 text-foreground min-w-0 rounded-lg border px-2.5 py-2 text-xs outline-none"
                       />
-                      <select
-                        aria-label={`Series ${groupIndex + 1} axis`}
+                      <RoundedSelect
+                        label={`Series ${groupIndex + 1} axis`}
                         value={group.axis ?? "left"}
-                        onChange={(event) =>
+                        onChange={(axis) =>
                           setDraftGroups((current) =>
                             current.map((item, index) =>
                               index === groupIndex
-                                ? { ...item, axis: event.target.value as "left" | "right" }
+                                ? { ...item, axis: axis as "left" | "right" }
                                 : item,
                             ),
                           )
                         }
-                        className="border-glass-border bg-background/70 text-foreground rounded-lg border px-2.5 py-2 text-xs outline-none"
-                      >
-                        <option value="left">Left axis</option>
-                        <option value="right">Right axis</option>
-                      </select>
+                        options={[
+                          { value: "left", label: "Left axis" },
+                          { value: "right", label: "Right axis" },
+                        ]}
+                        triggerClassName="min-w-0 px-2.5 py-2 text-xs"
+                      />
                       <input
                         aria-label={`Series ${groupIndex + 1} color`}
                         type="text"

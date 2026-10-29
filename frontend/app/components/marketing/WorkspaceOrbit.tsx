@@ -69,7 +69,7 @@ export default function WorkspaceOrbit() {
             </div>
             <Link
               href="#secure-collaboration"
-              className="mt-9 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/[0.08] px-5 py-3 text-sm font-bold text-cyan-100 transition-all hover:border-cyan-200/60 hover:bg-cyan-300/[0.14]"
+              className="mt-9 inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.08] px-5 py-3 text-sm font-bold text-cyan-100 transition-all hover:border-cyan-200/60 hover:bg-cyan-300/[0.14]"
             >
               See secure collaboration <ArrowRight size={16} />
             </Link>

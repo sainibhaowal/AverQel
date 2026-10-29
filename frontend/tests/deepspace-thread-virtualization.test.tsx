@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import DeepSpaceThread from "../app/dashboard/deepspace/_components/DeepSpaceThread";
 
@@ -128,7 +128,7 @@ describe("DeepSpaceThread virtualization", () => {
     expect(screen.queryByText(/^Message 1$/)).not.toBeInTheDocument();
   });
 
-  it("keeps the complete thread in a stable layout while an answer streams", () => {
+  it("bounds a long streaming thread and reveals older messages on demand", () => {
     const messages = Array.from({ length: 80 }, (_, index) => ({
       id: `stream-msg-${index + 1}`,
       role: "assistant" as const,
@@ -148,11 +148,18 @@ describe("DeepSpaceThread virtualization", () => {
       />,
     );
 
-    expect(screen.getByText(/^Message 1$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Message 1$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Message 31$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^Message 67$/)).toBeInTheDocument();
     expect(screen.getByText(/^Message 80$/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show older messages" }));
+
+    expect(screen.getByText(/^Message 47$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Message 46$/)).not.toBeInTheDocument();
   });
 
-  it("keeps agent timelines in the normal flow while scrolling", () => {
+  it("keeps agent timelines bounded while scrolling and exposes older batches", () => {
     const messages = Array.from({ length: 80 }, (_, index) => ({
       id: `agent-msg-${index + 1}`,
       role: "assistant" as const,
@@ -181,8 +188,43 @@ describe("DeepSpaceThread virtualization", () => {
       />,
     );
 
-    expect(screen.getByText(/^Agent message 1$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Agent message 1$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Agent message 31$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^Agent message 67$/)).toBeInTheDocument();
     expect(screen.getByText(/^Agent message 80$/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show older messages" }));
+
+    expect(screen.getByText(/^Agent message 47$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Agent message 46$/)).not.toBeInTheDocument();
+  });
+
+  it("loads the next server page after the visible page has been revealed", async () => {
+    const onLoadOlderMessages = vi.fn(async () => 2);
+    const messages = Array.from({ length: 3 }, (_, index) => ({
+      id: `page-msg-${index + 1}`,
+      role: "assistant" as const,
+      content: `Page message ${index + 1}`,
+      rawContent: `Page message ${index + 1}`,
+      createdAt: new Date().toISOString(),
+      status: "ready" as const,
+    }));
+
+    render(
+      <DeepSpaceThread
+        messages={messages}
+        hasOlderMessages
+        onLoadOlderMessages={onLoadOlderMessages}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Load older messages" }));
+
+    await screen.findByText(/Showing the most recent 3 of 3 messages/);
+    expect(onLoadOlderMessages).toHaveBeenCalledOnce();
   });
 
   it("hides the response indicator as soon as any streamed progress begins", () => {

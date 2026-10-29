@@ -563,7 +563,9 @@ test.describe("DeepSpace visual workflow", () => {
     for (const format of ["SVG", "PNG", "PDF"] as const) {
       await expectVisualDownload(
         authenticatedPage,
-        authenticatedPage.getByRole("button", { name: `Export card as ${format}` }),
+        authenticatedPage
+          .locator('[data-visual-block-id="visual-workflow-card"]')
+          .getByRole("button", { name: `Export card as ${format}` }),
         new RegExp(`executive-summary\\.${format.toLowerCase()}$`),
       );
     }

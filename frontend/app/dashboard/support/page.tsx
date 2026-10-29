@@ -546,7 +546,7 @@ export default function SupportPage() {
 
                         <div className="mt-2 flex items-center gap-2">
                           <span
-                            className={`rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-tighter uppercase ${getStatusColor(ticket.status)}`}
+                            className={`rounded-lg border px-2 py-0.5 text-[10px] font-bold tracking-tighter uppercase ${getStatusColor(ticket.status)}`}
                           >
                             {ticket.status.replace("_", " ")}
                           </span>

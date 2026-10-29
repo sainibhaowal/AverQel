@@ -392,7 +392,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className="overflow-hidden"
             aria-hidden={!sidebarOpen}
           >
-            <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] whitespace-nowrap uppercase">
+            <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-lg border px-2 py-1 text-[10px] font-bold tracking-[0.14em] whitespace-nowrap uppercase">
               {APP_VERSION}
               {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown"
                 ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}`
@@ -407,7 +407,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const renderRestrictedContent = (options: { title: string; body: string; chip: string }) => (
     <div className="mx-auto max-w-3xl space-y-6 px-2 py-8">
       <div className="theme-panel rounded-[1.5rem] p-8">
-        <div className="theme-accent-pill inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.2em] uppercase">
+        <div className="theme-accent-pill inline-flex items-center gap-2 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-[0.2em] uppercase">
           <ShieldAlert size={12} />
 
           {options.chip}

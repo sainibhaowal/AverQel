@@ -183,7 +183,7 @@ export default function DeepSpaceTaskPlanDrawer({
         <span className="shrink-0 text-[10px] font-bold tracking-[0.12em] text-slate-700 uppercase dark:text-foreground/75">
           Task plan
         </span>
-        <span className="shrink-0 rounded-full border border-cyan-600/15 bg-cyan-500/[0.07] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-cyan-800 dark:border-cyan-300/15 dark:text-cyan-100">
+        <span className="shrink-0 rounded-lg border border-cyan-600/15 bg-cyan-500/[0.07] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-cyan-800 dark:border-cyan-300/15 dark:text-cyan-100">
           {completed}/{total}
         </span>
         {!expanded && activeTask ? (
@@ -241,7 +241,7 @@ export default function DeepSpaceTaskPlanDrawer({
         >
           <div className="border-t border-cyan-300/10 px-3 pt-2.5 pb-3 sm:px-3.5">
             <div
-              className="mb-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-white/[0.07]"
+              className="mb-2 h-1 overflow-hidden rounded-sm bg-slate-200 dark:bg-white/[0.07]"
               role="progressbar"
               aria-label="Task plan completion"
               aria-valuemin={0}
@@ -249,7 +249,7 @@ export default function DeepSpaceTaskPlanDrawer({
               aria-valuenow={completed}
             >
               <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-400 dark:from-cyan-300 dark:to-emerald-300"
+                className="h-full rounded-sm bg-gradient-to-r from-cyan-500 to-emerald-400 dark:from-cyan-300 dark:to-emerald-300"
                 initial={false}
                 animate={{ width: `${progressPercent}%` }}
                 transition={

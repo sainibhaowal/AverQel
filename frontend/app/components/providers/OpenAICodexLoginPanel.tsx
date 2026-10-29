@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, KeyRound, LoaderCircle, LogOut, RefreshCw } from "lucide-react";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 type Props = {
   initialAccountId: string | null;
@@ -207,21 +208,24 @@ export default function OpenAICodexLoginPanel({ initialAccountId, onChange }: Pr
               <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.16em] uppercase">
                 Connected ChatGPT account
               </span>
-              <select
+              <RoundedSelect
+                label="Saved Codex account"
                 value={selectedAccountId}
-                onChange={(event) => void handleSelect(event.target.value)}
+                onChange={(accountId) => void handleSelect(accountId)}
+                options={[
+                  { value: "", label: "Choose a saved account" },
+                  ...accounts.map((account) => ({
+                    value: account.id,
+                    label:
+                      account.source === "codex_cli"
+                        ? `Use signed-in Codex CLI account${account.planType ? ` (${account.planType.toUpperCase()})` : ""}`
+                        : account.name || account.email || "ChatGPT account",
+                  })),
+                ]}
                 disabled={busy}
-                className="text-foreground h-10 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs outline-none focus:border-teal-300/40"
-              >
-                <option value="">Choose a saved account</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.source === "codex_cli"
-                      ? `Use signed-in Codex CLI account${account.planType ? ` (${account.planType.toUpperCase()})` : ""}`
-                      : account.name || account.email || "ChatGPT account"}
-                  </option>
-                ))}
-              </select>
+                className="w-full"
+                triggerClassName="h-10 w-full"
+              />
             </label>
           )}
 

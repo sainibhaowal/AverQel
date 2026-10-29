@@ -2174,6 +2174,7 @@ export interface DeepSpaceThreadState {
 
 export type DeepSpaceThreadAction =
   | { type: "load_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
+  | { type: "prepend_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
   | { type: "reset_thread" }
   | {
       type: "submit_query";
@@ -2873,21 +2874,65 @@ function reduceDeepSpaceThread(
         action.messages,
         action.messages.map(fromHistoryMessage),
       );
-      const localMessagesById = new Map(state.messages.map((message) => [message.id, message]));
-      const messages = incomingMessages.map((message) => {
-        const local = localMessagesById.get(message.id);
-        // The server persists the final answer, while the browser has the
-        // exact ordered SSE trajectory for the just-finished turn. Preserve
-        // that local trajectory during the automatic post-stream refresh so
-        // the timeline does not collapse into a single thought block.
-        if (message.role !== "assistant" || !local?.timeline?.length) return message;
-        return {
-          ...message,
-          timeline: local.timeline,
-          agentSteps: local.agentSteps?.length ? local.agentSteps : message.agentSteps,
-          thinkingContent: local.thinkingContent ?? message.thinkingContent,
-        };
-      });
+      const sameConversation = state.currentConversationId === action.conversationId;
+      // Build local messages indexed by (clientRequestId, role) for deduping optimistic rows.
+      // Only messages with a clientRequestId participate in this dedupe; others are keyed by id.
+      const localByRequest = new Map<string, DeepSpaceMessage>();
+      const localById = new Map<string, DeepSpaceMessage>();
+      if (sameConversation) {
+        for (const message of state.messages) {
+          const key = message.clientRequestId
+            ? `${message.clientRequestId}:${message.role}`
+            : `id:${message.id}`;
+          localByRequest.set(key, message);
+          localById.set(message.id, message);
+        }
+      }
+      // Merge server messages, preserving their order. For each server message:
+      // - If it has a clientRequestId, try to find a local optimistic counterpart.
+      // - If found and it's an assistant, merge the local trajectory (timeline, agentSteps, thinkingContent).
+      // - If found and it's a user, discard the local optimistic copy (server is authoritative).
+      // - If no local counterpart, use the server message as-is.
+      // - Messages without clientRequestId are kept as-is (older history, migrations, etc.).
+      const messages: DeepSpaceMessage[] = [];
+      const seenServerKeys = new Set<string>();
+      const seenServerIds = new Set<string>();
+      for (const serverMsg of incomingMessages) {
+        if (seenServerIds.has(serverMsg.id)) continue;
+        seenServerIds.add(serverMsg.id);
+        const serverKey = serverMsg.clientRequestId
+          ? `${serverMsg.clientRequestId}:${serverMsg.role}`
+          : `id:${serverMsg.id}`;
+        seenServerKeys.add(serverKey);
+        const localMsg = localByRequest.get(serverKey) ?? localById.get(serverMsg.id);
+        if (serverMsg.role === "assistant" && localMsg?.timeline?.length) {
+          // Preserve local SSE trajectory for the just-finished assistant turn.
+          messages.push({
+            ...serverMsg,
+            timeline: localMsg.timeline,
+            agentSteps: localMsg.agentSteps?.length ? localMsg.agentSteps : serverMsg.agentSteps,
+            thinkingContent: localMsg.thinkingContent ?? serverMsg.thinkingContent,
+          });
+        } else if (serverMsg.role === "user" && localMsg) {
+          // Server user message is authoritative; drop the optimistic copy.
+          messages.push(serverMsg);
+        } else {
+          // No local counterpart or nothing to merge.
+          messages.push(serverMsg);
+        }
+      }
+      // Append any remaining local messages that have no server counterpart
+      // (e.g., in-flight optimistic messages for a turn that hasn't persisted yet).
+      if (sameConversation) {
+        for (const message of state.messages) {
+          const key = message.clientRequestId
+            ? `${message.clientRequestId}:${message.role}`
+            : `id:${message.id}`;
+          if (!seenServerKeys.has(key) && !seenServerIds.has(message.id)) {
+            messages.push(message);
+          }
+        }
+      }
       const activeHistoryIds = new Set(
         action.messages
           .filter(
@@ -2930,16 +2975,52 @@ function reduceDeepSpaceThread(
           ) || null,
       };
     }
+    case "prepend_history": {
+      if (state.currentConversationId !== action.conversationId || action.messages.length === 0) {
+        return state;
+      }
+      const olderMessages = collapseAnsweredQuestionMessages(
+        action.messages,
+        action.messages.map(fromHistoryMessage),
+      );
+      // Dedup by (clientRequestId, role) to avoid duplicating messages that may
+      // already be present from a previous page load or optimistic updates.
+      const existingByKey = new Map<string, DeepSpaceMessage>();
+      for (const message of state.messages) {
+        const key = message.clientRequestId
+          ? `${message.clientRequestId}:${message.role}`
+          : `id:${message.id}`;
+        existingByKey.set(key, message);
+      }
+      // Prepend older messages that don't already exist.
+      const prepended: DeepSpaceMessage[] = [];
+      for (const message of olderMessages) {
+        const key = message.clientRequestId
+          ? `${message.clientRequestId}:${message.role}`
+          : `id:${message.id}`;
+        if (!existingByKey.has(key)) {
+          prepended.push(message);
+          existingByKey.set(key, message);
+        }
+      }
+      // Preserve server order for prepended messages, then append existing.
+      return {
+        ...state,
+        messages: [...prepended, ...state.messages],
+      };
+    }
     case "reset_thread":
       return initialDeepSpaceThreadState;
     case "submit_query": {
       const tempAssistantId = createClientMessageId("assistant");
+      const clientRequestId = action.clientRequestId ?? crypto.randomUUID();
+      const tempUserId = createClientMessageId("user");
       return {
         ...state,
         messages: [
           ...state.messages,
           {
-            id: createClientMessageId("user"),
+            id: tempUserId,
             role: "user",
             content: action.query,
             rawContent: action.query,
@@ -2949,10 +3030,11 @@ function reduceDeepSpaceThread(
             blocks: [],
             structured: null,
             error: null,
+            clientRequestId,
           },
           {
             id: tempAssistantId,
-            ...(action.clientRequestId ? { clientRequestId: action.clientRequestId } : {}),
+            clientRequestId,
             role: "assistant",
             content: "",
             rawContent: "",

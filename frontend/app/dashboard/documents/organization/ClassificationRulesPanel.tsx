@@ -534,7 +534,7 @@ export default function ClassificationRulesPanel() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-foreground truncate text-sm font-bold">{rule.name}</h3>
                         <span
-                          className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${rule.enabled ? "bg-primary/10 text-primary" : "bg-foreground/5 text-foreground/50"}`}
+                          className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase ${rule.enabled ? "bg-primary/10 text-primary" : "bg-foreground/5 text-foreground/50"}`}
                         >
                           {rule.enabled ? "Enabled" : "Disabled"}
                         </span>
@@ -549,17 +549,17 @@ export default function ClassificationRulesPanel() {
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {rule.tag_name ? (
-                          <span className="bg-primary/10 text-primary rounded-full px-2 py-1 text-[10px]">
+                          <span className="bg-primary/10 text-primary rounded-lg px-2 py-1 text-[10px]">
                             Tag: {rule.tag_name}
                           </span>
                         ) : null}
                         {rule.folder_name ? (
-                          <span className="bg-primary/10 text-primary rounded-full px-2 py-1 text-[10px]">
+                          <span className="bg-primary/10 text-primary rounded-lg px-2 py-1 text-[10px]">
                             Folder: {rule.folder_name}
                           </span>
                         ) : null}
                         {!rule.tag_name && !rule.folder_name ? (
-                          <span className="bg-warning/10 text-warning rounded-full px-2 py-1 text-[10px]">
+                          <span className="bg-warning/10 text-warning rounded-lg px-2 py-1 text-[10px]">
                             No action configured
                           </span>
                         ) : null}

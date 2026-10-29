@@ -116,7 +116,7 @@ export default function AverQelTooltip({
         onBlur={scheduleClose}
         className={
           buttonClassName ??
-          "border-foreground/10 bg-foreground/5 text-foreground/55 hover:border-primary/30 hover:bg-primary/10 hover:text-primary flex h-8 w-8 items-center justify-center rounded-full border transition-all"
+          "border-foreground/10 bg-foreground/5 text-foreground/55 hover:border-primary/30 hover:bg-primary/10 hover:text-primary flex h-8 w-8 items-center justify-center rounded-lg border transition-all"
         }
       >
         {icon ?? <Info size={13} className="stroke-[2.5]" />}

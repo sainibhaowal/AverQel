@@ -48,8 +48,12 @@ test.describe("DeepSpace voice controls", () => {
     await authenticatedPage.goto("/dashboard/deepspace");
     const dictationButton = authenticatedPage.getByRole("button", { name: "Dictate to composer" });
     await expect(dictationButton).toBeVisible();
+    const tokenResponse = authenticatedPage.waitForResponse((response) =>
+      response.url().includes("/voice/token"),
+    );
     await dictationButton.click();
 
+    expect((await tokenResponse).status()).toBe(503);
     await expect(authenticatedPage.getByText("Voice server unreachable.")).toBeVisible();
     await expect(dictationButton).toHaveAttribute("aria-pressed", "false");
     await expect(authenticatedPage.getByTestId("deepspace-voice-presence")).toHaveCount(0);

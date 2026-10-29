@@ -86,7 +86,7 @@ export default function DetailedAnalysis({
                 className="text-foreground border-glass-border/30 mt-12 mb-6 flex items-center gap-3 border-b pb-3 text-xl font-extrabold tracking-tight"
                 {...props}
               >
-                <span className="bg-primary/50 h-6 w-1.5 rounded-full" />
+                <span className="bg-primary/50 h-6 w-1.5 rounded-sm" />
                 {props.children}
               </h3>
             ),

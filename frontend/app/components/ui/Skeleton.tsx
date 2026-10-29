@@ -15,7 +15,7 @@ export default function Skeleton({ className = "", shape = "rect" }: SkeletonPro
 
   let shapeClasses = "";
   if (shape === "circle") {
-    shapeClasses = "rounded-full";
+    shapeClasses = "rounded-lg";
   } else if (shape === "rect") {
     shapeClasses = "rounded-lg";
   } else if (shape === "text") {

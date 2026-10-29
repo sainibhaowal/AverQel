@@ -26,6 +26,14 @@ export default function GroundedQueryDocsPage() {
           },
         ]}
       />
+      <DocsSection title="Load saved conversation history">
+        <p>
+          Query opens a recent page of a saved conversation so long histories do not render all
+          answer cards at once. Choose <strong>Load older messages</strong> above the thread to
+          fetch earlier pages. Older conversations remain available, and loading them does not
+          change or delete saved messages.
+        </p>
+      </DocsSection>
       <DocsSection title="Review citations and previews">
         <p>
           Open a citation to see a format-aware preview of its source. PDFs and Office files

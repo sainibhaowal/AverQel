@@ -202,14 +202,14 @@ export default function ProviderDropdown({
             maxHeight: "400px",
             overflowY: "auto",
           }}
-          className="theme-panel-strong rounded-[1.25rem] border border-cyan-300/16 p-2 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.6)]"
+          className="theme-panel-strong border-glass-border rounded-xl border p-2 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.6)]"
         >
           {searchable ? (
             <div className="sticky top-0 z-10 mb-2 space-y-1.5 bg-[var(--surface-0)] pb-2">
               <label htmlFor={`${selectId}-search`} className="sr-only">
                 {searchPlaceholder}
               </label>
-              <div className="border-glass-border bg-surface-1 flex h-10 items-center gap-2 rounded-xl border px-3 focus-within:border-cyan-300/45">
+              <div className="provider-dropdown-search-shell border-glass-border bg-surface-1 focus-within:border-primary/60 focus-within:ring-primary/15 flex h-10 items-center gap-2 rounded-lg border px-3 transition-colors focus-within:ring-2">
                 <Search size={14} aria-hidden="true" className="text-muted-foreground shrink-0" />
                 <input
                   ref={searchInputRef}
@@ -221,7 +221,7 @@ export default function ProviderDropdown({
                   onKeyDown={handleSearchKeyDown}
                   placeholder={searchPlaceholder}
                   autoComplete="off"
-                  className="text-foreground placeholder:text-muted-foreground/70 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  className="search-shell-input text-foreground placeholder:text-muted-foreground/70 min-w-0 flex-1 text-sm outline-none"
                 />
                 <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
                   {matchingOptions.length}/{options.length}
@@ -249,7 +249,7 @@ export default function ProviderDropdown({
                     onClick={() => selectOption(option)}
                     className={`flex w-full items-start justify-between gap-3 rounded-[1rem] px-3 py-3 text-left transition-colors ${
                       selected
-                        ? "text-accent-cyan bg-cyan-300/12"
+                        ? "text-primary bg-primary/10"
                         : "text-foreground/80 hover:bg-muted/60 hover:text-foreground"
                     }`}
                   >
@@ -317,7 +317,7 @@ export default function ProviderDropdown({
         aria-controls={`${selectId}-menu`}
         disabled={disabled}
         onClick={handleOpen}
-        className={`theme-chip text-foreground flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left text-sm transition-colors outline-none hover:border-cyan-300/20 focus:border-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-50 ${className || ""}`}
+        className={`theme-chip text-foreground hover:border-primary/20 focus:border-primary/45 flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left text-sm transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-50 ${className || ""}`}
       >
         <span
           className={`flex min-w-0 items-center gap-2 ${selectedOption || (allowCustomValue && value) ? "text-foreground" : "text-muted-foreground"}`}

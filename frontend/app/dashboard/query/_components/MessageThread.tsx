@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
   Layers,
@@ -40,6 +40,9 @@ interface MessageThreadProps {
     matchedRowCount?: number;
   }) => void;
   onFollowupSelect: (query: string) => void;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => void;
   realTimeStats?: {
     totalDocuments: number;
     totalQueries: number;
@@ -49,6 +52,72 @@ interface MessageThreadProps {
     latencyMs: number | null;
   } | null;
 }
+
+type QueryMessageRowProps = Pick<
+  MessageThreadProps,
+  | "mode"
+  | "activeAssistantId"
+  | "onRegenerate"
+  | "onStartEdit"
+  | "onCancelEdit"
+  | "onEditDraftChange"
+  | "onSaveEdit"
+  | "onActivateVersion"
+  | "onDeleteAssistant"
+  | "onPreviewDocument"
+  | "onFollowupSelect"
+> & {
+  message: QueryThreadMessage;
+  index: number;
+  messageCount: number;
+  canEdit: boolean;
+};
+
+const QueryMessageRow = memo(function QueryMessageRow({
+  mode = "query",
+  message,
+  index,
+  messageCount,
+  canEdit,
+  activeAssistantId,
+  onRegenerate,
+  onStartEdit,
+  onCancelEdit,
+  onEditDraftChange,
+  onSaveEdit,
+  onActivateVersion,
+  onDeleteAssistant,
+  onPreviewDocument,
+  onFollowupSelect,
+}: QueryMessageRowProps) {
+  return (
+    <div data-message-id={message.id} data-role={message.role}>
+      {message.role === "user" ? (
+        <UserMessage
+          message={message}
+          canEdit={canEdit}
+          onStartEdit={onStartEdit}
+          onCancelEdit={onCancelEdit}
+          onDraftChange={onEditDraftChange}
+          onSaveEdit={onSaveEdit}
+          onActivateVersion={onActivateVersion}
+        />
+      ) : (
+        <AssistantMessage
+          mode={mode}
+          message={message}
+          isStreaming={activeAssistantId === message.id}
+          canRegenerate={index === messageCount - 1}
+          onRegenerate={onRegenerate}
+          onActivateVersion={onActivateVersion}
+          onDelete={onDeleteAssistant}
+          onPreviewDocument={onPreviewDocument}
+          onFollowupSelect={onFollowupSelect}
+        />
+      )}
+    </div>
+  );
+});
 
 export default function MessageThread({
   mode = "query",
@@ -64,6 +133,9 @@ export default function MessageThread({
   onDeleteAssistant,
   onPreviewDocument,
   onFollowupSelect,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
+  onLoadOlderMessages,
   realTimeStats,
 }: MessageThreadProps) {
   const { user } = useAuth();
@@ -90,11 +162,12 @@ export default function MessageThread({
   );
 
   useEffect(() => {
+    if (messages.length > 0) return;
     const timer = window.setInterval(() => {
       setWelcomeIndex((index) => (index + 1) % welcomeMessages.length);
     }, 6500);
     return () => window.clearInterval(timer);
-  }, [welcomeMessages.length]);
+  }, [messages.length, welcomeMessages.length]);
 
   const groundedOperationPrompts = useMemo(
     () => [
@@ -124,11 +197,12 @@ export default function MessageThread({
   const [operationPromptIndex, setOperationPromptIndex] = useState(0);
 
   useEffect(() => {
+    if (messages.length > 0) return;
     const timer = window.setInterval(() => {
       setOperationPromptIndex((index) => index + 1);
     }, 8000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [messages.length]);
 
   if (messages.length === 0) {
     const indexHealth = realTimeStats ? realTimeStats.indexHealth.toFixed(1) + "%" : "99.8%";
@@ -339,39 +413,41 @@ export default function MessageThread({
 
   return (
     <div className="space-y-1 pt-5 pb-10 sm:pt-6">
+      {hasOlderMessages ? (
+        <div className="mx-auto flex w-full max-w-[min(100%,74rem)] justify-center px-2 pt-2 sm:px-3">
+          <button
+            type="button"
+            onClick={onLoadOlderMessages}
+            disabled={loadingOlderMessages}
+            className="theme-panel border-glass-border text-primary hover:bg-surface-2 rounded-lg border px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60"
+          >
+            {loadingOlderMessages ? "Loading older messages…" : "Load older messages"}
+          </button>
+        </div>
+      ) : null}
       {messages.map((message, index) => (
-        <motion.div
+        <QueryMessageRow
           key={message.id}
-          data-message-id={message.id}
-          data-role={message.role}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, delay: Math.min(index * 0.018, 0.1), ease: "easeOut" }}
-        >
-          {message.role === "user" ? (
-            <UserMessage
-              message={message}
-              canEdit={index === messages.length - 2 && messages[index + 1]?.role === "assistant"}
-              onStartEdit={onStartEdit}
-              onCancelEdit={onCancelEdit}
-              onDraftChange={onEditDraftChange}
-              onSaveEdit={onSaveEdit}
-              onActivateVersion={onActivateVersion}
-            />
-          ) : (
-            <AssistantMessage
-              mode={mode}
-              message={message}
-              isStreaming={activeAssistantId === message.id}
-              canRegenerate={index === messages.length - 1}
-              onRegenerate={onRegenerate}
-              onActivateVersion={onActivateVersion}
-              onDelete={onDeleteAssistant}
-              onPreviewDocument={onPreviewDocument}
-              onFollowupSelect={onFollowupSelect}
-            />
-          )}
-        </motion.div>
+          message={message}
+          index={index}
+          messageCount={messages.length}
+          canEdit={
+            message.role === "user" &&
+            index === messages.length - 2 &&
+            messages[index + 1]?.role === "assistant"
+          }
+          mode={mode}
+          activeAssistantId={activeAssistantId}
+          onRegenerate={onRegenerate}
+          onStartEdit={onStartEdit}
+          onCancelEdit={onCancelEdit}
+          onEditDraftChange={onEditDraftChange}
+          onSaveEdit={onSaveEdit}
+          onActivateVersion={onActivateVersion}
+          onDeleteAssistant={onDeleteAssistant}
+          onPreviewDocument={onPreviewDocument}
+          onFollowupSelect={onFollowupSelect}
+        />
       ))}
     </div>
   );

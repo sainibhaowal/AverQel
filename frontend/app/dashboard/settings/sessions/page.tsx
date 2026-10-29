@@ -154,12 +154,12 @@ export default function SessionsPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-bold text-slate-900 dark:text-white">{session.label}</h2>
                   {session.current && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+                    <span className="rounded-lg bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
                       This session
                     </span>
                   )}
                   {session.revoked_at && (
-                    <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-800 dark:bg-rose-900/30 dark:text-rose-200">
+                    <span className="rounded-lg bg-rose-100 px-2 py-1 text-xs font-bold text-rose-800 dark:bg-rose-900/30 dark:text-rose-200">
                       Revoked
                     </span>
                   )}

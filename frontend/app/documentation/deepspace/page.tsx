@@ -27,6 +27,15 @@ export default function DeepSpaceDocsPage() {
           },
         ]}
       />
+      <DocsSection title="Load saved conversation history">
+        <p>
+          DeepSpace opens a recent page of a saved conversation and keeps large, changing agent
+          responses in a small rendered window to avoid layout jumps. Use{" "}
+          <strong>Show older messages</strong> to reveal earlier messages already loaded, then{" "}
+          <strong>Load older messages</strong> to fetch the next page. Older conversation history
+          stays available.
+        </p>
+      </DocsSection>
       <DocsSection title="Choose the right area">
         <ul className="list-disc space-y-2 pl-6">
           <li>
@@ -209,20 +218,18 @@ export default function DeepSpaceDocsPage() {
           named icons; common detail labels such as address, hours, and email receive a matching
           icon automatically when one is omitted. Card tones are info, success, warning, error, or
           neutral; common model labels such as positive and caution are normalized automatically.
-          Raw HTML and scripts are not
-          rendered. In chat, card edits stay open until the revision is saved; validation, conflict,
-          and Library-save failures are shown beside the card controls.
+          Raw HTML and scripts are not rendered. In chat, card edits stay open until the revision is
+          saved; validation, conflict, and Library-save failures are shown beside the card controls.
         </p>
         <p>
-          Cards also support two data-focused layouts.{" "}
-          <code>layout: &quot;evaluation&quot;</code> displays a bounded{" "}
-          <code>score: &#123;value, max, tone&#125;</code> as an accessible progress bar followed by
-          aligned supporting metrics. <code>layout: &quot;referral&quot;</code> displays a featured{" "}
-          <code>primary_metric</code>, a copyable optional <code>code</code>, and responsive
-          label/value rows for <code>details</code>. Both layouts can include a concise caveat in{" "}
-          <code>content</code> and show supplied HTTP(S) source links as badges. Evaluation cards
-          need a score and at least one metric; referral cards need a primary metric and at least one
-          detail row.
+          Cards also support two data-focused layouts. <code>layout: &quot;evaluation&quot;</code>{" "}
+          displays a bounded <code>score: &#123;value, max, tone&#125;</code> as an accessible
+          progress bar followed by aligned supporting metrics.{" "}
+          <code>layout: &quot;referral&quot;</code> displays a featured <code>primary_metric</code>,
+          a copyable optional <code>code</code>, and responsive label/value rows for{" "}
+          <code>details</code>. Both layouts can include a concise caveat in <code>content</code>{" "}
+          and show supplied HTTP(S) source links as badges. Evaluation cards need a score and at
+          least one metric; referral cards need a primary metric and at least one detail row.
         </p>
         <p>
           An <code>infographic</code> fence creates a responsive visual explainer with a selected

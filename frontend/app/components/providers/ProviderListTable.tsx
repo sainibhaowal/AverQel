@@ -74,7 +74,7 @@ export default function ProviderListTable({
                     </div>
                     <div className="flex flex-row items-center gap-2">
                       <span
-                        className={`rounded-full border px-2 py-0.5 text-[8px] font-bold tracking-wider uppercase ${
+                        className={`rounded-lg border px-2 py-0.5 text-[8px] font-bold tracking-wider uppercase ${
                           isLocal
                             ? "border-primary/20 bg-primary/5 text-primary"
                             : "border-glass-border bg-muted text-muted-foreground"
@@ -187,7 +187,7 @@ function RemoveProviderButton({ providerName, onRemove }: RemoveProviderButtonPr
         onBlur={() => setTooltipOpen(false)}
         aria-label={`Remove ${providerName}`}
         aria-describedby={tooltipOpen ? tooltipId : undefined}
-        className="border-glass-border bg-surface-2 text-foreground/80 absolute top-5 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:border-red-500/45 hover:bg-red-500/12 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:outline-none"
+        className="border-glass-border bg-surface-2 text-foreground/80 absolute top-5 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-lg border transition-colors hover:border-red-500/45 hover:bg-red-500/12 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:outline-none"
       >
         <Minus size={16} strokeWidth={2.5} aria-hidden="true" />
       </button>
@@ -215,7 +215,7 @@ function RemoveProviderButton({ providerName, onRemove }: RemoveProviderButtonPr
 
 function CheckIcon() {
   return (
-    <div className="bg-primary text-primary-foreground flex h-4 w-4 items-center justify-center rounded-full">
+    <div className="bg-primary text-primary-foreground flex h-4 w-4 items-center justify-center rounded-lg">
       <svg
         width="10"
         height="10"

@@ -294,12 +294,12 @@ export default function DocumentInspector({
                           : `${Math.round(yieldValue)}%`}
                       </span>
                     </div>
-                    <div className="bg-foreground/5 relative h-2 w-full overflow-hidden rounded-full">
+                    <div className="bg-foreground/5 relative h-2 w-full overflow-hidden rounded-sm">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${yieldValue ?? 0}%` }}
                         transition={{ duration: 1, ease: "easeOut" }}
-                        className={`h-full rounded-full ${
+                        className={`h-full rounded-sm ${
                           Number(yieldValue ?? 0) > 80
                             ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
                             : Number(yieldValue ?? 0) > 50
@@ -517,9 +517,9 @@ export default function DocumentInspector({
                         {data.status?.toUpperCase() || "PENDING"}
                       </span>
                     </div>
-                    <div className="bg-foreground/5 relative h-2 w-full overflow-hidden rounded-full">
+                    <div className="bg-foreground/5 relative h-2 w-full overflow-hidden rounded-sm">
                       <div
-                        className="bg-primary h-full rounded-full shadow-[0_0_10px_rgba(var(--primary),0.3)] transition-all duration-700"
+                        className="bg-primary h-full rounded-sm shadow-[0_0_10px_rgba(var(--primary),0.3)] transition-all duration-700"
                         style={{ width: `${progressValue}%` }}
                       />
                     </div>
@@ -602,7 +602,7 @@ export default function DocumentInspector({
                   className="space-y-6"
                 >
                   <div className="bg-danger/5 border-danger/20 flex items-center gap-4 rounded-2xl border p-5">
-                    <div className="bg-danger/10 text-danger flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                    <div className="bg-danger/10 text-danger flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
                       <AlertTriangle size={20} className="stroke-[2.5]" />
                     </div>
                     <p className="text-danger/80 text-[12px] leading-relaxed font-bold tracking-tight uppercase">

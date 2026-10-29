@@ -29,6 +29,13 @@ Available environment settings:
   per-request PostgreSQL limits (15 and 3 seconds by default). They prevent a
   blocked statement or row lock from monopolising request workers.
 
+The API Compose healthcheck allows a 120-second startup grace period. Startup
+runs Alembic upgrades and integration-catalog seeding before launching the two
+Uvicorn workers, whose imports can take additional time on a cold start. The
+grace period prevents Compose from treating that expected initialization as
+an API failure; the existing live-health probe, retry count, and frontend
+dependency on API health remain unchanged.
+
 The browser retries `SERVICE_OVERLOAD` at most twice for `GET` and `HEAD`
 requests, following a short `Retry-After`. It never automatically replays a
 write. Keep read endpoints free of unconditional row locks and recovery writes;
@@ -54,6 +61,15 @@ DeepSpace message history reads also use the authenticated client storage proxy.
 That read has a five-second RPC budget; when the client tab is suspended or
 does not answer, the API falls back to the tenant-scoped server history instead
 of holding the browser request for the proxy's general 30-second timeout.
+
+Query and DeepSpace history endpoints return the newest 40 messages by default
+and accept `limit` (1–100) plus `before_message_id` for keyset pagination. The
+response includes `has_more`; the clients request older pages only when the
+reader asks for them. PostgreSQL reads one bounded page and eagerly loads its
+message versions. DeepSpace then enriches that page with batched live-run,
+agent-step, and durable-event queries rather than issuing those queries once
+per assistant message. The `ix_messages_conversation_created_id` index supports
+the chronological cursor used by both endpoints.
 
 `QueryService.execute` is synchronous because it uses the synchronous database
 session and retrieval pipeline. The HTTP endpoint dispatches that work to the

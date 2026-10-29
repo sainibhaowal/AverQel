@@ -49,6 +49,7 @@ describe("OpenAICodexLoginPanel", () => {
     expect(
       screen.getByRole("button", { name: "Sign in with ChatGPT instead" }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Saved Codex account" }));
     expect(
       screen.getByRole("option", { name: "Use signed-in Codex CLI account (PLUS)" }),
     ).toBeInTheDocument();

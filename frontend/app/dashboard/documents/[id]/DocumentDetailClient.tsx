@@ -1253,11 +1253,11 @@ export default function DocumentDetailPage() {
             <div className="glass-card p-10">
               <div className="relative flex justify-between">
                 {/* Background Track */}
-                <div className="absolute top-[21px] left-0 z-0 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800/80" />
+                <div className="absolute top-[21px] left-0 z-0 h-1.5 w-full rounded-sm bg-slate-200 dark:bg-slate-800/80" />
 
                 {/* Active Progress Track */}
                 <div
-                  className="absolute top-[21px] left-0 z-0 h-1.5 rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)] transition-all duration-1000"
+                  className="absolute top-[21px] left-0 z-0 h-1.5 rounded-sm bg-gradient-to-r from-teal-500 to-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)] transition-all duration-1000"
                   style={{
                     width: `${Math.max(0, (boundedStepIndex / (steps.length - 1)) * 100)}%`,
                   }}
@@ -1333,9 +1333,9 @@ export default function DocumentDetailPage() {
                     {overallProgress}%
                   </span>
                 </div>
-                <div className="relative h-3 overflow-hidden rounded-full bg-slate-200/60 p-[2px] shadow-inner dark:bg-slate-800/80">
+                <div className="relative h-3 overflow-hidden rounded-sm bg-slate-200/60 p-[2px] shadow-inner dark:bg-slate-800/80">
                   <div
-                    className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-teal-500 via-emerald-400 to-emerald-500 transition-all duration-700"
+                    className="relative h-full overflow-hidden rounded-sm bg-gradient-to-r from-teal-500 via-emerald-400 to-emerald-500 transition-all duration-700"
                     style={{
                       width: `${overallProgress}%`,
                       boxShadow: "0 0 10px rgba(16, 185, 129, 0.3)",
@@ -1665,7 +1665,7 @@ export default function DocumentDetailPage() {
                           handleSendToNote(selection.text);
                           setSelection(null);
                         }}
-                        className="bg-primary text-primary-foreground flex items-center gap-2 rounded-full px-4 py-2 text-xs font-black tracking-widest uppercase shadow-2xl transition-all hover:scale-105 active:scale-95"
+                        className="bg-primary text-primary-foreground flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-black tracking-widest uppercase shadow-2xl transition-all hover:scale-105 active:scale-95"
                       >
                         <Sparkles size={14} />
                         Add to Note
@@ -1683,7 +1683,7 @@ export default function DocumentDetailPage() {
                     type="button"
                     onClick={handleLoadMoreChunks}
                     disabled={loadingMoreChunks}
-                    className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold tracking-[0.2em] uppercase transition disabled:cursor-not-allowed disabled:opacity-60"
+                    className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-bold tracking-[0.2em] uppercase transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loadingMoreChunks ? (
                       <Loader2 size={14} className="animate-spin" />

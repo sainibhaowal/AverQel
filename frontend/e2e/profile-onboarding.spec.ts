@@ -44,7 +44,7 @@ test("first-run welcome saves identity and appearance before entering the worksp
   await expect
     .poll(() => authenticatedPage.evaluate(() => localStorage.getItem("averqel-theme")))
     .toBe("light");
-  await expect(welcomeDialog).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(welcomeDialog).toHaveCSS("background-color", "rgb(246, 248, 243)");
   await welcomeDialog.getByRole("button", { name: "Save and continue" }).click();
 
   await expect(

@@ -145,6 +145,9 @@ function requestTimeoutFor(endpoint: string, override?: number): number {
   if (normalizeEndpointPath(endpoint) === "/health/ready") {
     return 2_500;
   }
+  if (normalizeEndpointPath(endpoint).includes("/voice/")) {
+    return 120_000; // Voice endpoints need extra time for TTS model loading
+  }
   return DEFAULT_API_TIMEOUT_MS;
 }
 

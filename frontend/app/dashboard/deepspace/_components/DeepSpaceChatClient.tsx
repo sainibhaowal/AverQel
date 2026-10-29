@@ -5,6 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/app/context/AuthContext";
@@ -125,6 +127,9 @@ function customProviderReasoningOptions(provider: ProviderConfig | undefined) {
 // seconds of a cancellation request. Do not leave the browser in a perpetual
 // active state if that connection or worker has failed after accepting Stop.
 const STOP_RECONCILIATION_GRACE_MS = 8_000;
+const subscribeToHydration = () => () => {};
+const getClientMountedSnapshot = () => true;
+const getServerMountedSnapshot = () => false;
 
 function readPartialJsonStringValue(input: string, key: string): string | null {
   const keyStart = input.indexOf(`"${key}"`);
@@ -238,6 +243,7 @@ interface DeepSpaceChatClientProps {
   onConversationUnavailable?: (conversationId: string) => void;
   activeConversationId: string | null;
   currentContent?: string;
+  isPanelActive?: boolean;
   isMobileStacked?: boolean;
   panelMode?: "split" | "notes" | "chat" | "memory";
   onSetPanelMode?: (mode: "split" | "notes" | "chat" | "memory") => void;
@@ -336,6 +342,7 @@ export default function DeepSpaceChatClient({
   onConversationUnavailable,
   activeConversationId,
   currentContent,
+  isPanelActive = true,
   isMobileStacked,
   isHistoryOpen,
   onSetHistoryOpen,
@@ -361,11 +368,21 @@ export default function DeepSpaceChatClient({
   const [operationalSummary, setOperationalSummary] = useState<OperationalSummary | null>(null);
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const [historyLoadErrorId, setHistoryLoadErrorId] = useState<string | null>(null);
+  const [hasOlderHistory, setHasOlderHistory] = useState(false);
+  const [loadingOlderHistory, setLoadingOlderHistory] = useState(false);
   const [completionPulse, setCompletionPulse] = useState(false);
   const completionPulseTimeoutRef = useRef<number | null>(null);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
+  const mounted = useSyncExternalStore(
+    subscribeToHydration,
+    getClientMountedSnapshot,
+    getServerMountedSnapshot,
+  );
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
+  useEffect(() => {
+    if (!isPanelActive) setHistoryOpen(false);
+  }, [isPanelActive, setHistoryOpen]);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>("medium");
   const [threadScrollMetrics, setThreadScrollMetrics] = useState<{
     scrollTop: number;
@@ -562,6 +579,7 @@ export default function DeepSpaceChatClient({
   const queueReconnectRef = useRef<{ conversationId: string; requestId: string } | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const historyRequestVersionRef = useRef(0);
+  const olderHistoryLoadingRef = useRef(false);
   const queueRequestVersionRef = useRef(0);
   const pendingHistorySyncRef = useRef(false);
   const promptEditSubmissionInFlightRef = useRef(false);
@@ -837,9 +855,7 @@ export default function DeepSpaceChatClient({
           const validationMessages = Array.isArray(detail)
             ? detail
                 .map((item) =>
-                  item && typeof item === "object"
-                    ? (item as Record<string, unknown>).msg
-                    : null,
+                  item && typeof item === "object" ? (item as Record<string, unknown>).msg : null,
                 )
                 .filter((message): message is string => typeof message === "string")
                 .join("; ")
@@ -2372,9 +2388,13 @@ export default function DeepSpaceChatClient({
             `/deepspace/chats/${conversationId}/messages`,
           )) as Response;
           if (response.ok) {
-            const payload = (await response.json()) as { messages: DeepSpaceHistoryMessage[] };
+            const payload = (await response.json()) as {
+              messages: DeepSpaceHistoryMessage[];
+              has_more?: boolean;
+            };
             if (!isCurrentRequest()) return;
             dispatch({ type: "load_history", conversationId, messages: payload.messages });
+            setHasOlderHistory(Boolean(payload.has_more));
             setHistoryLoadErrorId(null);
             void loadQueuedTurns(conversationId);
             const queueStatePromise = loadQueueState(conversationId);
@@ -2457,6 +2477,38 @@ export default function DeepSpaceChatClient({
       thinkingEnabled,
     ],
   );
+
+  const loadOlderHistory = useCallback(async () => {
+    const conversationId = getReadyConversationId();
+    const beforeMessageId = state.messages[0]?.id;
+    if (!conversationId || !beforeMessageId || !hasOlderHistory || olderHistoryLoadingRef.current) {
+      return 0;
+    }
+
+    olderHistoryLoadingRef.current = true;
+    setLoadingOlderHistory(true);
+    try {
+      const params = new URLSearchParams({ limit: "40", before_message_id: beforeMessageId });
+      const response = (await fetchWithAuth(
+        `/deepspace/chats/${conversationId}/messages?${params.toString()}`,
+      )) as Response;
+      if (!response.ok) throw new Error("History page request failed");
+      const payload = (await response.json()) as {
+        messages: DeepSpaceHistoryMessage[];
+        has_more?: boolean;
+      };
+      if (selectedConversationIdRef.current !== conversationId) return 0;
+      dispatch({ type: "prepend_history", conversationId, messages: payload.messages });
+      setHasOlderHistory(Boolean(payload.has_more));
+      return payload.messages.length;
+    } catch {
+      toast.error("Could not load older messages. Try again.");
+      return 0;
+    } finally {
+      olderHistoryLoadingRef.current = false;
+      setLoadingOlderHistory(false);
+    }
+  }, [getReadyConversationId, hasOlderHistory, state.messages]);
 
   useEffect(() => {
     loadConversationRef.current = loadConversation;
@@ -2772,6 +2824,7 @@ export default function DeepSpaceChatClient({
       let room: any = null;
       let microphoneSetupFailed = false;
       let voiceModeSetupFailed = false;
+      let unsupportedClonedVoice = false;
       const identity = user?.id ? `user-${user.id}` : "";
 
       try {
@@ -2793,7 +2846,7 @@ export default function DeepSpaceChatClient({
           }
 
           const connectionPromise = (async () => {
-            const uniqueRoom = `deepspace-room-${Math.random().toString(36).slice(2, 8)}`;
+            const uniqueRoom = `deepspace-room-${crypto.randomUUID()}`;
             const tokenController = new AbortController();
             voiceTokenRequestControllerRef.current = tokenController;
             try {
@@ -2834,7 +2887,9 @@ export default function DeepSpaceChatClient({
                     if (waiter) {
                       window.clearTimeout(waiter.timeout);
                       voiceModeWaitersRef.current.delete(data.request_id);
-                      waiter.resolve(data.stt === waiter.stt && data.tts === waiter.tts);
+                      waiter.resolve(
+                        data.ready !== false && data.stt === waiter.stt && data.tts === waiter.tts,
+                      );
                     }
                   }
                   if (isDeepSpaceVoiceState(data.state)) {
@@ -2947,10 +3002,8 @@ export default function DeepSpaceChatClient({
                 if (roomRef.current !== room) return;
                 if (track.kind === "audio") {
                   const element = track.attach();
-                  element.autoplay = true;
-                  element.play().catch((err: any) => {
-                    console.error("Autoplay blocked for track:", track.sid, err);
-                  });
+                  // LiveKit's track.attach() already starts playback and handles
+                  // autoplay failures. Calling play() again interrupts that request.
                   document.body.appendChild(element);
                 }
               });
@@ -3005,21 +3058,50 @@ export default function DeepSpaceChatClient({
 
         const requestId = crypto.randomUUID();
         const initialPrompt = buildInitialPrompt(messagesRef.current, currentContentRef.current);
+        // Read the user's saved voice preference
+        let selectedVoice = "alba";
+        try {
+          const voiceRes = await fetchWithAuth("/deepspace/voice/settings");
+          if (voiceRes.ok) {
+            const voiceData = await voiceRes.json();
+            selectedVoice = voiceData.voice || "alba";
+            if (voiceData.clonedVoiceId && voiceData.voice?.startsWith("clone:")) {
+              selectedVoice = voiceData.voice;
+            }
+            // Fetch cloned voice path if available
+            if (voiceData.clonedVoiceId) {
+              // The path is stored server-side; pass the ID and let the agent resolve it
+              selectedVoice = voiceData.voice;
+            }
+          }
+        } catch {
+          // Use default voice
+        }
+        if (nextTts && selectedVoice.startsWith("clone:")) {
+          unsupportedClonedVoice = true;
+          throw new Error("Cloned voices are unavailable in realtime voice sessions.");
+        }
         const modePayload = JSON.stringify({
           type: "set-mode",
           stt: nextStt,
           tts: nextTts,
+          voice: selectedVoice,
           initial_prompt: initialPrompt,
           request_id: requestId,
         });
         const encodedModePayload = new TextEncoder().encode(modePayload);
+        setVoiceLabel("Starting speech services…");
+        let modeAcknowledgedResolved = false;
         const modeAcknowledgement = new Promise<boolean>((resolve) => {
           const timeout = window.setTimeout(() => {
             voiceModeWaitersRef.current.delete(requestId);
             resolve(false);
-          }, 10_000);
+          }, 120_000);
           voiceModeWaitersRef.current.set(requestId, {
-            resolve,
+            resolve: (success) => {
+              modeAcknowledgedResolved = true;
+              resolve(success);
+            },
             timeout,
             stt: nextStt,
             tts: nextTts,
@@ -3040,24 +3122,32 @@ export default function DeepSpaceChatClient({
             });
         };
 
-        // LiveKit may resolve room.connect before the voice agent has joined.
-        // Send once now and once when the agent appears so the mode is never
-        // lost during that normal startup race.
+        // LiveKit may resolve room.connect before the voice agent has joined
+        // or before WebRTC data channels are fully open. Periodically retry
+        // sending the mode packet until acknowledged so race conditions never drop it.
         publishVoiceMode();
-        const agentAlreadyConnected = Array.from(room.remoteParticipants.values()).some(
-          (participant: any) => String(participant.identity).startsWith("agent-"),
-        );
-        if (!agentAlreadyConnected) {
-          const onAgentConnected = (participant: any) => {
-            if (!isCurrentRequest() || roomRef.current !== room) return;
-            if (!String(participant.identity).startsWith("agent-")) return;
-            room.off(RoomEvent.ParticipantConnected, onAgentConnected);
-            publishVoiceMode();
-          };
-          room.on(RoomEvent.ParticipantConnected, onAgentConnected);
-        }
+        const modeRetryTimer = window.setInterval(() => {
+          if (modeAcknowledgedResolved || !isCurrentRequest() || roomRef.current !== room) {
+            window.clearInterval(modeRetryTimer);
+            return;
+          }
+          publishVoiceMode();
+        }, 500);
 
-        const modeAcknowledged = await modeAcknowledgement;
+        const onAgentConnected = (participant: any) => {
+          if (!isCurrentRequest() || roomRef.current !== room) return;
+          if (!String(participant.identity).startsWith("agent-")) return;
+          publishVoiceMode();
+        };
+        room.on(RoomEvent.ParticipantConnected, onAgentConnected);
+
+        let modeAcknowledged = false;
+        try {
+          modeAcknowledged = await modeAcknowledgement;
+        } finally {
+          window.clearInterval(modeRetryTimer);
+          room.off(RoomEvent.ParticipantConnected, onAgentConnected);
+        }
         if (!modeAcknowledged) {
           voiceModeSetupFailed = true;
           throw new Error("Voice agent did not confirm the requested mode.");
@@ -3096,8 +3186,10 @@ export default function DeepSpaceChatClient({
         setVoiceLabel(
           microphoneSetupFailed
             ? "Microphone unavailable. Check browser permission and input device."
+            : unsupportedClonedVoice
+              ? "Choose a built-in voice in Voice Studio for voice conversation."
             : voiceModeSetupFailed
-              ? "Voice agent did not confirm dictation. Try again."
+              ? "Voice services could not start. Check the voice agent and model setup."
               : "Voice server unreachable.",
         );
       }
@@ -3779,7 +3871,7 @@ export default function DeepSpaceChatClient({
             messages={renderableMessages}
             scrollContainerRef={scrollContainerRef}
             onInsertActiveAnswer={onInsertLatestAnswer}
-            disabled={isConversationSwitching}
+            disabled={isConversationSwitching || !isPanelActive}
           />
 
           <div
@@ -3822,6 +3914,11 @@ export default function DeepSpaceChatClient({
             >
               <DeepSpaceThread
                 messages={renderableMessages}
+                active={isPanelActive}
+                historyScopeKey={activeConversationId ?? state.currentConversationId}
+                hasOlderMessages={hasOlderHistory}
+                loadingOlderMessages={loadingOlderHistory}
+                onLoadOlderMessages={loadOlderHistory}
                 emptyPrompts={EMPTY_PROMPTS}
                 userName={user?.display_name?.trim() || user?.email}
                 queuedAssistantId={activeRequestIsQueued ? state.activeAssistantId : null}
@@ -3978,7 +4075,7 @@ export default function DeepSpaceChatClient({
           </div>
         </div>
         {isConversationSwitching && !selectedConversationLoadFailed ? (
-          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center backdrop-blur-sm">
+          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center">
             <AverQelLoading
               label="Loading selected conversation…"
               size="section"
@@ -3988,45 +4085,51 @@ export default function DeepSpaceChatClient({
         ) : null}
       </div>
 
-      <AnimatePresence>
-        {historyOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setHistoryOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/35 backdrop-blur-[1.5px]"
-            />
-            <motion.div
-              initial={{ x: 420, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 420, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
-            >
-              <ChatSidebar
-                endpointBase="/deepspace/chats"
-                enableArchived
-                enableRetentionControls
-                isTenantAdmin={hasAdminRole(user?.roles)}
-                variant="floating"
-                currentConversationId={state.currentConversationId}
-                onConversationRenamed={onConversationRenamed}
-                onSelectConversation={(id) => {
-                  onSelectNote?.(id);
-                  setHistoryOpen(false);
-                }}
-                onNewChat={() => {
-                  startNewChat();
-                  setHistoryOpen(false);
-                }}
-                onClose={() => setHistoryOpen(false)}
-              ></ChatSidebar>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {mounted && typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence initial={false}>
+              {historyOpen && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12, ease: "easeOut" }}
+                    onClick={() => setHistoryOpen(false)}
+                    className="fixed inset-0 z-[100] bg-black/35"
+                  />
+                  <motion.div
+                    initial={{ x: 12, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 12, opacity: 0 }}
+                    transition={{ duration: 0.14, ease: "easeOut" }}
+                    className="fixed top-[5.25rem] sm:top-[5.75rem] md:top-[6.25rem] right-3 sm:right-4 bottom-3 sm:bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl sm:w-[320px]"
+                  >
+                    <ChatSidebar
+                      endpointBase="/deepspace/chats"
+                      enableArchived
+                      enableRetentionControls
+                      isTenantAdmin={hasAdminRole(user?.roles)}
+                      variant="floating"
+                      currentConversationId={state.currentConversationId}
+                      onConversationRenamed={onConversationRenamed}
+                      onSelectConversation={(id) => {
+                        onSelectNote?.(id);
+                        setHistoryOpen(false);
+                      }}
+                      onNewChat={() => {
+                        startNewChat();
+                        setHistoryOpen(false);
+                      }}
+                      onClose={() => setHistoryOpen(false)}
+                    ></ChatSidebar>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

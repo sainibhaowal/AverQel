@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 
 import {
   updateMCPPolicy,
@@ -109,24 +110,20 @@ export default function MCPConnectionPolicyPanel({
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-white">
           Master tool permission
-          <select
-            aria-label="Master tool permission"
+          <RoundedSelect
+            label="Master tool permission"
             value={draft.default_tool_mode}
-            onChange={(event) =>
+            onChange={(mode) =>
               setDraft({
                 ...draft,
-                default_tool_mode: event.target.value as MCPToolMode,
+                default_tool_mode: mode as MCPToolMode,
                 tool_modes: {},
               })
             }
-            className="mt-2 w-full rounded-lg border border-white/10 bg-[#111512] px-3 py-2 text-sm text-white"
-          >
-            {MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {mode.replaceAll("_", " ")}
-              </option>
-            ))}
-          </select>
+            options={MODES.map((mode) => ({ value: mode, label: mode.replaceAll("_", " ") }))}
+            className="mt-2 w-full"
+            triggerClassName="w-full text-sm"
+          />
           <span className="mt-1 block text-xs text-white/45">
             Applies to every current and future tool. Choosing a value clears individual overrides;
             you can customize tools again afterward.
@@ -134,20 +131,17 @@ export default function MCPConnectionPolicyPanel({
         </label>
         <label className="block text-sm text-white">
           Master risk ceiling
-          <select
-            aria-label="Master risk ceiling"
+          <RoundedSelect
+            label="Master risk ceiling"
             value={draft.risk_ceiling}
-            onChange={(event) =>
-              setDraft({ ...draft, risk_ceiling: event.target.value as MCPRiskLabel })
-            }
-            className="mt-2 w-full rounded-lg border border-white/10 bg-[#111512] px-3 py-2 text-sm text-white sm:max-w-sm"
-          >
-            {RISK_OPTIONS.map((risk) => (
-              <option key={risk} value={risk}>
-                {risk.replaceAll("_", " ")}
-              </option>
-            ))}
-          </select>
+            onChange={(risk) => setDraft({ ...draft, risk_ceiling: risk as MCPRiskLabel })}
+            options={RISK_OPTIONS.map((risk) => ({
+              value: risk,
+              label: risk.replaceAll("_", " "),
+            }))}
+            className="mt-2 w-full sm:max-w-sm"
+            triggerClassName="w-full text-sm"
+          />
           <span className="mt-1 block text-xs text-white/45">
             No tool can run above this risk level. Read-only mode remains an additional hard block.
           </span>
@@ -163,25 +157,22 @@ export default function MCPConnectionPolicyPanel({
           {RISK_OPTIONS.filter((risk) => risk !== "read").map((risk) => (
             <label key={risk} className="text-xs text-white/60">
               {risk.replaceAll("_", " ")}
-              <select
+              <RoundedSelect
+                label={`${risk.replaceAll("_", " ")} approval rule`}
                 value={draft.approval_rules[risk] || "needs_approval"}
-                onChange={(event) =>
+                onChange={(mode) =>
                   setDraft({
                     ...draft,
                     approval_rules: {
                       ...draft.approval_rules,
-                      [risk]: event.target.value as MCPToolMode,
+                      [risk]: mode as MCPToolMode,
                     },
                   })
                 }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#111512] px-2 py-2 text-xs text-white"
-              >
-                {MODES.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
+                options={MODES.map((mode) => ({ value: mode, label: mode.replaceAll("_", " ") }))}
+                className="mt-1 w-full"
+                triggerClassName="w-full px-2 py-2 text-xs"
+              />
             </label>
           ))}
         </div>

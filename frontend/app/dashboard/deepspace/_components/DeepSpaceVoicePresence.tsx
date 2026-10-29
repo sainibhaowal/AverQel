@@ -73,7 +73,7 @@ export default function DeepSpaceVoicePresence({
     >
       <div
         aria-hidden="true"
-        className="relative flex h-6 w-14 shrink-0 items-center overflow-hidden rounded-full border border-white/8 bg-black/20 px-1.5 sm:w-20"
+        className="relative flex h-6 w-14 shrink-0 items-center overflow-hidden rounded-lg border border-white/8 bg-black/20 px-1.5 sm:w-20"
         data-testid="deepspace-voice-waveform"
         data-voice-level={level.toFixed(2)}
       >
@@ -90,7 +90,7 @@ export default function DeepSpaceVoicePresence({
                       ? { scaleY: Math.min(1, base + level * 0.45) }
                       : { scaleY: [base, peak, Math.max(0.25, base * 0.78)] }
                   }
-                  className="h-4 flex-1 origin-center rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(74,222,128,0.65)]"
+                  className="h-4 flex-1 origin-center rounded-sm bg-emerald-400 shadow-[0_0_9px_rgba(74,222,128,0.65)]"
                   data-testid="deepspace-voice-wave-bar"
                   transition={{
                     duration: 0.52 + (index % 4) * 0.09,

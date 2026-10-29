@@ -680,7 +680,7 @@ function SupportContent() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span
-                              className={`rounded-full border px-2 py-0.5 text-[9px] font-black tracking-tighter uppercase ${
+                              className={`rounded-lg border px-2 py-0.5 text-[9px] font-black tracking-tighter uppercase ${
                                 ticket.category === "complaint"
                                   ? "border-rose-500/30 bg-rose-50 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300"
                                   : ticket.category === "feedback"
@@ -699,7 +699,7 @@ function SupportContent() {
 
                         <div className="flex items-center gap-2">
                           <div
-                            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold ${
+                            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[10px] font-bold ${
                               ticket.status === "open"
                                 ? "border-teal-500/30 bg-teal-50 text-teal-800 dark:border-teal-400/20 dark:bg-teal-400/5 dark:text-teal-300"
                                 : ticket.status === "in_progress"

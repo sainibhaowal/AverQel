@@ -134,7 +134,7 @@ export default function WelcomeFlow() {
         <header className="flex items-center justify-between gap-4 border-b border-white/[0.07] px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
             <AverQelLogo size="footer" showWordmark disableAnimation />
-            <span className="hidden rounded-full border border-teal-300/15 bg-teal-300/[0.06] px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] text-teal-100/70 uppercase sm:inline-flex">
+            <span className="hidden rounded-lg border border-teal-300/15 bg-teal-300/[0.06] px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] text-teal-100/70 uppercase sm:inline-flex">
               Welcome
             </span>
           </div>
@@ -156,7 +156,7 @@ export default function WelcomeFlow() {
             {SLIDES.map((label, index) => (
               <div key={label} className="flex min-w-0 flex-1 items-center gap-2">
                 <span
-                  className={`h-1.5 flex-1 rounded-full transition-colors ${index <= step ? "bg-teal-300" : "bg-white/10"}`}
+                  className={`h-1.5 flex-1 rounded-sm transition-colors ${index <= step ? "bg-teal-300" : "bg-white/10"}`}
                 />
                 {index === step ? (
                   <span className="hidden text-[10px] font-medium text-slate-300 sm:inline">
