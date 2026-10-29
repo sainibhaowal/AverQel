@@ -33,6 +33,27 @@ def test_ci_workflow_contains_blocking_gates() -> None:
     assert "continue-on-error: true" not in workflow
 
 
+def test_ci_runs_safety_in_a_separate_environment() -> None:
+    workflow = yaml.load(_read(ROOT / ".github/workflows/ci.yml"), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["backend-quality"]["steps"]
+    install = next(
+        step["run"] for step in steps if step.get("name") == "Install Python dependencies"
+    )
+    run = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Run backend quality and security gates in parallel"
+    )
+    assert 'python -m venv "$RUNNER_TEMP/safety-venv"' in install
+    assert (
+        '"$RUNNER_TEMP/safety-venv/bin/pip" install --no-compile --prefer-binary safety==3.8.1'
+        in install
+    )
+    assert 'if [[ "$gate" == safety ]]; then' in run
+    assert 'export PATH="$RUNNER_TEMP/safety-venv/bin:$PATH"' in run
+    assert 'run-backend-gate.sh" "$gate"' in run
+
+
 def test_ci_runs_only_for_pull_requests() -> None:
     workflow = _read(ROOT / ".github/workflows/ci.yml")
     assert "pull_request:" in workflow
