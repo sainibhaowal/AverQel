@@ -52,7 +52,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-compile --prefer-binary --timeout 1000 --retries 10 -r requirements.txt -r requirements-dev.txt
-          pip install --no-compile --prefer-binary bandit safety
+          pip install --no-compile --prefer-binary bandit
+          python -m venv "$RUNNER_TEMP/safety-venv"
+          "$RUNNER_TEMP/safety-venv/bin/pip" install --no-compile --prefer-binary safety==3.8.1
 
       - name: Run backend quality and security gates in parallel
         run: |
@@ -66,8 +68,12 @@ jobs:
           # and black --check provide the same blocking guarantee without
           # racing on one shared working tree.
           for gate in "${GATES[@]}"; do
-            bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "$gate" \
-              >"$LOG_DIR/$gate.log" 2>&1 &
+            (
+              if [[ "$gate" == safety ]]; then
+                export PATH="$RUNNER_TEMP/safety-venv/bin:$PATH"
+              fi
+              bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "$gate"
+            ) >"$LOG_DIR/$gate.log" 2>&1 &
             PIDS["$gate"]=$!
           done
 

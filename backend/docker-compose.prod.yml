@@ -172,7 +172,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-      start_period: 30s
+      start_period: 120s
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

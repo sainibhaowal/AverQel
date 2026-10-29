@@ -28,7 +28,7 @@ describe("RoundedSelect", () => {
     fireEvent.click(trigger);
 
     const listbox = screen.getByRole("listbox", { name: "Export file format" });
-    expect(listbox).toHaveClass("rounded-lg");
+    expect(listbox).toHaveClass("rounded-2xl");
     expect(screen.getByRole("option", { name: "PDF" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "PDF" }));
 

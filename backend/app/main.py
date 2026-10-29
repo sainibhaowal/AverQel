@@ -17,6 +17,7 @@ from app.deepspace.api import export as deepspace_export
 from app.deepspace.api import library as deepspace_library
 from app.deepspace.api import sandbox as deepspace_sandbox
 from app.deepspace.api import schedules as deepspace_schedules
+from app.deepspace.api import voice_settings as deepspace_voice_settings
 from app.documents.api import collection_security, collections, documents, organization
 from app.integrations.api import integrations, mcp
 from app.integrations.api import voice as voice_routes
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(deepspace_documents.router, prefix=settings.api_prefix)
     app.include_router(deepspace_sandbox.router, prefix=settings.api_prefix)
     app.include_router(deepspace_schedules.router, prefix=settings.api_prefix)
+    app.include_router(deepspace_voice_settings.router, prefix=settings.api_prefix)
     app.include_router(admin.access_router, prefix=settings.api_prefix)
     app.include_router(admin.router, prefix=settings.api_prefix)
     app.include_router(contact.router, prefix=settings.api_prefix)

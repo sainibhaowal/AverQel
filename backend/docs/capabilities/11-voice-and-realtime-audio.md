@@ -44,7 +44,7 @@ User enables Voice conversation
   -> selected DeepSpace provider and tools run through the normal chat API/SSE stream
   -> browser forwards complete visible sentences from that live stream
   -> voice-agent queues the text in order
-  -> Kokoro synthesizes audio
+  -> Pocket TTS synthesizes audio
   -> voice-agent publishes an audio track
   -> browser plays the track
 ~~~
@@ -63,7 +63,7 @@ pending sentence is flushed when a tool starts or the DeepSpace turn completes.
 When a tool starts and no snippet was spoken in the previous four seconds, the
 browser may send one brief, generic progress line. It is selected from the
 known tool category and does not include the tool name, arguments, or result.
-Kokoro uses the `am_michael` voice preset. Speaking again cancels the current
+Pocket TTS uses the selected built-in voice. Speaking again cancels the current
 playback and queued snippets, but does not cancel the DeepSpace tool run.
 
 ## 2. Architecture
@@ -79,7 +79,7 @@ flowchart LR
     VAD[Silero VAD]
     STT[Faster-Whisper STT]
     Provider[Selected DeepSpace chat provider]
-    TTS[Kokoro ONNX TTS]
+    TTS[Pocket TTS]
     Audio[Browser audio track]
 
     Browser --> Token
@@ -113,7 +113,7 @@ flowchart LR
 | Silero VAD | Detects speech boundaries and reduces noise-triggered transcription |
 | Faster-Whisper | Local speech-to-text |
 | Selected DeepSpace chat provider | Handles the user request and tools through the normal chat API; its visible streamed answer is what voice mode speaks |
-| Kokoro ONNX | Local text-to-speech synthesis |
+| Pocket TTS | Local text-to-speech synthesis |
 | DeepSpace chat API/SSE | Continues to own normal user messages, agent execution, queueing, and answers |
 
 ## 3. Exact implementation map
@@ -123,7 +123,7 @@ flowchart LR
 - backend/app/deepspace/integrations/voice_agent.py
   - LiveKit agent entrypoint.
   - Faster-Whisper loading.
-  - Kokoro loading.
+  - Pocket TTS loading.
   - Silero VAD.
   - Partial and final transcription with per-room serialization and segment IDs.
   - Pause/finish commands that flush the current utterance before acknowledgment.
@@ -132,6 +132,16 @@ flowchart LR
   - TTS audio-track publication.
   - Voice state data messages.
   - Speech playback interruption when new speech begins.
+- backend/app/deepspace/api/voice_settings.py
+  - Authenticated GET/PUT `/api/v1/deepspace/voice/settings` routes, bounded
+    WAV previews, and voice sample upload/deletion.
+  - Preferences are keyed by both authenticated user and tenant. Clone samples
+    are size/duration checked and stored through tenant-guarded object storage;
+    the API never accepts a client-supplied storage path.
+- backend/app/deepspace/models/voice_settings.py and
+  backend/alembic/versions/20261028_0001_voice_settings.py
+  - Tenant-scoped persisted settings and clone identifiers. Clone audio bytes
+    are not stored in the database.
 - backend/app/integrations/api/voice.py
   - GET /api/v1/voice/token.
   - Requires the queries:run permission.
@@ -147,7 +157,7 @@ flowchart LR
   - Local LiveKit port, RTC ports, and local development key configuration.
 - backend/requirements.txt
   - livekit, livekit-agents, livekit-plugins-silero,
-    faster-whisper, and kokoro-onnx dependencies.
+    faster-whisper, and pocket-tts dependencies.
 
 ### Frontend
 
@@ -169,8 +179,8 @@ flowchart LR
 
 ### Existing open-source components and license review
 
-This change adds no dependency. It reuses the installed LiveKit and local
-speech stack. Upstream source and model license notices must remain available
+The speech stack includes LiveKit, Faster-Whisper, and Pocket TTS. Upstream
+source and model license notices must remain available
 when distributing those components; model-weight terms are separate from
 wrapper-library terms.
 
@@ -180,8 +190,7 @@ wrapper-library terms.
 | [Faster-Whisper source](https://github.com/SYSTRAN/faster-whisper) | MIT |
 | [Systran faster-whisper-small.en model](https://huggingface.co/Systran/faster-whisper-small.en/tree/d1d751a5f8271d482d14ca55d9e2deeebbae577f) | MIT |
 | [Silero VAD source](https://github.com/snakers4/silero-vad/blob/master/LICENSE) | MIT |
-| [Kokoro ONNX source](https://github.com/thewh1teagle/kokoro-onnx/blob/main/LICENSE) | MIT |
-| [Kokoro-82M v1.0 model weights](https://huggingface.co/hexgrad/Kokoro-82M) | Apache-2.0 |
+| [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) | Consult upstream code and model terms for the deployed version |
 
 ### Documentation and evidence
 
@@ -274,7 +283,7 @@ sequenceDiagram
     participant LK as LiveKit
     participant VA as voice-agent
     participant API as DeepSpace chat API/SSE
-    participant TTS as Kokoro
+    participant TTS as Pocket TTS
     actor User
 
     UI->>API: Submit final transcript to selected conversation
@@ -320,6 +329,10 @@ Voice must preserve the existing application boundaries:
 
 - The token route requires authentication and queries:run permission.
 - The requested LiveKit identity must match the authenticated user.
+- The token route currently accepts the requested room name without checking
+  its ownership. Random room names reduce guessing but do not enforce user or
+  tenant isolation if a room name becomes known. Bind rooms to the authenticated
+  user and tenant before treating this as a strong isolation boundary.
 - LiveKit API credentials remain server-side.
 - Browser state contains room/token operation state, not provider secrets.
 - Voice does not bypass DeepSpace authorization, tenant isolation, queue policy,
@@ -334,12 +347,9 @@ Voice must preserve the existing application boundaries:
   CPU INT8 inference. Operators can override the path with
   `AVERQEL_STT_MODEL_PATH`; the selected model files must be present in the
   read-only model mount before the agent starts. If the default small model is
-  missing but the existing tiny model is installed, the agent logs a warning
-  and falls back to tiny so dictation remains available. Provision the pinned model
-  revision `d1d751a5f8271d482d14ca55d9e2deeebbae577f` into
-  `backend/models/stt/faster-whisper-small.en`; the folder is intentionally
-  local model data and is not committed to Git. The MIT model card is stored
-  beside the local weights.
+  missing, it logs a warning and tries the installed base model, then tiny.
+  Smaller fallbacks may reduce recognition quality. Model files are local data
+  and are not committed to Git. Review the selected model's terms.
 - The voice-agent is a separate service, not part of the API process.
 - Normal chat history and queue persistence remain unchanged by voice mode.
 
@@ -348,8 +358,8 @@ Voice must preserve the existing application boundaries:
 | Former setup-note idea | Current reality |
 | --- | --- |
 | LiveKit WebRTC transport | Implemented locally |
-| Faster-Whisper streaming-style transcription | Implemented locally with ordered interim/final transcription using small.en |
-| Kokoro TTS | Implemented locally |
+| Faster-Whisper streaming-style transcription | Implemented locally with ordered interim/final transcription using the configured model |
+| Pocket TTS | Implemented locally |
 | VAD and barge-in | Implemented for speech detection and TTS interruption |
 | Voice state updates | Implemented through LiveKit data messages |
 | New visible response sentences spoken while the DeepSpace request runs | Implemented locally |
@@ -441,6 +451,25 @@ silently change them.
 
 ## 10. Operational troubleshooting
 
+The agent starts its LiveKit worker without loading speech models inside the
+worker initialization deadline. A room's requested models and selected built-in
+voice load in background threads; the agent confirms the mode only after those
+models and the outgoing audio track are ready. The browser waits up to two
+minutes. First use may require model downloads; provision the Pocket TTS model,
+tokenizer and selected voice in the agent's cache ahead of use and check agent
+logs and network access if initialization fails or exceeds that deadline. A
+running container alone does not prove that models are ready.
+
+Realtime sessions accept built-in voice names only. Cloned voices are refused
+by the voice agent; cloned samples are currently limited to Voice Studio
+preview. Preview samples must be WAV audio between 1 and 30 seconds and no
+larger than 10 MB. The Settings API binds clone metadata to both authenticated
+user and tenant, and uses the existing tenant-guarded object-storage service.
+Dictation does not require TTS. Model failures return a negative mode
+acknowledgement rather than activating the UI. Speech model work is executed
+away from the room event loop; playback still depends on browser permission,
+CPU capacity and network conditions.
+
 The browser log supplied on 2026-10-22 showed `livekit-client` 2.20.0
 connecting to LiveKit server 1.9.0 (protocol 16). Its `/rtc/v1` validation
 request returned 404, so the SDK retried the legacy `/rtc` route; microphone
@@ -452,6 +481,36 @@ The Compose service now pins LiveKit
 server 1.13.10; its [upstream release notes](https://github.com/livekit/livekit/blob/v1.13.10/CHANGELOG.md)
 include fixes for the v1 RTC path and timed-out pending tracks. Keep this exact
 version pin reviewed when updating the LiveKit client or server.
+
+### Voice Studio preview
+
+Voice preferences are available through the authenticated
+`GET /api/v1/deepspace/voice/settings` and `PUT
+/api/v1/deepspace/voice/settings` endpoints. Both require `queries:run`; a
+preference row is scoped by `(user_id, tenant_id)`. `POST
+/api/v1/deepspace/voice/test` accepts a short bounded sample and returns a
+complete WAV. `POST /api/v1/deepspace/voice/clone` accepts a WAV upload up to
+10 MB and 30 seconds, stores it under the tenant and user object prefix, and
+keeps only its clone ID/name in the settings row. `DELETE
+/api/v1/deepspace/voice/clone/{voice_id}` removes the caller's saved clone.
+
+`POST /api/v1/deepspace/voice/test` returns a complete WAV only after Pocket TTS
+has generated the full sample. The endpoint is a settings preview, not a live
+audio stream. The API lazily loads the speech model per worker process and
+serializes generation inside each process. A cold worker can therefore pause
+before returning any audio, and separate API workers may each load their own
+model copy. A local log sample from 2026-10-28 showed a first model load of
+about 33 seconds, a cached worker load of about 5 seconds, and warm generation
+of 2.1 to 2.6 seconds of audio in 1.9 to 2.3 seconds. These are observations
+from one host, not performance guarantees.
+
+The preview page uses a short sentence and mounts one audio element after the
+WAV arrives. Browser autoplay may still be restricted after a network request;
+the native audio controls remain available. The live voice conversation uses
+the separate WebRTC pipeline above. It shows best-effort interim transcription,
+then sends the final phrase to the normal DeepSpace chat flow after speech ends.
+This pipeline is turn-based and does not guarantee word-by-word transcription
+or immediate spoken responses.
 
 Signaling and media use different network paths. Caddy forwards WSS signaling
 from `/livekit` to LiveKit port 7880; WebRTC media uses the configured TCP

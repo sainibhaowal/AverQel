@@ -141,7 +141,7 @@ available, what is gated, and which security boundary protects each feature.
    conversation submits the final transcript through the currently selected
    DeepSpace chat. The user must grant browser microphone permission.
 3. Voice conversation forwards new visible assistant sentences from the active
-   DeepSpace stream to the room and synthesizes them locally with Kokoro while
+   DeepSpace stream to the room and synthesizes them locally with Pocket TTS while
    the request runs. It does not replay chat history, hidden reasoning, or raw
    tool payloads, and it does not make a second chat-model call for commentary.
    A brief generic tool-progress status can be spoken when no recent response
