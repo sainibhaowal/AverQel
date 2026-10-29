@@ -47,7 +47,7 @@ jobs:
             echo "::error::This run targets $SHA, but origin/main is now $MAIN_SHA. Start a new deployment from the current main commit; re-running this older run would deploy stale frontend code."
             exit 1
           fi
-          RELEASE_VERSION="$(git tag --points-at "$SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+          RELEASE_VERSION="$(git tag --points-at "$SHA" | grep -E '^v1\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
           if [[ -z "$RELEASE_VERSION" ]]; then
             # Deployment is deliberately independent from the manual desktop
             # release. This identifier is immutable, safe as a Docker tag, and
@@ -203,6 +203,19 @@ jobs:
           done
           if [[ ! "$FRONTEND_SMOKE_STATUS" =~ ^2[0-9][0-9]$ ]]; then
             echo "::error::Built frontend did not serve its homepage within 60 seconds (last HTTP status: $FRONTEND_SMOKE_STATUS)"
+            docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
+            exit 1
+          fi
+          if ! docker exec "$FRONTEND_SMOKE_CONTAINER" node -e '
+            fetch("http://127.0.0.1:1030/").then(response => {
+              console.log("Built frontend loopback health check returned HTTP " + response.status);
+              process.exit(response.ok ? 0 : 1);
+            }).catch(error => {
+              console.error("Built frontend loopback health check failed: " + error.name + ": " + error.message);
+              process.exit(1);
+            });
+          '; then
+            echo "::error::Built frontend cannot reach its own loopback listener"
             docker logs --tail 60 "$FRONTEND_SMOKE_CONTAINER" || true
             exit 1
           fi

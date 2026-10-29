@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import sys
 import threading
 import time
@@ -10,10 +12,13 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from fastapi import UploadFile
 
 from app.auth.dependencies import AuthContext
 from app.core.errors import ApiError
 from app.deepspace.api import voice_settings
+from app.deepspace.models.voice_settings import DeepSpaceVoiceSettings
+from app.system.services.storage_service import StorageServiceError
 
 pytestmark = pytest.mark.unit_no_db
 
@@ -32,7 +37,7 @@ class FakeTTSModel:
     def __init__(self, fail_voice: str | None = None) -> None:
         self.fail_voice = fail_voice
 
-    def get_state_for_audio_prompt(self, voice_name: str) -> dict:
+    def get_state_for_audio_prompt(self, voice_name: str, **_kwargs) -> dict:
         if self.fail_voice and voice_name == self.fail_voice:
             raise RuntimeError(f"Voice {voice_name} not available")
         return {"voice": voice_name}
@@ -112,13 +117,9 @@ def test_test_voice_success(monkeypatch: pytest.MonkeyPatch) -> None:
     db = MagicMock()
 
     response = voice_settings.test_voice(
-        payload={
-            "voice": "cosette",
-            "speed": 1.0,
-            "pitch": 1.0,
-            "volume": 1.0,
-            "text": "Test speech",
-        },
+        payload=voice_settings.VoiceTestPayload(
+            voice="cosette", speed=1.0, pitch=1.0, volume=1.0, text="Test speech"
+        ),
         auth=auth,
         db=db,
     )
@@ -131,15 +132,15 @@ def test_test_voice_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_test_voice_fallback_on_unavailable_voice(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Voice 'missing_voice' fails, but fallback to 'alba' succeeds
-    fake_tts = FakeTTSModel(fail_voice="missing_voice")
+    # An unavailable built-in voice state falls back to the supported default.
+    fake_tts = FakeTTSModel(fail_voice="cosette")
     monkeypatch.setattr(voice_settings, "_get_tts_model", lambda: fake_tts)
 
     auth = _make_auth_context()
     db = MagicMock()
 
     response = voice_settings.test_voice(
-        payload={"voice": "missing_voice", "speed": 1.0, "pitch": 1.0, "volume": 1.0},
+        payload=voice_settings.VoiceTestPayload(voice="cosette"),
         auth=auth,
         db=db,
     )
@@ -148,23 +149,60 @@ def test_test_voice_fallback_on_unavailable_voice(monkeypatch: pytest.MonkeyPatc
     assert response.body.startswith(b"RIFF")
 
 
-def test_test_voice_cloned_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_tts = FakeTTSModel()
-    monkeypatch.setattr(voice_settings, "_get_tts_model", lambda: fake_tts)
-
+def test_test_voice_rejects_clone_from_another_tenant() -> None:
     auth = _make_auth_context()
     db = MagicMock()
-    # No clone row in db
     db.get.return_value = None
 
+    with pytest.raises(ApiError) as exc_info:
+        voice_settings.test_voice(
+            payload=voice_settings.VoiceTestPayload(voice=f"clone:clone_{'a' * 32}"),
+            auth=auth,
+            db=db,
+        )
+
+    assert exc_info.value.code == "VOICE_CLONE_NOT_FOUND"
+    assert exc_info.value.status_code == 404
+    db.get.assert_called_once_with(DeepSpaceVoiceSettings, (auth.user_id, auth.tenant_id))
+
+
+def test_test_voice_uses_only_an_owned_clone_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth = _make_auth_context()
+    clone_id = f"clone_{'c' * 32}"
+    storage_calls = []
+
+    class FakeStorage:
+        def __init__(self, _settings):
+            pass
+
+        def get_tenant_bytes(self, **kwargs):
+            storage_calls.append(kwargs)
+            return b"owned voice data"
+
+    fake_tts = FakeTTSModel()
+    monkeypatch.setattr(voice_settings, "StorageService", FakeStorage)
+    monkeypatch.setattr(
+        voice_settings, "get_settings", lambda: SimpleNamespace(minio_bucket="voice-bucket")
+    )
+    monkeypatch.setattr(voice_settings, "_get_tts_model", lambda: fake_tts)
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(cloned_voice_id=clone_id)
+
     response = voice_settings.test_voice(
-        payload={"voice": "clone:nonexistent_clone_id", "speed": 1.2, "pitch": 1.0, "volume": 0.8},
+        payload=voice_settings.VoiceTestPayload(voice=f"clone:{clone_id}"),
         auth=auth,
         db=db,
     )
 
     assert response.status_code == 200
     assert response.body.startswith(b"RIFF")
+    assert storage_calls == [
+        {
+            "tenant_id": auth.tenant_id,
+            "bucket": "voice-bucket",
+            "object_key": f"{auth.tenant_id}/{auth.user_id}/{clone_id}.wav",
+        }
+    ]
 
 
 def test_test_voice_error_raises_known_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,10 +217,153 @@ def test_test_voice_error_raises_known_api_error(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(ApiError) as exc_info:
         voice_settings.test_voice(
-            payload={"voice": "alba"},
+            payload=voice_settings.VoiceTestPayload(voice="alba"),
             auth=auth,
             db=db,
         )
 
     assert exc_info.value.code == "VOICE_TEST_FAILED"
     assert exc_info.value.status_code == 500
+    assert "Fatal hardware failure" not in exc_info.value.message
+
+
+def test_voice_settings_lookup_uses_user_and_tenant_identity() -> None:
+    auth = _make_auth_context()
+    db = MagicMock()
+    row = SimpleNamespace(
+        voice="alba",
+        speed=1.0,
+        pitch=1.0,
+        volume=1.0,
+        cloned_voice_id=None,
+        cloned_voice_name=None,
+    )
+    db.get.return_value = row
+
+    assert voice_settings._get_or_create(db, auth) is row
+    db.get.assert_called_once_with(DeepSpaceVoiceSettings, (auth.user_id, auth.tenant_id))
+
+
+def test_settings_cannot_select_a_clone_owned_by_another_row() -> None:
+    auth = _make_auth_context()
+    db = MagicMock()
+    row = SimpleNamespace(cloned_voice_id=f"clone_{'b' * 32}")
+    db.execute.return_value.scalar_one_or_none.return_value = row
+    payload = voice_settings.VoiceSettingsPayload(
+        voice=f"clone:clone_{'a' * 32}", clonedVoiceId=f"clone_{'a' * 32}"
+    )
+
+    with pytest.raises(ApiError) as exc_info:
+        voice_settings.update_voice_settings(payload, auth=auth, db=db)
+
+    assert exc_info.value.code == "VOICE_CLONE_NOT_FOUND"
+
+
+def test_voice_test_rejects_unbounded_or_unknown_input() -> None:
+    with pytest.raises(ValueError):
+        voice_settings.VoiceTestPayload(text="   ")
+    with pytest.raises(ValueError):
+        voice_settings.VoiceTestPayload(text="x" * 401)
+    with pytest.raises(ValueError):
+        voice_settings.VoiceTestPayload(voice="../../other-user/voice")
+    with pytest.raises(ValueError):
+        voice_settings.VoiceSettingsPayload(speed=3.0)
+
+
+def test_clone_upload_is_bounded_before_audio_processing() -> None:
+    auth = _make_auth_context()
+    db = MagicMock()
+    audio = UploadFile(
+        filename="sample.wav",
+        file=io.BytesIO(b"x" * (voice_settings.MAX_CLONE_UPLOAD_BYTES + 1)),
+    )
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(voice_settings.clone_voice(audio=audio, name="Sample", auth=auth, db=db))
+
+    assert exc_info.value.code == "VOICE_SAMPLE_TOO_LARGE"
+    assert exc_info.value.status_code == 413
+    db.get.assert_not_called()
+
+
+def test_delete_cloned_voice_removes_owned_audio_before_clearing_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth = _make_auth_context()
+    clone_id = f"clone_{'d' * 32}"
+    row = SimpleNamespace(
+        cloned_voice_id=clone_id,
+        cloned_voice_name="My voice",
+        voice=f"clone:{clone_id}",
+    )
+    storage_calls = []
+
+    class FakeStorage:
+        def __init__(self, _settings):
+            pass
+
+        def delete_tenant_object(self, **kwargs):
+            storage_calls.append(kwargs)
+
+    monkeypatch.setattr(voice_settings, "StorageService", FakeStorage)
+    monkeypatch.setattr(
+        voice_settings, "get_settings", lambda: SimpleNamespace(minio_bucket="voice-bucket")
+    )
+    db = MagicMock()
+    db.execute.return_value.scalar_one_or_none.return_value = row
+
+    result = voice_settings.delete_cloned_voice(clone_id, auth=auth, db=db)
+
+    assert result == {"status": "deleted"}
+    assert row.cloned_voice_id is None
+    assert row.cloned_voice_name is None
+    assert row.voice == "alba"
+    db.commit.assert_called_once()
+    assert storage_calls == [
+        {
+            "tenant_id": auth.tenant_id,
+            "bucket": "voice-bucket",
+            "object_key": f"{auth.tenant_id}/{auth.user_id}/{clone_id}.wav",
+            "raise_on_error": True,
+        }
+    ]
+
+
+def test_delete_cloned_voice_keeps_settings_when_storage_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth = _make_auth_context()
+    clone_id = f"clone_{'e' * 32}"
+    row = SimpleNamespace(
+        cloned_voice_id=clone_id,
+        cloned_voice_name="My voice",
+        voice=f"clone:{clone_id}",
+    )
+
+    class BrokenStorage:
+        def __init__(self, _settings):
+            pass
+
+        def delete_tenant_object(self, **_kwargs):
+            raise StorageServiceError(
+                code="STORAGE_UNAVAILABLE",
+                message="Unable to delete object.",
+                retryable=True,
+            )
+
+    monkeypatch.setattr(voice_settings, "StorageService", BrokenStorage)
+    monkeypatch.setattr(
+        voice_settings, "get_settings", lambda: SimpleNamespace(minio_bucket="voice-bucket")
+    )
+    db = MagicMock()
+    db.execute.return_value.scalar_one_or_none.return_value = row
+
+    with pytest.raises(ApiError) as exc_info:
+        voice_settings.delete_cloned_voice(clone_id, auth=auth, db=db)
+
+    assert exc_info.value.code == "VOICE_STORAGE_UNAVAILABLE"
+    assert exc_info.value.status_code == 503
+    assert row.cloned_voice_id == clone_id
+    assert row.cloned_voice_name == "My voice"
+    assert row.voice == f"clone:{clone_id}"
+    db.commit.assert_not_called()

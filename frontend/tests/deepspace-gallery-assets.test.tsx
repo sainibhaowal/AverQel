@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
@@ -144,6 +144,53 @@ describe("DeepSpace gallery images", () => {
         assets: [expect.objectContaining({ url: imageUrl, retention: "library" })],
         revision: 2,
       }),
+    );
+  });
+
+  it("uses the owned image preview if the original URL fails before the cache loads", async () => {
+    let resolveOwnedImage: ((response: { ok: boolean; blob: () => Promise<Blob> }) => void) | null =
+      null;
+    api.fetchWithAuth.mockImplementation(
+      () =>
+        new Promise<{ ok: boolean; blob: () => Promise<Blob> }>((resolve) => {
+          resolveOwnedImage = resolve;
+        }),
+    );
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:owned-gallery-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+
+    render(
+      <GalleryBlock
+        payload={{
+          id: "gallery-cached-preview",
+          type: "gallery",
+          title: "Research photos",
+          items: [{ src: imageUrl, alt: "Microscope" }],
+          assets: [{ url: imageUrl, owned_url: ownedUrl, status: "owned" }],
+        }}
+      />,
+    );
+
+    const originalImage = screen.getByRole("img", { name: "Microscope" });
+    fireEvent.error(originalImage);
+    expect(screen.getByText(/This image is unavailable/)).toBeInTheDocument();
+    await waitFor(() => expect(resolveOwnedImage).toBeTypeOf("function"));
+
+    await act(async () => {
+      resolveOwnedImage?.({
+        ok: true,
+        blob: async () => new Blob(["png"], { type: "image/png" }),
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Microscope" })).toHaveAttribute(
+        "src",
+        "blob:owned-gallery-image",
+      ),
     );
   });
 

@@ -11,6 +11,36 @@ type LandingSectionMotionOptions = {
 const subscribeToElectronRuntime = () => () => undefined;
 const getElectronRuntimeSnapshot = () => typeof window !== "undefined" && Boolean(window.electron);
 const getServerElectronRuntimeSnapshot = () => false;
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+const subscribeToReducedMotion = (callback: () => void) => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return () => undefined;
+  }
+
+  const mediaQuery = window.matchMedia(REDUCED_MOTION_QUERY);
+  if (typeof mediaQuery.addEventListener === "function") {
+    mediaQuery.addEventListener("change", callback);
+    return () => mediaQuery.removeEventListener("change", callback);
+  }
+
+  mediaQuery.addListener(callback);
+  return () => mediaQuery.removeListener(callback);
+};
+
+const getReducedMotionSnapshot = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(REDUCED_MOTION_QUERY).matches
+    : false;
+const getServerReducedMotionSnapshot = () => false;
+
+export function useLandingReducedMotion() {
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
+    getReducedMotionSnapshot,
+    getServerReducedMotionSnapshot,
+  );
+}
 
 export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
   options: LandingSectionMotionOptions = {},

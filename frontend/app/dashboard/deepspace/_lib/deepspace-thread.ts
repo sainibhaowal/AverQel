@@ -2943,7 +2943,7 @@ function reduceDeepSpaceThread(
           )
           .map((message) => message.id),
       );
-      const activeAssistant = [...messages]
+      const historyActiveAssistant = [...messages]
         .reverse()
         .find(
           (message) =>
@@ -2951,6 +2951,22 @@ function reduceDeepSpaceThread(
             message.status === "streaming" &&
             activeHistoryIds.has(message.id),
         );
+      const localActiveAssistant =
+        sameConversation &&
+        state.isStreaming &&
+        state.activeAssistantId &&
+        !action.messages.some((message) => message.id === state.activeAssistantId)
+          ? messages.find(
+              (message) =>
+                message.id === state.activeAssistantId &&
+                message.role === "assistant" &&
+                message.status === "streaming",
+            )
+          : undefined;
+      // History can briefly omit a newly started turn while the stream is
+      // already live. Keep its local state until the server returns an
+      // explicit record or the stream sends a terminal event.
+      const activeAssistant = historyActiveAssistant ?? localActiveAssistant;
       return {
         ...state,
         messages,

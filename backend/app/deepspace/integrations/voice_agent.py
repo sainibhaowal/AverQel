@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,8 @@ from livekit.agents import (
 from livekit.plugins import silero
 from pocket_tts import TTSModel
 
+from app.deepspace.voice_catalog import BUILT_IN_VOICES
+
 try:
     _num_threads = min(4, max(2, os.cpu_count() or 2))
     torch.set_num_threads(_num_threads)
@@ -32,9 +35,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-agent")
 
 # Paths to local models
-DEFAULT_STT_MODEL_PATH = "/app/models/stt/faster-whisper-base"
+DEFAULT_STT_MODEL_PATH = "/app/models/stt/faster-whisper-small.en"
 STT_MODEL_PATH = os.getenv("AVERQEL_STT_MODEL_PATH", DEFAULT_STT_MODEL_PATH)
-FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
+FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-base"
+SECONDARY_FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
 # Pocket TTS: CPU-friendly, near-human quality, streaming support, voice cloning
 TTS_MODEL_PATH = None  # Pocket TTS loads its own model
 TTS_VOICE = "alba"  # Pocket TTS built-in voice (alba, cosette, jean, etc.)
@@ -53,6 +57,8 @@ dictation_control_queues: dict[str, asyncio.Queue[dict[str, str]]] = {}
 transcription_locks: dict[str, asyncio.Lock] = {}
 room_audio_sources: dict[str, rtc.AudioSource] = {}
 tts_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-tts")
+_stt_model_lock = threading.Lock()
+_tts_model_lock = threading.Lock()
 
 # Multiple wake names/variations for high robustness under various phonetic spelling differences
 WAKE_WORDS = [
@@ -119,41 +125,53 @@ _tts_model: TTSModel | None = None
 def get_stt() -> WhisperModel:
     global _stt_model
     if _stt_model is None:
-        model_path = STT_MODEL_PATH
-        if (
-            model_path == DEFAULT_STT_MODEL_PATH
-            and not os.path.isdir(model_path)
-            and os.path.isdir(FALLBACK_STT_MODEL_PATH)
-        ):
-            logger.warning(
-                "Higher-accuracy STT model is missing; falling back to %s. Provision %s to enable the default model.",
-                FALLBACK_STT_MODEL_PATH,
-                DEFAULT_STT_MODEL_PATH,
-            )
-            model_path = FALLBACK_STT_MODEL_PATH
-        logger.info("Loading Faster-Whisper STT model...")
-        _stt_model = WhisperModel(
-            model_path,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=4,
-        )
-        logger.info("Faster-Whisper loaded.")
+        with _stt_model_lock:
+            if _stt_model is None:
+                model_path = STT_MODEL_PATH
+                if model_path == DEFAULT_STT_MODEL_PATH and not os.path.isdir(model_path):
+                    fallback_path = next(
+                        (
+                            candidate
+                            for candidate in (
+                                FALLBACK_STT_MODEL_PATH,
+                                SECONDARY_FALLBACK_STT_MODEL_PATH,
+                            )
+                            if os.path.isdir(candidate)
+                        ),
+                        None,
+                    )
+                    if fallback_path is not None:
+                        logger.warning(
+                            "Higher-accuracy STT model is missing; falling back to %s. Provision %s to enable the default model.",
+                            fallback_path,
+                            DEFAULT_STT_MODEL_PATH,
+                        )
+                        model_path = fallback_path
+                logger.info("Loading Faster-Whisper STT model from %s", model_path)
+                _stt_model = WhisperModel(
+                    model_path,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=4,
+                )
+                logger.info("Faster-Whisper loaded.")
     return _stt_model
 
 
 def get_tts() -> TTSModel:
     global _tts_model
     if _tts_model is None:
-        try:
-            num_threads = min(4, max(2, os.cpu_count() or 2))
-            torch.set_num_threads(num_threads)
-            torch.set_num_interop_threads(1)
-        except Exception:
-            pass
-        logger.info("Loading Pocket TTS model (CPU)...")
-        _tts_model = TTSModel.load_model()
-        logger.info("Pocket TTS loaded. sample_rate=%d", _tts_model.sample_rate)
+        with _tts_model_lock:
+            if _tts_model is None:
+                try:
+                    num_threads = min(4, max(2, os.cpu_count() or 2))
+                    torch.set_num_threads(num_threads)
+                    torch.set_num_interop_threads(1)
+                except Exception:
+                    pass
+                logger.info("Loading Pocket TTS model (CPU)...")
+                _tts_model = TTSModel.load_model()
+                logger.info("Pocket TTS loaded. sample_rate=%d", _tts_model.sample_rate)
     return _tts_model
 
 
@@ -327,6 +345,7 @@ async def entrypoint(ctx: JobContext) -> None:
     model_tasks: dict[str, asyncio.Task] = {}
     mode_requests: set[str] = set()
     seen_mode_requests: set[str] = set()
+    mode_results: dict[str, tuple[bool, bool, bool]] = {}
     latest_mode_request: str | None = None
     audio_track_ready = asyncio.Event()
 
@@ -336,9 +355,7 @@ async def entrypoint(ctx: JobContext) -> None:
         tts_active = data.get("tts") is True
         try:
             voice = data.get("voice", "alba")
-            if tts_active and (
-                not isinstance(voice, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", voice)
-            ):
+            if tts_active and (not isinstance(voice, str) or voice not in BUILT_IN_VOICES):
                 raise ValueError("Only built-in voice names are supported in realtime sessions")
             for name, enabled, loader in (
                 ("stt", stt_active, get_stt),
@@ -364,10 +381,15 @@ async def entrypoint(ctx: JobContext) -> None:
             initial_prompts[room_name] = data.get("initial_prompt", "")
             if previous_tts and not tts_active:
                 interrupt_speech(room)
+            mode_results[request_id] = (stt_active, tts_active, True)
             await _publish_voice_mode_result(room, stt_active, tts_active, request_id)
         except Exception:
             logger.exception("Voice model initialization failed for room %s", room_name)
-            await _publish_voice_mode_result(room, stt_active, tts_active, request_id, ready=False)
+            if request_id == latest_mode_request:
+                mode_results[request_id] = (stt_active, tts_active, False)
+                await _publish_voice_mode_result(
+                    room, stt_active, tts_active, request_id, ready=False
+                )
         finally:
             mode_requests.discard(request_id)
 
@@ -391,6 +413,7 @@ async def entrypoint(ctx: JobContext) -> None:
             transcription_locks,
         ):
             state.pop(room_name, None)
+        mode_results.clear()
 
     ctx.add_shutdown_callback(cleanup)
 
@@ -433,13 +456,21 @@ async def entrypoint(ctx: JobContext) -> None:
 
             if data.get("type") == "set-mode":
                 request_id = data.get("request_id")
-                if isinstance(request_id, str) and request_id not in mode_requests:
+                if isinstance(request_id, str):
                     if request_id in seen_mode_requests and request_id != latest_mode_request:
                         return
-                    seen_mode_requests.add(request_id)
-                    latest_mode_request = request_id
-                    mode_requests.add(request_id)
-                    asyncio.create_task(apply_mode(data))
+                    if request_id in mode_results:
+                        stt_ready, tts_ready, ready = mode_results[request_id]
+                        asyncio.create_task(
+                            _publish_voice_mode_result(
+                                room, stt_ready, tts_ready, request_id, ready=ready
+                            )
+                        )
+                    elif request_id not in mode_requests:
+                        seen_mode_requests.add(request_id)
+                        latest_mode_request = request_id
+                        mode_requests.add(request_id)
+                        asyncio.create_task(apply_mode(data))
             elif data.get("type") == "dictation-control":
                 action = data.get("action")
                 request_id = data.get("request_id")

@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Final
 
 
-class QueryType(str, Enum):
+class QueryType(str, Enum):  # noqa: UP042 - preserve the existing enum string representation
     FACTUAL = "factual"
     COMPARISON = "comparison"
     SUMMARIZATION = "summarization"

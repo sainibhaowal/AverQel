@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
   Check,
@@ -15,7 +15,7 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
-import { useLandingSectionMotion } from "./landingMotion";
+import { useLandingReducedMotion, useLandingSectionMotion } from "./landingMotion";
 import {
   landingContentClass,
   landingEyebrowClass,
@@ -37,7 +37,7 @@ export default function WorkspaceOrbit() {
     depth: 20,
     scaleRange: [0.99, 1.006],
   });
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
 
   return (
     <motion.section ref={ref} style={style} id="workspace" className={landingSectionShellClass}>

@@ -48,9 +48,7 @@ test.describe("Voice Studio settings", () => {
 
   test("Voice Studio page shows playback settings", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/dashboard/settings/voice");
-    await expect(
-      authenticatedPage.getByRole("heading", { name: "Playback Settings" }),
-    ).toBeVisible();
+    await expect(authenticatedPage.getByRole("heading", { name: "Playback Settings" })).toBeVisible();
     await expect(authenticatedPage.getByText("Speed", { exact: true })).toBeVisible();
     await expect(
       authenticatedPage.getByText("Pitch adjustment is not supported by the current voice engine."),

@@ -96,7 +96,8 @@ export default function GalleryBlock({
     ownedPreview && activeAsset && ownedPreview.source === activeAsset.owned_url
       ? ownedPreview.url
       : null;
-  const imageFailed = failedImageSrc === item.src;
+  const displayImageSrc = ownedPreviewUrl ?? src;
+  const imageFailed = failedImageSrc === displayImageSrc;
   const currentAssetStatus =
     assetStatus?.source === item.src
       ? assetStatus.text
@@ -538,15 +539,15 @@ export default function GalleryBlock({
           <div className="text-foreground/60 flex min-h-44 items-center justify-center px-4 text-center text-xs">
             This image is unavailable. Import it into the DeepSpace Library or update its URL.
           </div>
-        ) : ownedPreviewUrl || src ? (
+        ) : displayImageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={ownedPreviewUrl ?? src}
+            src={displayImageSrc}
             alt={item.alt}
             loading="lazy"
             decoding="async"
             className="max-h-[28rem] min-h-44 w-full object-contain"
-            onError={() => setFailedImageSrc(item.src)}
+            onError={() => setFailedImageSrc(displayImageSrc)}
             onLoad={() => setFailedImageSrc(null)}
           />
         ) : (

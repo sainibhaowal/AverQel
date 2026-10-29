@@ -285,6 +285,13 @@ export default function DiagramBlock({
   }, [block.id, block.syntax]);
 
   useEffect(() => {
+    queueMicrotask(() => {
+      setDraftSyntax(block.syntax);
+      setEditingSyntax(false);
+    });
+  }, [block.id, block.syntax]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;

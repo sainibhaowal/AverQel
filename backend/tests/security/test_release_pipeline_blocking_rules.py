@@ -33,6 +33,27 @@ def test_ci_workflow_contains_blocking_gates() -> None:
     assert "continue-on-error: true" not in workflow
 
 
+def test_ci_runs_safety_in_a_separate_environment() -> None:
+    workflow = yaml.load(_read(ROOT / ".github/workflows/ci.yml"), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["backend-quality"]["steps"]
+    install = next(
+        step["run"] for step in steps if step.get("name") == "Install Python dependencies"
+    )
+    run = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Run backend quality and security gates in parallel"
+    )
+    assert 'python -m venv "$RUNNER_TEMP/safety-venv"' in install
+    assert (
+        '"$RUNNER_TEMP/safety-venv/bin/pip" install --no-compile --prefer-binary safety==3.8.1'
+        in install
+    )
+    assert 'if [[ "$gate" == safety ]]; then' in run
+    assert 'export PATH="$RUNNER_TEMP/safety-venv/bin:$PATH"' in run
+    assert 'run-backend-gate.sh" "$gate"' in run
+
+
 def test_ci_runs_only_for_pull_requests() -> None:
     workflow = _read(ROOT / ".github/workflows/ci.yml")
     assert "pull_request:" in workflow
@@ -128,6 +149,9 @@ def test_vps_frontend_image_version_and_revision_are_verified() -> None:
     assert "Built frontend served its homepage successfully" in workflow
     assert "did not serve its homepage within 60 seconds" in workflow
     assert "--publish 127.0.0.1::1030" in workflow
+    assert 'docker exec "$FRONTEND_SMOKE_CONTAINER" node -e' in workflow
+    assert "Built frontend loopback health check returned HTTP " in workflow
+    assert "Built frontend cannot reach its own loopback listener" in workflow
 
 
 def test_frontend_readiness_is_checked_before_compose_wait_completes() -> None:
@@ -135,11 +159,14 @@ def test_frontend_readiness_is_checked_before_compose_wait_completes() -> None:
     frontend = compose["services"]["frontend"]
     healthcheck = frontend["healthcheck"]
 
+    assert frontend["environment"]["HOSTNAME"] == "0.0.0.0"
     assert healthcheck["test"][0:3] == ["CMD", "node", "-e"]
     assert "http://127.0.0.1:1030/" in healthcheck["test"][3]
     assert "GET / returned HTTP " in healthcheck["test"][3]
     assert "GET / failed: " in healthcheck["test"][3]
     assert healthcheck["start_period"] == "30s"
+    dockerfile = _read(ROOT / "frontend/Dockerfile")
+    assert "HOSTNAME=0.0.0.0" in dockerfile
     workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
     assert "compose up -d --no-build --wait --wait-timeout 180\n" in workflow
 
@@ -221,6 +248,21 @@ def test_vps_trivy_scans_do_not_contend_for_a_shared_cache() -> None:
     assert "scan api > trivy-api.log 2>&1 || API_STATUS=$?" in workflow
     assert "scan worker > trivy-worker.log 2>&1 || WORKER_STATUS=$?" in workflow
     assert "scan frontend > trivy-frontend.log 2>&1 || FRONTEND_STATUS=$?" in workflow
+
+
+def test_livekit_binary_uses_the_fixed_go_toolchain() -> None:
+    rebuild = _read(ROOT / "backend/ops/livekit/rebuild.sh")
+    build_docs = _read(ROOT / "backend/ops/livekit/BUILD.md")
+    builder_image = (
+        "golang:1.27.3-bookworm@sha256:"
+        "972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5"
+    )
+
+    assert builder_image in rebuild
+    assert "go version go1.27.3 linux/amd64" in rebuild
+    assert "grep -Fq go1.27.3 /out/build-info.txt" in rebuild
+    assert "CVE-2026-111943" in build_docs
+    assert "Go `1.27.3`" in build_docs
 
 
 def test_release_download_monitor_follows_github_redirects() -> None:

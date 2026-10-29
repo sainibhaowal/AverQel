@@ -17,6 +17,7 @@ import {
 import { fetchWithAuth } from "@/lib/api";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
+import { convertVoiceSampleToWav } from "./audio-utils";
 
 const VOICES = [
   { id: "alba", name: "Alba", desc: "Warm, natural female", lang: "en" },
@@ -157,13 +158,18 @@ export default function VoiceSettingsPage() {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/ogg" });
+      const mimeType = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/mp4"].find(
+        (candidate) => MediaRecorder.isTypeSupported(candidate),
+      );
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: "audio/ogg" });
+        const blob = new Blob(chunks, { type: recorder.mimeType || "application/octet-stream" });
         setRecordedBlob(blob);
         stream.getTracks().forEach((t) => t.stop());
       };
@@ -192,7 +198,8 @@ export default function VoiceSettingsPage() {
     setMessage(null);
     try {
       const formData = new FormData();
-      formData.append("audio", recordedBlob, "voice_sample.ogg");
+      const wavSample = await convertVoiceSampleToWav(recordedBlob);
+      formData.append("audio", wavSample, "voice_sample.wav");
       formData.append("name", `Cloned Voice ${new Date().toLocaleDateString()}`);
       const res = await fetchWithAuth("/deepspace/voice/clone", {
         method: "POST",
@@ -212,8 +219,11 @@ export default function VoiceSettingsPage() {
         const err = await res.json().catch(() => null);
         setMessage({ type: "error", text: err?.detail?.message ?? "Voice cloning failed." });
       }
-    } catch {
-      setMessage({ type: "error", text: "Network error. Please try again." });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Network error. Please try again.",
+      });
     } finally {
       setCloning(false);
     }
@@ -509,8 +519,10 @@ export default function VoiceSettingsPage() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              Record 5-10 seconds of clear speech in a quiet environment. The AI will learn your voice
-              and use it for all spoken responses.
+              Record 5 to 10 seconds of clear speech in a quiet environment. Samples must be WAV
+              audio between 1 and 30 seconds and under 10 MB. Only upload a voice sample you own or
+              have permission to use. Cloned voices are available for preview and are not used in
+              realtime conversations.
             </p>
           </div>
         </motion.div>

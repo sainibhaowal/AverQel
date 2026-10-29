@@ -62,7 +62,7 @@ def test_run_transcribe_filters_low_confidence_noise_segments():
     assert transcript == "clear words"
 
 
-def test_get_stt_falls_back_to_installed_tiny_model_if_small_model_is_missing(
+def test_get_stt_falls_back_to_installed_base_model_if_small_model_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ):
     loaded = []
@@ -352,8 +352,11 @@ async def test_mode_waits_for_model_and_reports_readiness(monkeypatch, fails, su
 
     started = threading.Event()
     release = threading.Event()
+    load_calls = 0
 
     def load_model():
+        nonlocal load_calls
+        load_calls += 1
         started.set()
         release.wait(2)
         if fails:
@@ -386,15 +389,16 @@ async def test_mode_waits_for_model_and_reports_readiness(monkeypatch, fails, su
 
     room = Room()
 
+    initial_payload = json.dumps(
+        {"type": "set-mode", "stt": True, "tts": False, "request_id": "request"}
+    ).encode()
+
     class Context:
         def add_shutdown_callback(self, callback):
             self.cleanup = callback
 
         async def connect(self):
-            payload = json.dumps(
-                {"type": "set-mode", "stt": True, "tts": False, "request_id": "request"}
-            ).encode()
-            room.handlers["data_received"](SimpleNamespace(data=payload))
+            room.handlers["data_received"](SimpleNamespace(data=initial_payload))
 
     ctx = Context()
     ctx.room = room
@@ -410,6 +414,9 @@ async def test_mode_waits_for_model_and_reports_readiness(monkeypatch, fails, su
     try:
         assert await asyncio.to_thread(started.wait, 1)
         assert room.local_participant.messages == []
+        room.handlers["data_received"](SimpleNamespace(data=initial_payload))
+        await asyncio.sleep(0.05)
+        assert load_calls == 1
         if superseded:
             payload = json.dumps(
                 {"type": "set-mode", "stt": False, "tts": False, "request_id": "new"}
@@ -432,6 +439,13 @@ async def test_mode_waits_for_model_and_reports_readiness(monkeypatch, fails, su
             assert voice_agent.session_stt[room.name] is False
         else:
             assert voice_agent.session_stt[room.name] is not fails
+            room.handlers["data_received"](SimpleNamespace(data=initial_payload))
+            for _ in range(100):
+                if len(room.local_participant.messages) == 2:
+                    break
+                await asyncio.sleep(0.01)
+            assert len(room.local_participant.messages) == 2
+            assert load_calls == 1
     finally:
         release.set()
         await ctx.cleanup()

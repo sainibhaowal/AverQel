@@ -7,6 +7,11 @@ test("homepage renders the visual workspace hero without hydration failures", as
       hydrationErrors.push(error.message);
     }
   });
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydration|Minified React error #418/i.test(message.text())) {
+      hydrationErrors.push(message.text());
+    }
+  });
 
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto("/");

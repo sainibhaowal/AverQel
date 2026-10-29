@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, text
+from sqlalchemy import DateTime, Float, ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,7 +21,10 @@ class DeepSpaceVoiceSettings(Base):
         primary_key=True,
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
     )
     voice: Mapped[str] = mapped_column(String(128), nullable=False, server_default=text("'alba'"))
     speed: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1.0"))
@@ -29,7 +32,6 @@ class DeepSpaceVoiceSettings(Base):
     volume: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1.0"))
     cloned_voice_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cloned_voice_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    cloned_voice_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -71,12 +71,10 @@ google-auth-httplib2==0.2.0
 httplib2==0.32.0
 PyGithub==2.5.0
 livekit==1.1.21
-livekit-agents==1.8.10
-livekit-plugins-silero==1.8.10
+livekit-agents==1.8.9
+livekit-plugins-silero==1.8.9
 faster-whisper==1.2.1
 pocket-tts==4.0.1
 einops==0.8.2
 sentencepiece==0.2.2
-kokoro-onnx==0.5.0
-onnxruntime==1.27.0
 soundfile==0.14.0

@@ -14,6 +14,10 @@ Available environment settings:
   waiting without limit. Defaults are 100 for development and 200 for
   production.
 - `AKS_API_KEEP_ALIVE_SECONDS`: idle HTTP keep-alive duration. Defaults to 5.
+- The API Compose health check allows a 120-second startup period before
+  counting failed probes. This accommodates cold starts that load the app and
+  run schema checks before `/api/v1/health/live` can respond; it does not make
+  an unhealthy API healthy after the startup period.
 - `AKS_DATABASE_POOL_SIZE` / `AKS_DATABASE_MAX_OVERFLOW`: database connections
   available to each process. Production defaults are 8 + 4, deliberately
   bounded so the API, worker, and scheduler cannot exhaust PostgreSQL's

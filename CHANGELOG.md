@@ -1,5 +1,105 @@
 # Changelog
 
+## [1.5.1] — Unreleased
+
+This patch follows `v1.5.0` and focuses on workspace stability, history loading,
+and a consistent AverQel interface. The release history below is continuous
+from `v1.3.4`: `v1.5.0` and `v1.4.1` are recorded here, and the `v1.4.0`
+section retains the detailed changes made since `v1.3.4`.
+
+### DeepSpace and chat history
+
+- Keep visited DeepSpace workspace panels available while switching between
+  Chat, Notes, Library, Memory, and Scheduled Work. Panel changes use a short,
+  consistent transition and the shared AverQel loading treatment for the
+  initial workspace load, reducing the repeated remounting that made panels
+  flash and lose their place.
+- Load DeepSpace and Grounded Query conversations in bounded chronological
+  pages. History responses include `has_more`; clients request older messages
+  on demand, preserving the current conversation order and avoiding an
+  unbounded initial history response.
+- Enrich each DeepSpace history page with batched live-run, agent-step, and
+  event reads instead of repeating those lookups for every assistant message.
+  Add the `ix_messages_conversation_created_id` PostgreSQL index using
+  `CREATE INDEX CONCURRENTLY` to support the chronological cursor without
+  holding the normal table-write lock for the index build.
+- Stop stale conversation-history retries when the chat client unmounts, so a
+  late network failure cannot update a closed workspace or start more requests.
+- Keep a cached gallery image available when its original external URL fails
+  before the owned image preview finishes loading.
+- Improve workspace state handling for notes, Library, memory, schedules,
+  chat scrolling, and Query follow-ups. Preserve the selected workspace state
+  while the user moves between panels and avoid duplicate history requests.
+
+### Interface and provider workflows
+
+- Bring light-theme surfaces and legacy accent utilities closer to AverQel's
+  green-and-neutral palette, with stronger readable text and consistent
+  contrast. Normalize buttons, search controls, menus, listboxes, and dialogs
+  to the shared rounded-square shape and use restrained transitions for menu
+  and panel changes.
+- Add reusable provider runtime cards and clearer health-state presentation
+  for model, embedding, and reranker connections. Keep provider identity,
+  status, and connection actions aligned in the same compact layout.
+- Move the Documents Hub supported-format view into its own Protocol Matrix
+  dialog and keep its format data and responsive table behavior in one
+  component.
+- Improve reusable loading, dialog, tooltip, and confirmation surfaces, and
+  align the affected dashboard, settings, onboarding, marketing, documentation,
+  and Query components with the shared interface tokens.
+
+### Verification and upgrade notes
+
+- Add regression coverage for paginated chat history, DeepSpace panel and
+  scroll behavior, workspace schedules, provider status and search, rounded
+  selects, the Protocol Matrix, loading visuals, and light-theme colors. Extend
+  Documents Hub browser coverage for the affected workflows.
+- Apply Alembic revision `20261026_0001` to create the chat-history index. The
+  index build uses PostgreSQL's concurrent mode; it does not change or delete
+  conversation data. Use the normal migration procedure before deploying this
+  version.
+
+## [1.5.0](https://github.com/sainibhaowal/AverQel/compare/v1.4.1...v1.5.0) (2026-10-25)
+
+This release brings the current DeepSpace document, voice, rich-content, and
+visual-artifact workflows to `main`.
+
+### Highlights
+
+- Create and revise workspace notes, attach and manage Library files, preview
+  supported content, and continue longer agent runs with persisted queue and
+  activity state.
+- Use voice dictation with a review step before sending, or use the configured
+  LiveKit voice conversation flow with the selected DeepSpace conversation.
+- Render structured model output as rich text, diagrams, charts, tables, and
+  other visual artifacts; open, edit, export, and save supported visual content
+  to the DeepSpace Library.
+- Improve provider-aware reasoning and tool-call continuation, versioned chat
+  messages, and authenticated realtime events used to keep workspace activity
+  current.
+
+### DeepSpace, documents, and Query
+
+- Expand the DeepSpace composer, Notes editor, Library, attachment, and upload
+  flows, including previews and safer handling of file and URL content.
+- Persist and restore queued work, message versions, and ordered activity so
+  users can review edits and resume supported work after a reload.
+- Add voice token and realtime event flows, voice dictation, and spoken
+  responses for visible answer text while keeping hidden reasoning and raw tool
+  payloads out of speech playback.
+- Add rich output parsing and display for structured cards and visual blocks,
+  with editing, exports, and Library persistence for supported artifacts.
+- Improve provider model capability handling and preserve the provider state
+  needed to continue tool-enabled responses.
+
+### Documentation and regression coverage
+
+- Document DeepSpace voice, realtime events, Library attachments, rich output,
+  and the related operator and user workflows.
+- Add backend, frontend, and browser regression coverage for message versions,
+  Library uploads, Notes, task queues, provider capabilities, voice, realtime
+  tickets, and structured visual output.
+
 ## [1.4.1](https://github.com/sainibhaowal/AverQel/compare/v1.4.0...v1.4.1) (2026-10-25)
 
 ### Security
@@ -10,13 +110,13 @@
 
 No new user-facing features were added in this patch release.
 
-## [1.4.0] — Unreleased
+## [1.4.0](https://github.com/sainibhaowal/AverQel/compare/v1.3.4...v1.4.0) (2026-10-25)
 
-This release builds on `v1.3.4` with safer long-running DeepSpace workflows, a
+This release built on `v1.3.4` with safer long-running DeepSpace workflows, a
 user-owned Composio app marketplace, more reliable document processing and
 Query behavior, stronger platform-administration safeguards, and a desktop
-release workflow that packages AverQel independently. This section covers
-changes currently merged to `main`; the release has not been published yet.
+release workflow that packages AverQel independently. The sections for `v1.5.0`
+and `v1.5.1` above record the later releases and this pending patch.
 
 **Change range:** [`v1.3.4` through `6a8e336`](https://github.com/sainibhaowal/AverQel/compare/v1.3.4...6a8e3364777826cc9a102b6ef59e8a369dc73e3f), including
 [PR #110](https://github.com/sainibhaowal/AverQel/pull/110) and [PR #111](https://github.com/sainibhaowal/AverQel/pull/111).

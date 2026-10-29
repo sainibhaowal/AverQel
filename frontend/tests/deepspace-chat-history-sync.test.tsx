@@ -348,6 +348,10 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
         .filter(Boolean)
         .join("|")}
       {messages
+        .map((message) => message.error?.message ?? "")
+        .filter(Boolean)
+        .join("|")}
+      {messages
         .filter((message) => message.role === "assistant" && (message.versionCount ?? 0) > 1)
         .map((message) => {
           const previousVersion = message.versions?.find(
@@ -896,6 +900,36 @@ describe("DeepSpaceChatClient history sync", () => {
     ).toEqual(["/deepspace/chats/missing-conversation/messages"]);
   });
 
+  it("does not retry history after the chat client unmounts during a failed request", async () => {
+    let rejectHistoryRequest: ((reason: Error) => void) | null = null;
+    fetchWithAuthMock.mockImplementation((url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return new Promise((_, reject) => {
+          rejectHistoryRequest = reject;
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    const view = renderChat({ activeConversationId: "conv-1" });
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith("/deepspace/chats/conv-1/messages");
+    });
+    expect(rejectHistoryRequest).toBeTypeOf("function");
+
+    view.unmount();
+    await act(async () => {
+      rejectHistoryRequest?.(new Error("temporary network failure"));
+      await Promise.resolve();
+    });
+
+    expect(
+      fetchWithAuthMock.mock.calls.filter(
+        ([url]) => url === "/deepspace/chats/conv-1/messages",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("reconciles a stopped stream if the worker never sends its terminal event", async () => {
     let cancelAttempts = 0;
     fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -1318,18 +1352,22 @@ describe("DeepSpaceChatClient history sync", () => {
 
     renderChat({ activeConversationId: "conv-1" });
     expect(await screen.findByText("assistant:Saved response version 2.")).toBeInTheDocument();
+    await waitForSelectedConversationReady();
+    const historyLoadsBeforeSwitch = historyLoads;
     fireEvent.click(screen.getByRole("button", { name: "Previous response version" }));
 
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith(
+        "/deepspace/chats/conv-1/messages/assistant-versioned/versions/version-1/activate",
+        { method: "PATCH" },
+      );
+    });
     await waitFor(() => {
       expect(screen.getByTestId("deepspace-thread")).toHaveTextContent(
         "assistant:Saved response version 2.",
       );
-      expect(historyLoads).toBeGreaterThan(1);
+      expect(historyLoads).toBeGreaterThan(historyLoadsBeforeSwitch);
     });
-    expect(fetchWithAuthMock).toHaveBeenCalledWith(
-      "/deepspace/chats/conv-1/messages/assistant-versioned/versions/version-1/activate",
-      { method: "PATCH" },
-    );
   });
 
   it("shows the selected conversation's existing ID in expanded diagnostics", async () => {

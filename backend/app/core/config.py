@@ -339,6 +339,11 @@ class Settings(BaseSettings):
     mcp_slack_oauth_client_secret: str | None = None
     mcp_oauth_redirect_uri: str | None = None
     mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
+    # Composio managed OAuth must be identity-verified by the Composio project
+    # callback verifier before connected accounts become usable.
+    composio_callback_verifier_enabled: bool = Field(
+        default=False, validation_alias="COMPOSIO_CALLBACK_VERIFIER_ENABLED"
+    )
     # The complete connected MCP catalogue is always server-side. DeepSpace
     # exposes only the broker surface and just-in-time compact metadata.
     deepspace_mcp_max_search_results: int = Field(default=5, ge=1, le=20)

@@ -116,10 +116,11 @@ configured Ruff, Black, whitespace, and EOF formatters can modify files, so the
 isolated hook keeps those edits out of the active checkout and blocks the push
 if corrections need to be committed. Run applicable tests and quality gates
 after fixes, inspect the complete diff and staged file list, and do not bypass
-the hook. CI also runs Actionlint for every pull request, and the workflow lint
-job is included in the required `CI Passed` result. After a push, inspect the
-Actions results for that exact commit and resolve required failures before
-merge.
+the hook. Every pull request runs the backend, frontend, browser, integration,
+provider, deployment, and workflow quality gates, including documentation-only
+changes. The workflow lint job is included in the required `CI Passed` result.
+After a push, inspect the Actions results for that exact commit and resolve
+required failures before merge.
 
 Only reviewed pull requests may enter protected `main`. Release and VPS
 deployment workflows are intentionally manual and are not triggered by an
@@ -137,7 +138,9 @@ chore(scope): maintain tooling without product behavior changes
 ```
 
 Breaking changes must be documented in the commit body with `BREAKING CHANGE:`
-so semantic release calculation can identify them.
+so semantic release calculation can identify them. AverQel keeps releases on
+the `v1.x.x` line, so a breaking-change marker advances the minor version
+instead of creating a `v2` release.
 
 Pull request titles are also required to use Conventional Commit format because
 the automatic release calculation reads commit subjects. With squash merging,

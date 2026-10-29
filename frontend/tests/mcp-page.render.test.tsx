@@ -121,4 +121,5 @@ describe("MCP dashboard", () => {
       ),
     );
   });
+
 });

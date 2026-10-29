@@ -51,7 +51,8 @@ def test_query_classifier_integration():
 
 
 @patch.object(AnswerService, "_call_llm_with_retry")
-def test_synthesize_structured_json(mock_llm, query_service):
+@patch.object(AnswerService, "_allow_llm_usage", return_value=True)
+def test_synthesize_structured_json(mock_allow_llm_usage, mock_llm, query_service):
     # Mock LLM returning valid JSON
     mock_llm.return_value = (
         '{"key_findings": ["Finding 1"], "detailed_analysis": "Detailed logic.", "limitations": "None."}',
@@ -66,6 +67,7 @@ def test_synthesize_structured_json(mock_llm, query_service):
         query_type=QueryType.FACTUAL,
     )
 
+    mock_allow_llm_usage.assert_called_once()
     assert isinstance(result.answer, StructuredAnswerResponse)
     assert result.answer.key_findings == ["Finding 1"]
     assert result.answer.detailed_analysis == "Detailed logic."
@@ -73,7 +75,8 @@ def test_synthesize_structured_json(mock_llm, query_service):
 
 
 @patch.object(AnswerService, "_call_llm_with_retry")
-def test_synthesize_fallback_markdown(mock_llm, query_service):
+@patch.object(AnswerService, "_allow_llm_usage", return_value=True)
+def test_synthesize_fallback_markdown(mock_allow_llm_usage, mock_llm, query_service):
     # Mock LLM returning plain text (failure to emit JSON)
     mock_llm.return_value = ("This is simply text, no json.", {})
 
@@ -85,6 +88,7 @@ def test_synthesize_fallback_markdown(mock_llm, query_service):
         query_type=QueryType.FACTUAL,
     )
 
+    mock_allow_llm_usage.assert_called_once()
     assert isinstance(result.answer, StructuredAnswerResponse)
     assert result.answer.key_findings == []
     assert result.answer.detailed_analysis == "This is simply text, no json."

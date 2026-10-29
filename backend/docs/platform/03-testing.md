@@ -43,6 +43,11 @@ separate object-storage image setting.
 
 ## Commands
 
+CI installs Safety 3.8.1 in a separate virtual environment so its HTTP client
+dependencies do not conflict with application dependencies. The Safety gate
+still scans both declared requirements files and fails the backend job on a
+finding or scanner error. The separate pip-audit gate scans those files too.
+
 Run the database-free unit selection directly from `backend`:
 
 ```bash

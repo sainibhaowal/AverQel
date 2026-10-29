@@ -85,6 +85,25 @@ a successful zero snapshot. The database count covers explicitly instrumented
 repository operations, not every SQL statement. Detailed per-process samples
 remain available through the internal Prometheus scrape endpoint.
 
+## Admin service metrics stream
+
+`GET /api/v1/metrics/summary/stream` is restricted to allowlisted platform
+administrators. API and instrumented worker processes atomically update a fixed
+set of low-cardinality counters in Redis and publish a change signal. The stream
+sends an initial snapshot, then checks for updated totals at one-second
+intervals; it sends a heartbeat while idle and closes after five minutes so the
+browser can reconnect and reauthenticate. It is separate from the user-scoped
+workspace event gateway.
+
+The JSON summary endpoint reads the same counters. Totals are service-wide and
+cumulative from `metrics_started_at`; they reset if the Redis metrics hash is
+lost or cleared. `metrics_complete=false` means a process observed a failed
+counter write, so the UI labels the snapshot as partial. A Redis read or
+invalid stored value is reported as unavailable; it must never be displayed as
+a successful zero snapshot. The database count covers explicitly instrumented
+repository operations, not every SQL statement. Detailed per-process samples
+remain available through the internal Prometheus scrape endpoint.
+
 ## Security requirements
 
 The gateway never accepts tenant or user identity as authority from event

@@ -21,13 +21,18 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "deepspace_voice_settings",
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "user_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column(
             "tenant_id",
             postgresql.UUID(as_uuid=True),
             sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            primary_key=True,
             nullable=False,
-            index=True,
         ),
         sa.Column("voice", sa.String(128), nullable=False, server_default="alba"),
         sa.Column("speed", sa.Float(), nullable=False, server_default="1.0"),
@@ -35,7 +40,6 @@ def upgrade() -> None:
         sa.Column("volume", sa.Float(), nullable=False, server_default="1.0"),
         sa.Column("cloned_voice_id", sa.String(255), nullable=True),
         sa.Column("cloned_voice_name", sa.String(255), nullable=True),
-        sa.Column("cloned_voice_path", sa.Text(), nullable=True),
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
         ),

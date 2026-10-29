@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useLandingReducedMotion } from "./landingMotion";
 import {
   createHexagonalStarTunnelTarget,
   createQuantumArchitectureTarget,
@@ -130,7 +130,7 @@ type HeroMorphingBackgroundProps = {
 
 export default function HeroMorphingBackground({ className }: HeroMorphingBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
 
   useEffect(() => {
     if (reduceMotion || process.env.NODE_ENV === "test") {

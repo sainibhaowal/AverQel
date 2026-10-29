@@ -283,7 +283,7 @@ def _rate_limit_public_contact(request: Request, settings: Settings) -> None:
     )
 
 
-async def _read_json_payload(
+async def _read_json_payload(  # noqa: UP047 - retain the existing runtime type contract
     request: Request,
     *,
     model: type[_ContactPayload],

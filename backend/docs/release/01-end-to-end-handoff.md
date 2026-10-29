@@ -248,10 +248,19 @@ Before committing or pushing:
 - commits are separated by logical feature or fix;
 - the final diff and commit list are reviewed before `git push`.
 
-The manual semantic-release workflow accepts an explicit canonical
-`release_version` input. Select the version for the release being prepared,
-then follow the workflow's `vMAJOR.MINOR.PATCH` validation; do not reuse a
-version from an older handoff snapshot.
+The manual semantic-release workflow can calculate the next version from
+Conventional Commit subjects since the latest published release. For GitHub
+squash merges, it also reads conventional commit titles from `*` or `-` bullet
+lines in the squash commit body. For example, a squash commit titled
+`merge: resolve conflicts` with a `* feat: ...` entry triggers a minor version
+bump, while `* fix: ...` triggers a patch bump. Conventional-looking text in
+ordinary prose does not trigger a release. A `BREAKING CHANGE` footer or
+breaking `type!:` title follows the workflow's existing v1 release-line rules.
+
+The workflow also accepts an explicit canonical `release_version` input for
+release cases that cannot be inferred from the commit history. In either case,
+the selected version must pass the workflow's `vMAJOR.MINOR.PATCH` validation;
+do not reuse a version from an older handoff snapshot.
 
 The local code and verification gate is cleared for this worktree. External
 deployment remains gated on applying the migration and repeating the restore,

@@ -14,7 +14,7 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.base import Base
 
 
-class ConnectorStatus(str, Enum):
+class ConnectorStatus(str, Enum):  # noqa: UP042 - preserve the existing enum string representation
     ACTIVE = "active"
     PAUSED = "paused"
     ERROR = "error"

@@ -38,6 +38,7 @@ from app.deepspace.models.request_metric import DeepSpaceRequestMetric
 from app.deepspace.models.research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from app.deepspace.models.schedule import DeepSpaceSchedule
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
+from app.deepspace.models.voice_settings import DeepSpaceVoiceSettings
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
@@ -210,6 +211,7 @@ __all__ = [
     "DeepSpaceMediaArtifact",
     "DeepSpaceWorkspaceFile",
     "DeepSpaceWorkspaceFolder",
+    "DeepSpaceVoiceSettings",
     "DeepSpaceWorkspaceFileVersion",
     "Feedback",
     "PinnedFinding",

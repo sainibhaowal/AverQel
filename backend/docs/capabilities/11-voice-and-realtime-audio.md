@@ -132,6 +132,16 @@ flowchart LR
   - TTS audio-track publication.
   - Voice state data messages.
   - Speech playback interruption when new speech begins.
+- backend/app/deepspace/api/voice_settings.py
+  - Authenticated GET/PUT `/api/v1/deepspace/voice/settings` routes, bounded
+    WAV previews, and voice sample upload/deletion.
+  - Preferences are keyed by both authenticated user and tenant. Clone samples
+    are size/duration checked and stored through tenant-guarded object storage;
+    the API never accepts a client-supplied storage path.
+- backend/app/deepspace/models/voice_settings.py and
+  backend/alembic/versions/20261028_0001_voice_settings.py
+  - Tenant-scoped persisted settings and clone identifiers. Clone audio bytes
+    are not stored in the database.
 - backend/app/integrations/api/voice.py
   - GET /api/v1/voice/token.
   - Requires the queries:run permission.
@@ -333,13 +343,13 @@ Voice must preserve the existing application boundaries:
 - Voice-agent logs record transcription lengths and state, not raw transcript
   text.
 - Model paths are mounted read-only in the voice-agent container.
-- The voice agent defaults to `/app/models/stt/faster-whisper-base` using
+- The voice agent defaults to `/app/models/stt/faster-whisper-small.en` using
   CPU INT8 inference. Operators can override the path with
   `AVERQEL_STT_MODEL_PATH`; the selected model files must be present in the
-  read-only model mount before the agent starts. If the default base model is
-  missing but the existing tiny model is installed, the agent logs a warning
-  and falls back to tiny so dictation remains available. Model files are local
-  data and are not committed to Git. Review the selected model's terms.
+  read-only model mount before the agent starts. If the default small model is
+  missing, it logs a warning and tries the installed base model, then tiny.
+  Smaller fallbacks may reduce recognition quality. Model files are local data
+  and are not committed to Git. Review the selected model's terms.
 - The voice-agent is a separate service, not part of the API process.
 - Normal chat history and queue persistence remain unchanged by voice mode.
 
@@ -451,11 +461,14 @@ logs and network access if initialization fails or exceeds that deadline. A
 running container alone does not prove that models are ready.
 
 Realtime sessions accept built-in voice names only. Cloned voices are refused
-until their files can be resolved using authenticated user and tenant ownership
-across the API and agent containers. Dictation does not require TTS. Model
-failures return a negative mode acknowledgement rather than activating the UI.
-Speech model work is executed away from the room event loop; playback still
-depends on browser permission, CPU capacity and network conditions.
+by the voice agent; cloned samples are currently limited to Voice Studio
+preview. Preview samples must be WAV audio between 1 and 30 seconds and no
+larger than 10 MB. The Settings API binds clone metadata to both authenticated
+user and tenant, and uses the existing tenant-guarded object-storage service.
+Dictation does not require TTS. Model failures return a negative mode
+acknowledgement rather than activating the UI. Speech model work is executed
+away from the room event loop; playback still depends on browser permission,
+CPU capacity and network conditions.
 
 The browser log supplied on 2026-10-22 showed `livekit-client` 2.20.0
 connecting to LiveKit server 1.9.0 (protocol 16). Its `/rtc/v1` validation
@@ -470,6 +483,16 @@ include fixes for the v1 RTC path and timed-out pending tracks. Keep this exact
 version pin reviewed when updating the LiveKit client or server.
 
 ### Voice Studio preview
+
+Voice preferences are available through the authenticated
+`GET /api/v1/deepspace/voice/settings` and `PUT
+/api/v1/deepspace/voice/settings` endpoints. Both require `queries:run`; a
+preference row is scoped by `(user_id, tenant_id)`. `POST
+/api/v1/deepspace/voice/test` accepts a short bounded sample and returns a
+complete WAV. `POST /api/v1/deepspace/voice/clone` accepts a WAV upload up to
+10 MB and 30 seconds, stores it under the tenant and user object prefix, and
+keeps only its clone ID/name in the settings row. `DELETE
+/api/v1/deepspace/voice/clone/{voice_id}` removes the caller's saved clone.
 
 `POST /api/v1/deepspace/voice/test` returns a complete WAV only after Pocket TTS
 has generated the full sample. The endpoint is a settings preview, not a live

@@ -347,9 +347,14 @@ async function installVisualApi(page: Page, state: VisualState) {
       });
     }
     if (pathname === `/deepspace/chats/${conversationId}` && method === "PATCH") {
-      const payload = request.postDataJSON() as { content_html?: string };
+      const payload = request.postDataJSON() as { content_html?: string; title?: string };
       if (typeof payload.content_html === "string") state.noteHtml = payload.content_html;
-      return json({ id: conversationId, content_html: state.noteHtml });
+      return json({
+        id: conversationId,
+        content_html: state.noteHtml,
+        title: payload.title ?? "Visual acceptance conversation",
+        updated_at: "2026-10-16T10:00:00Z",
+      });
     }
     if (pathname === "/deepspace/chats/operational-summary") return json(null);
     if (pathname === `/deepspace/chats/${conversationId}/messages` && method === "GET") {
@@ -472,6 +477,7 @@ test.describe("DeepSpace visual workflow", () => {
     browser,
   }) => {
     test.setTimeout(240_000);
+    await authenticatedPage.setViewportSize({ width: 1440, height: 900 });
     const state = makeVisualState();
     await installVisualApi(authenticatedPage, state);
     await authenticatedPage.goto("/dashboard/deepspace", { waitUntil: "domcontentloaded" });
@@ -560,12 +566,14 @@ test.describe("DeepSpace visual workflow", () => {
         new RegExp(`quarterly-revenue\\.${format.toLowerCase()}$`),
       );
     }
+    const executiveSummaryCard = authenticatedPage.locator(
+      '[data-visual-block-id="visual-workflow-card"]',
+    );
+    await expect(executiveSummaryCard).toHaveCount(1);
     for (const format of ["SVG", "PNG", "PDF"] as const) {
       await expectVisualDownload(
         authenticatedPage,
-        authenticatedPage
-          .locator('[data-visual-block-id="visual-workflow-card"]')
-          .getByRole("button", { name: `Export card as ${format}` }),
+        executiveSummaryCard.getByRole("button", { name: `Export card as ${format}` }),
         new RegExp(`executive-summary\\.${format.toLowerCase()}$`),
       );
     }

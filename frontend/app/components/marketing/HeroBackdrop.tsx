@@ -1,9 +1,10 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useLandingReducedMotion } from "./landingMotion";
 
 export default function HeroBackdrop() {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLandingReducedMotion();
   const shouldAnimate = !reduceMotion;
 
   return (

@@ -1827,11 +1827,15 @@ export default function DeepSpaceComposer({
                     onClick={dictationSessionOpen && sttActive ? onDictationPause : onSttToggle}
                     onMouseEnter={() => setHoveredVoiceControl("stt")}
                     onMouseLeave={() => setHoveredVoiceControl((current) => (current === "stt" ? null : current))}
-                    disabled={dictationControlPending}
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.94 }}
                     transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    className="relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] focus:outline-none"
+                    disabled={dictationControlPending}
+                    className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
+                      sttActive
+                        ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                        : "border border-transparent text-white/40 hover:text-white/80"
+                    }`}
                     aria-label={
                       dictationSessionOpen
                         ? sttActive
@@ -1905,7 +1909,11 @@ export default function DeepSpaceComposer({
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.94 }}
                     transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    className="relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] focus:outline-none"
+                    className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
+                      ttsActive
+                        ? "bg-primary/20 text-primary border-primary/35 border shadow-[0_2px_8px_rgba(var(--primary),0.3)]"
+                        : "border border-transparent text-white/40 hover:text-white/80"
+                    }`}
                     aria-label="Voice conversation"
                     aria-pressed={ttsActive}
                   >
