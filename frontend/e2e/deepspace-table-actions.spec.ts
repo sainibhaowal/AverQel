@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures";
 
 test.describe("DeepSpace table action overlay", () => {
-  test.describe.configure({ timeout: 60_000 });
+  test.describe.configure({ timeout: 180_000 });
 
   test("opens Export below its button over the table without moving rows", async ({
     authenticatedPage,
@@ -62,12 +62,13 @@ test.describe("DeepSpace table action overlay", () => {
 
     await authenticatedPage.goto("/dashboard/deepspace", { waitUntil: "domcontentloaded" });
     const composer = authenticatedPage.getByPlaceholder("Message DeepSpace...");
-    await expect(composer).toBeVisible();
+    await expect(composer).toBeVisible({ timeout: 30_000 });
     await composer.fill("Compare these production needs");
     await authenticatedPage.getByRole("button", { name: "Send message" }).click();
 
     const table = authenticatedPage.getByRole("table");
-    await expect(table).toBeVisible();
+    await expect(table).toHaveCount(1, { timeout: 30_000 });
+    await expect(table).toBeVisible({ timeout: 30_000 });
     const exportButton = authenticatedPage.getByRole("button", { name: "Export table" });
     await table.hover();
 

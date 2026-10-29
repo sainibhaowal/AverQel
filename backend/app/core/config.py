@@ -209,7 +209,7 @@ class Settings(BaseSettings):
     database_max_overflow: int = 4
     database_pool_timeout_seconds: float = 4.0
     database_statement_timeout_seconds: float = 15.0
-    database_lock_timeout_seconds: float = 3.0
+    database_lock_timeout_seconds: float = 10.0
     redis_url: str = "redis://localhost:1010/0"
 
     # DeepSpace deterministic web-research controls. Browser rendering is

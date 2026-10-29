@@ -5,6 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/app/context/AuthContext";
@@ -125,6 +127,9 @@ function customProviderReasoningOptions(provider: ProviderConfig | undefined) {
 // seconds of a cancellation request. Do not leave the browser in a perpetual
 // active state if that connection or worker has failed after accepting Stop.
 const STOP_RECONCILIATION_GRACE_MS = 8_000;
+const subscribeToHydration = () => () => {};
+const getClientMountedSnapshot = () => true;
+const getServerMountedSnapshot = () => false;
 
 function readPartialJsonStringValue(input: string, key: string): string | null {
   const keyStart = input.indexOf(`"${key}"`);
@@ -368,6 +373,11 @@ export default function DeepSpaceChatClient({
   const [completionPulse, setCompletionPulse] = useState(false);
   const completionPulseTimeoutRef = useRef<number | null>(null);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
+  const mounted = useSyncExternalStore(
+    subscribeToHydration,
+    getClientMountedSnapshot,
+    getServerMountedSnapshot,
+  );
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
   useEffect(() => {
@@ -2996,8 +3006,8 @@ export default function DeepSpaceChatClient({
                 if (roomRef.current !== room) return;
                 if (track.kind === "audio") {
                   const element = track.attach();
-                  // LiveKit's track.attach() starts playback and handles browser autoplay policy.
-                  // Calling play() again while the track is loading can abort its own request.
+                  // LiveKit's track.attach() already starts playback and handles
+                  // autoplay failures. Calling play() again interrupts that request.
                   document.body.appendChild(element);
                 }
               });
@@ -3052,6 +3062,7 @@ export default function DeepSpaceChatClient({
 
         const requestId = crypto.randomUUID();
         const initialPrompt = buildInitialPrompt(messagesRef.current, currentContentRef.current);
+        // Read the user's saved voice preference
         let selectedVoice = "alba";
         try {
           const voiceRes = await fetchWithAuth("/deepspace/voice/settings");
@@ -4071,46 +4082,51 @@ export default function DeepSpaceChatClient({
         ) : null}
       </div>
 
-      <AnimatePresence initial={false}>
-        {historyOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12, ease: "easeOut" }}
-              onClick={() => setHistoryOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/35"
-            />
-            <motion.div
-              initial={{ x: 12, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 12, opacity: 0 }}
-              transition={{ duration: 0.14, ease: "easeOut" }}
-              className="fixed top-4 right-4 bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl sm:w-[320px]"
-            >
-              <ChatSidebar
-                endpointBase="/deepspace/chats"
-                enableArchived
-                enableRetentionControls
-                isTenantAdmin={hasAdminRole(user?.roles)}
-                variant="floating"
-                currentConversationId={state.currentConversationId}
-                onConversationRenamed={onConversationRenamed}
-                onSelectConversation={(id) => {
-                  onSelectNote?.(id);
-                  setHistoryOpen(false);
-                }}
-                onNewChat={() => {
-                  startNewChat();
-                  setHistoryOpen(false);
-                }}
-                onClose={() => setHistoryOpen(false)}
-              ></ChatSidebar>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {mounted && typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence initial={false}>
+              {historyOpen && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12, ease: "easeOut" }}
+                    onClick={() => setHistoryOpen(false)}
+                    className="fixed inset-0 z-[100] bg-black/35"
+                  />
+                  <motion.div
+                    initial={{ x: 12, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 12, opacity: 0 }}
+                    transition={{ duration: 0.14, ease: "easeOut" }}
+                    className="fixed top-[5.25rem] sm:top-[5.75rem] md:top-[6.25rem] right-3 sm:right-4 bottom-3 sm:bottom-4 z-[110] flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl sm:w-[320px]"
+                  >
+                    <ChatSidebar
+                      endpointBase="/deepspace/chats"
+                      enableArchived
+                      enableRetentionControls
+                      isTenantAdmin={hasAdminRole(user?.roles)}
+                      variant="floating"
+                      currentConversationId={state.currentConversationId}
+                      onConversationRenamed={onConversationRenamed}
+                      onSelectConversation={(id) => {
+                        onSelectNote?.(id);
+                        setHistoryOpen(false);
+                      }}
+                      onNewChat={() => {
+                        startNewChat();
+                        setHistoryOpen(false);
+                      }}
+                      onClose={() => setHistoryOpen(false)}
+                    ></ChatSidebar>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

@@ -1551,49 +1551,56 @@ export default function QueryPageClient() {
             </motion.aside>
           </>
         )}
-        {historyOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="query-history-overlay fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
-              onClick={() => setHistoryOpen(false)}
-            />
-            <motion.aside
-              initial={{ x: 420, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 420, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="query-history-drawer fixed top-4 right-4 bottom-4 z-50 flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
-            >
-              <ChatSidebar
-                endpointBase={chatEndpointBase}
-                variant="floating"
-                currentConversationId={state.currentConversationId}
-                onSelectConversation={(id) => {
-                  if (queueItemsRef.current.length > 0) {
-                    clearQueuedQueries();
-                    toast("Queued queries were cleared when you switched conversations.");
-                  }
-                  setQueuePaused(false);
-                  pendingHistorySyncRef.current = false;
-                  queryRequestGenerationRef.current += 1;
-                  if (queryRequestInFlightRef.current) stream.cancel();
-                  clearQueryDraftFiles();
-                  void loadConversation(id);
-                  setHistoryOpen(false);
-                }}
-                onNewChat={() => {
-                  startNewChat();
-                  setHistoryOpen(false);
-                }}
-                onClose={() => setHistoryOpen(false)}
-              />
-            </motion.aside>
-          </>
-        )}
       </AnimatePresence>
+      {mounted && typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence>
+              {historyOpen && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="query-history-overlay fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
+                    onClick={() => setHistoryOpen(false)}
+                  />
+                  <motion.aside
+                    initial={{ x: 420, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 420, opacity: 0 }}
+                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                    className="query-history-drawer fixed top-[5.25rem] sm:top-[5.75rem] md:top-[6.25rem] right-3 sm:right-4 bottom-3 sm:bottom-4 z-50 flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
+                  >
+                    <ChatSidebar
+                      endpointBase={chatEndpointBase}
+                      variant="floating"
+                      currentConversationId={state.currentConversationId}
+                      onSelectConversation={(id) => {
+                        if (queueItemsRef.current.length > 0) {
+                          clearQueuedQueries();
+                          toast("Queued queries were cleared when you switched conversations.");
+                        }
+                        setQueuePaused(false);
+                        pendingHistorySyncRef.current = false;
+                        queryRequestGenerationRef.current += 1;
+                        if (queryRequestInFlightRef.current) stream.cancel();
+                        clearQueryDraftFiles();
+                        void loadConversation(id);
+                        setHistoryOpen(false);
+                      }}
+                      onNewChat={() => {
+                        startNewChat();
+                        setHistoryOpen(false);
+                      }}
+                      onClose={() => setHistoryOpen(false)}
+                    />
+                  </motion.aside>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
       <ConfirmationModal
         isOpen={deleteAssistantMessageId !== null}
         onClose={() => {

@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import ExpiredSignatureError, ImmatureSignatureError, InvalidTokenError
 from sqlalchemy.orm import Session
 
+from app.auth.permissions import resolve_permissions
 from app.auth.roles import canonicalize_role_name
 from app.core.config import Settings, get_settings
 from app.core.context import set_tenant_id, set_user_id
@@ -482,7 +483,10 @@ def build_auth_context_from_jwt(
         user_id=user_id,
         tenant_id=tenant_id,
         roles=effective_roles,
-        permissions=frozenset(),
+        permissions=resolve_permissions(
+            roles=effective_roles,
+            direct_permissions=frozenset(),
+        ),
         token_id=token_id,
         auth_type="jwt",
         session_id=session_id,

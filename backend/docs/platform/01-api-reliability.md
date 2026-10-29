@@ -33,6 +33,13 @@ Available environment settings:
   per-request PostgreSQL limits (15 and 3 seconds by default). They prevent a
   blocked statement or row lock from monopolising request workers.
 
+The API Compose healthcheck allows a 120-second startup grace period. Startup
+runs Alembic upgrades and integration-catalog seeding before launching the two
+Uvicorn workers, whose imports can take additional time on a cold start. The
+grace period prevents Compose from treating that expected initialization as
+an API failure; the existing live-health probe, retry count, and frontend
+dependency on API health remain unchanged.
+
 The browser retries `SERVICE_OVERLOAD` at most twice for `GET` and `HEAD`
 requests, following a short `Retry-After`. It never automatically replays a
 write. Keep read endpoints free of unconditional row locks and recovery writes;

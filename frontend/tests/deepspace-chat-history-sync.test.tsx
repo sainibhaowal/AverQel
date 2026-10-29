@@ -397,7 +397,7 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
 }));
 
 vi.mock("../app/components/dashboard/ChatSidebar", () => ({
-  default: () => null,
+  default: () => <div data-testid="mock-chat-sidebar" />,
 }));
 
 vi.mock("../app/dashboard/query/_components/DeepSpaceScrollTracker", () => ({
@@ -581,6 +581,33 @@ describe("DeepSpaceChatClient history sync", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("reports a speech service startup failure instead of activating voice", async () => {
+    voiceRoomMock.localParticipant.publishData.mockImplementationOnce(async (bytes) => {
+      const request = JSON.parse(new TextDecoder().decode(bytes));
+      queueMicrotask(() => {
+        voiceRoomMock.handlers.get("dataReceived")?.(
+          new TextEncoder().encode(JSON.stringify({
+            type: "voice-mode-result",
+            request_id: request.request_id,
+            stt: request.stt,
+            tts: request.tts,
+            ready: false,
+          })),
+        );
+      });
+    });
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    await waitFor(() => expect(screen.getByText(
+      "Voice services could not start. Check the voice agent and model setup.",
+    )).toBeVisible());
+    expect(screen.getByRole("button", { name: "Voice conversation" })).toHaveAttribute(
+      "aria-pressed", "false",
+    );
+    expect(voiceRoomMock.disconnect).toHaveBeenCalled();
   });
 
   it("does not mark dictation active when browser microphone setup fails", async () => {
@@ -794,6 +821,40 @@ describe("DeepSpaceChatClient history sync", () => {
     ]);
     expect(JSON.stringify(speechMessages)).not.toContain("private reasoning");
     expect(JSON.stringify(speechMessages)).not.toContain("private tool payload");
+  });
+
+  it("does not issue a second play request for a LiveKit audio track", async () => {
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+    await waitFor(() => {
+      expect(voiceRoomMock.handlers.get("trackSubscribed")).toBeDefined();
+    });
+
+    const audio = document.createElement("audio");
+    const play = vi.fn(async () => undefined);
+    audio.play = play;
+    const track = {
+      kind: "audio",
+      sid: "TR_voice_test",
+      attach: vi.fn(() => {
+        // LiveKit's attach() starts playback internally.
+        void audio.play();
+        return audio;
+      }),
+      detach: vi.fn(() => [audio]),
+    };
+    const trackSubscribed = voiceRoomMock.handlers.get("trackSubscribed");
+    const trackUnsubscribed = voiceRoomMock.handlers.get("trackUnsubscribed");
+
+    act(() => trackSubscribed?.(track));
+
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(document.body.contains(audio)).toBe(true);
+
+    act(() => trackUnsubscribed?.(track));
+    expect(document.body.contains(audio)).toBe(false);
   });
 
   it("keeps active-response controls hidden in a new empty chat", async () => {
@@ -2066,5 +2127,109 @@ describe("DeepSpaceChatClient history sync", () => {
     expect(requestIds[0]).toEqual(expect.any(String));
     expect(requestIds[1]).toEqual(expect.any(String));
     expect(requestIds[0]).not.toBe(requestIds[1]);
+  });
+
+  it("renders the floating history drawer portalled to document.body below the top bar", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/deepspace/chats/conv-1/messages")) {
+        return {
+          ok: true,
+          json: async () => ({ messages: [], has_more: false }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderChat({ activeConversationId: "conv-1", isHistoryOpen: true });
+
+    const sidebar = await screen.findByTestId("mock-chat-sidebar");
+    expect(sidebar).toBeInTheDocument();
+
+    const drawerContainer = sidebar.parentElement;
+    expect(drawerContainer).not.toBeNull();
+    expect(drawerContainer?.className).toContain("top-[5.25rem]");
+    expect(drawerContainer?.className).toContain("fixed");
+    expect(document.body.contains(drawerContainer)).toBe(true);
+  });
+
+  it("does not duplicate the submitted user question after post-stream history reload", async () => {
+    let streamFinished = false;
+    let postStreamReloadCount = 0;
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/deepspace/chats/conv-1/messages")) {
+        if (!streamFinished) {
+          return {
+            ok: true,
+            json: async () => ({ messages: [], has_more: false }),
+          };
+        }
+        postStreamReloadCount += 1;
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "server-user-msg-1",
+                role: "user",
+                content: "any latets infomtion based on tody",
+                created_at: "2026-10-27T19:00:00.000Z",
+                metadata_json: {},
+              },
+              {
+                id: "server-assistant-msg-1",
+                role: "assistant",
+                content: "Here is the answer.",
+                created_at: "2026-10-27T19:00:01.000Z",
+                metadata_json: { status: "ready" },
+              },
+            ],
+            has_more: false,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    startMock.mockImplementationOnce(
+      async (options: {
+        onEvent: (event: Record<string, unknown>) => void;
+        onFinally?: () => void;
+      }) => {
+        options.onEvent({
+          event: "start",
+          data: {
+            conversation_id: "conv-1",
+            message_id: "server-assistant-msg-1",
+            started_at: "2026-10-27T19:00:01.000Z",
+          },
+        });
+        options.onEvent({
+          event: "delta",
+          data: {
+            content: "Here is the answer.",
+          },
+        });
+        options.onEvent({
+          event: "done",
+          data: {},
+        });
+        streamFinished = true;
+        options.onFinally?.();
+      },
+    );
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+
+    const textarea = screen.getByLabelText("DeepSpace composer draft");
+    fireEvent.change(textarea, { target: { value: "any latets infomtion based on tody" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+
+    await waitFor(() => expect(startMock).toHaveBeenCalledOnce());
+    await waitFor(() => expect(postStreamReloadCount).toBeGreaterThanOrEqual(1));
+
+    const thread = screen.getByTestId("deepspace-thread");
+    const userMatches = thread.textContent?.match(/any latets infomtion based on tody/g);
+    expect(userMatches).toHaveLength(1);
   });
 });

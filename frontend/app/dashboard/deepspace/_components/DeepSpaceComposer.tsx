@@ -23,8 +23,6 @@ import {
   RotateCw,
   FolderOpen,
   Pencil,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchWithAuth } from "@/lib/api";
@@ -369,6 +367,7 @@ export default function DeepSpaceComposer({
     }>
   >([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [hoveredVoiceControl, setHoveredVoiceControl] = useState<"stt" | "tts" | null>(null);
 
   const showAttachmentTooltip = (
     kind: AttachmentTooltipKind,
@@ -1823,9 +1822,14 @@ export default function DeepSpaceComposer({
               >
                 {/* Dictation stays in the composer for review before sending. */}
                 <div className="group relative">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={dictationSessionOpen && sttActive ? onDictationPause : onSttToggle}
+                    onMouseEnter={() => setHoveredVoiceControl("stt")}
+                    onMouseLeave={() => setHoveredVoiceControl((current) => (current === "stt" ? null : current))}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     disabled={dictationControlPending}
                     className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
                       sttActive
@@ -1841,15 +1845,49 @@ export default function DeepSpaceComposer({
                     }
                     aria-pressed={sttActive}
                   >
-                    {sttActive ? (
-                      <Mic
-                        size={13}
-                        className={voiceState === "listening" ? "animate-pulse" : ""}
+                    {/* Active Mode Slider Switch Pill */}
+                    {sttActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-active-pill"
+                        className="absolute inset-0 rounded-[0.35rem] border border-emerald-500/40 bg-emerald-500/25 shadow-[0_2px_10px_rgba(16,185,129,0.35)]"
+                        transition={{ type: "spring", stiffness: 420, damping: 28 }}
                       />
-                    ) : (
-                      <MicOff size={13} />
                     )}
-                  </button>
+
+                    {/* Hover Slider Pill */}
+                    {hoveredVoiceControl === "stt" && !sttActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-hover-pill"
+                        className="pointer-events-none absolute inset-0 rounded-[0.35rem] border border-white/10 bg-white/[0.08]"
+                        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Interactive Voice-to-Text Microphone Icon */}
+                    <div className="relative z-10 flex items-center justify-center">
+                      {sttActive ? (
+                        <motion.div
+                          animate={voiceState === "listening" ? { scale: [1, 1.14, 1] } : {}}
+                          transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+                          className="relative flex items-center justify-center text-emerald-300"
+                        >
+                          <Mic size={13} className="drop-shadow-[0_0_6px_rgba(52,211,153,0.75)]" />
+                          {voiceState === "listening" && (
+                            <motion.span
+                              className="absolute -inset-1 rounded-full border border-emerald-400/50"
+                              animate={{ scale: [1, 1.5], opacity: [0.75, 0] }}
+                              transition={{ repeat: Infinity, duration: 1.1, ease: "easeOut" }}
+                            />
+                          )}
+                        </motion.div>
+                      ) : (
+                        <MicOff
+                          size={13}
+                          className="text-white/45 transition-colors duration-200 group-hover:text-white/90"
+                        />
+                      )}
+                    </div>
+                  </motion.button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                       {dictationSessionOpen
@@ -1863,9 +1901,14 @@ export default function DeepSpaceComposer({
 
                 {/* Voice conversation uses the active DeepSpace chat for both directions. */}
                 <div className="group relative">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={onTtsToggle}
+                    onMouseEnter={() => setHoveredVoiceControl("tts")}
+                    onMouseLeave={() => setHoveredVoiceControl((current) => (current === "tts" ? null : current))}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
                       ttsActive
                         ? "bg-primary/20 text-primary border-primary/35 border shadow-[0_2px_8px_rgba(var(--primary),0.3)]"
@@ -1874,15 +1917,83 @@ export default function DeepSpaceComposer({
                     aria-label="Voice conversation"
                     aria-pressed={ttsActive}
                   >
-                    {ttsActive ? (
-                      <Volume2
-                        size={13}
-                        className={voiceState === "speaking" ? "animate-bounce" : ""}
+                    {/* Active Mode Slider Switch Pill */}
+                    {ttsActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-active-pill"
+                        className="absolute inset-0 rounded-[0.35rem] border border-cyan-500/40 bg-cyan-500/25 shadow-[0_2px_10px_rgba(6,182,212,0.35)]"
+                        transition={{ type: "spring", stiffness: 420, damping: 28 }}
                       />
-                    ) : (
-                      <VolumeX size={13} />
                     )}
-                  </button>
+
+                    {/* Hover Slider Pill */}
+                    {hoveredVoiceControl === "tts" && !ttsActive && (
+                      <motion.span
+                        layoutId="deepspace-voice-hover-pill"
+                        className="pointer-events-none absolute inset-0 rounded-[0.35rem] border border-white/10 bg-white/[0.08]"
+                        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Interactive Voice Agent Icon (Side-by-side companion + conversational sound waves) */}
+                    <div className="relative z-10 flex items-center justify-center">
+                      {ttsActive ? (
+                        <motion.svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-3.5 w-3.5 text-cyan-300 drop-shadow-[0_0_6px_rgba(34,211,238,0.75)]"
+                        >
+                          {/* Companion Persona */}
+                          <circle cx="8" cy="8.5" r="3.5" />
+                          <path d="M2.5 19.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5" />
+                          {/* Conversational Voice Sound Waves */}
+                          <motion.path
+                            d="M15.5 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5"
+                            animate={
+                              voiceState === "speaking"
+                                ? { opacity: [0.35, 1, 0.35], scale: [0.95, 1.12, 0.95] }
+                                : hoveredVoiceControl === "tts"
+                                  ? { opacity: [0.5, 1, 0.5], x: [0, 0.5, 0] }
+                                  : { opacity: 0.9 }
+                            }
+                            transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut" }}
+                          />
+                          <motion.path
+                            d="M18.8 6c2.2 1.8 3.2 4 3.2 6s-1 4.2-3.2 6"
+                            animate={
+                              voiceState === "speaking"
+                                ? { opacity: [0.2, 1, 0.2], scale: [0.9, 1.18, 0.9] }
+                                : hoveredVoiceControl === "tts"
+                                  ? { opacity: [0.4, 0.9, 0.4], x: [0, 1, 0] }
+                                  : { opacity: 0.7 }
+                            }
+                            transition={{ repeat: Infinity, duration: 0.8, delay: 0.15, ease: "easeInOut" }}
+                          />
+                        </motion.svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-3.5 w-3.5 text-white/45 transition-colors duration-200 group-hover:text-white/90"
+                        >
+                          {/* Dormant Companion Persona */}
+                          <circle cx="8" cy="8.5" r="3.5" />
+                          <path d="M2.5 19.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5" />
+                          {/* Dormant Speech Waves */}
+                          <path d="M15.5 8.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5" opacity="0.6" />
+                          <path d="M18.8 6c2.2 1.8 3.2 4 3.2 6s-1 4.2-3.2 6" opacity="0.35" />
+                        </svg>
+                      )}
+                    </div>
+                  </motion.button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                       Voice conversation
