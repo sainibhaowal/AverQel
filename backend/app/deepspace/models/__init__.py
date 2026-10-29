@@ -16,6 +16,7 @@ from .request_metric import DeepSpaceRequestMetric
 from .research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from .schedule import DeepSpaceSchedule
 from .schedule_run import DeepSpaceScheduleRun
+from .voice_settings import DeepSpaceVoiceSettings
 from .workspace_file import DeepSpaceWorkspaceFile
 from .workspace_file_version import DeepSpaceWorkspaceFileVersion
 from .workspace_folder import DeepSpaceWorkspaceFolder
@@ -41,4 +42,5 @@ __all__ = [
     "DeepSpaceRequestMetric",
     "DeepSpaceSchedule",
     "DeepSpaceScheduleRun",
+    "DeepSpaceVoiceSettings",
 ]

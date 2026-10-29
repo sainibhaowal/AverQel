@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Sparkles,
   BellRing,
+  Mic,
 } from "lucide-react";
 
 import { useAuth } from "@/app/context/AuthContext";
@@ -114,6 +115,15 @@ export default function SettingsPage() {
       accent: "text-amber-700 dark:text-amber-300",
       accentBg: "bg-amber-500/10 border-amber-500/20",
       glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(245,158,11,0.35)]",
+    },
+    {
+      title: "Voice Studio",
+      href: "/dashboard/settings/voice",
+      icon: <Mic size={20} />,
+      desc: "Configure TTS voice, cloning, speed, pitch, and playback settings.",
+      accent: "text-violet-600 dark:text-violet-300",
+      accentBg: "bg-violet-500/10 border-violet-500/20",
+      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(139,92,246,0.35)]",
     },
   ];
 

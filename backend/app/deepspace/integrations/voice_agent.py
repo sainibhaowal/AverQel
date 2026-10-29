@@ -4,19 +4,32 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import torch
 from faster_whisper import WhisperModel
-from kokoro_onnx import Kokoro
 from livekit import rtc
 from livekit.agents import (
     JobContext,
+    JobProcess,
     WorkerOptions,
     cli,
 )
 from livekit.plugins import silero
+from pocket_tts import TTSModel
+
+from app.deepspace.voice_catalog import BUILT_IN_VOICES
+
+try:
+    _num_threads = min(4, max(2, os.cpu_count() or 2))
+    torch.set_num_threads(_num_threads)
+    torch.set_num_interop_threads(1)
+except Exception:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-agent")
@@ -24,21 +37,28 @@ logger = logging.getLogger("voice-agent")
 # Paths to local models
 DEFAULT_STT_MODEL_PATH = "/app/models/stt/faster-whisper-small.en"
 STT_MODEL_PATH = os.getenv("AVERQEL_STT_MODEL_PATH", DEFAULT_STT_MODEL_PATH)
-FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
-TTS_MODEL_PATH = "/app/models/tts/kokoro-v1.0.onnx"
-VOICES_PATH = "/app/models/tts/voices-v1.0.bin"
+FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-base"
+SECONDARY_FALLBACK_STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
+# Pocket TTS: CPU-friendly, near-human quality, streaming support, voice cloning
+TTS_MODEL_PATH = None  # Pocket TTS loads its own model
+TTS_VOICE = "alba"  # Pocket TTS built-in voice (alba, cosette, jean, etc.)
 
 # Global wake session states
 session_awake_states = {}  # room_name -> {"is_awake": bool, "last_active_time": float}
 active_speech_tasks = {}  # room_name -> asyncio.Task
 session_stt = {}  # room_name -> bool
 session_tts = {}  # room_name -> bool
+session_voices = {}  # room_name -> voice name or "clone:<id>"
 session_speaking = {}  # room_name -> bool
 initial_prompts = {}  # room_name -> initial_prompt string bias
 speech_queues: dict[str, deque[tuple[str, str | None]]] = {}
 speech_worker_tasks: dict[str, asyncio.Task] = {}
 dictation_control_queues: dict[str, asyncio.Queue[dict[str, str]]] = {}
 transcription_locks: dict[str, asyncio.Lock] = {}
+room_audio_sources: dict[str, rtc.AudioSource] = {}
+tts_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-tts")
+_stt_model_lock = threading.Lock()
+_tts_model_lock = threading.Lock()
 
 # Multiple wake names/variations for high robustness under various phonetic spelling differences
 WAKE_WORDS = [
@@ -99,42 +119,59 @@ def check_and_extract_wake_word(transcript: str) -> tuple[bool, str]:
 
 # Lazy-loaded singletons
 _stt_model: WhisperModel | None = None
-_tts_model: Kokoro | None = None
-TTS_VOICE = "am_michael"
+_tts_model: TTSModel | None = None
 
 
 def get_stt() -> WhisperModel:
     global _stt_model
     if _stt_model is None:
-        model_path = STT_MODEL_PATH
-        if (
-            model_path == DEFAULT_STT_MODEL_PATH
-            and not os.path.isdir(model_path)
-            and os.path.isdir(FALLBACK_STT_MODEL_PATH)
-        ):
-            logger.warning(
-                "Higher-accuracy STT model is missing; falling back to %s. Provision %s to enable the default model.",
-                FALLBACK_STT_MODEL_PATH,
-                DEFAULT_STT_MODEL_PATH,
-            )
-            model_path = FALLBACK_STT_MODEL_PATH
-        logger.info("Loading Faster-Whisper STT model...")
-        _stt_model = WhisperModel(
-            model_path,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=4,
-        )
-        logger.info("Faster-Whisper loaded.")
+        with _stt_model_lock:
+            if _stt_model is None:
+                model_path = STT_MODEL_PATH
+                if model_path == DEFAULT_STT_MODEL_PATH and not os.path.isdir(model_path):
+                    fallback_path = next(
+                        (
+                            candidate
+                            for candidate in (
+                                FALLBACK_STT_MODEL_PATH,
+                                SECONDARY_FALLBACK_STT_MODEL_PATH,
+                            )
+                            if os.path.isdir(candidate)
+                        ),
+                        None,
+                    )
+                    if fallback_path is not None:
+                        logger.warning(
+                            "Higher-accuracy STT model is missing; falling back to %s. Provision %s to enable the default model.",
+                            fallback_path,
+                            DEFAULT_STT_MODEL_PATH,
+                        )
+                        model_path = fallback_path
+                logger.info("Loading Faster-Whisper STT model from %s", model_path)
+                _stt_model = WhisperModel(
+                    model_path,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=4,
+                )
+                logger.info("Faster-Whisper loaded.")
     return _stt_model
 
 
-def get_tts() -> Kokoro:
+def get_tts() -> TTSModel:
     global _tts_model
     if _tts_model is None:
-        logger.info("Loading Kokoro v1.0 TTS model...")
-        _tts_model = Kokoro(TTS_MODEL_PATH, VOICES_PATH)
-        logger.info("Kokoro v1.0 loaded.")
+        with _tts_model_lock:
+            if _tts_model is None:
+                try:
+                    num_threads = min(4, max(2, os.cpu_count() or 2))
+                    torch.set_num_threads(num_threads)
+                    torch.set_num_interop_threads(1)
+                except Exception:
+                    pass
+                logger.info("Loading Pocket TTS model (CPU)...")
+                _tts_model = TTSModel.load_model()
+                logger.info("Pocket TTS loaded. sample_rate=%d", _tts_model.sample_rate)
     return _tts_model
 
 
@@ -166,49 +203,64 @@ async def synthesize_and_speak(
     room: rtc.Room,
     node_id: str | None = None,
 ) -> None:
-    """Convert text to speech and stream it to the room with high precision pacing."""
+    """Convert text to speech and stream it to the room with real-time streaming."""
     session_speaking[room.name] = True
 
     try:
         logger.info("Synthesizing DeepSpace voice output (%d characters)", len(text))
         await broadcast_state(room, "speaking", node_id, text=text)
         tts = get_tts()
+        voice_name = session_voices.get(room.name, "alba")
 
-        loop = asyncio.get_running_loop()
-        samples, sample_rate = await loop.run_in_executor(
-            None, lambda: tts.create(text, voice=TTS_VOICE, speed=1.0, lang="en-us")
-        )
-        logger.info(
-            "TTS synthesis complete. samples_len=%d, sample_rate=%d",
-            len(samples),
-            sample_rate,
+        if voice_name.startswith("clone:"):
+            raise ValueError("Cloned voices require authenticated ownership resolution")
+        voice_state = await asyncio.get_running_loop().run_in_executor(
+            tts_executor, tts.get_state_for_audio_prompt, voice_name
         )
 
-        # Convert float32 -> int16 PCM
-        int16 = (samples * 32767).astype(np.int16)
         chunk_size = 960  # 40ms at 24 kHz
         frame_duration = 0.04  # 40ms in seconds
-
-        # High-precision pacing implementation to prevent schedule drift and stuttering
         start_time = time.perf_counter()
+        idx = 0
 
-        for idx, i in enumerate(range(0, len(int16), chunk_size)):
-            chunk = int16[i : i + chunk_size]
-            if len(chunk) < chunk_size:
-                chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
-            frame = rtc.AudioFrame(
-                data=chunk.tobytes(),
-                sample_rate=24000,
-                num_channels=1,
-                samples_per_channel=chunk_size,
+        # Stream audio chunks in real-time as they are generated
+        iterator = iter(tts.generate_audio_stream(voice_state, text))
+        while True:
+            audio_chunk = await asyncio.get_running_loop().run_in_executor(
+                tts_executor, next, iterator, None
             )
-            await audio_source.capture_frame(frame)
+            if audio_chunk is None:
+                break
+            if not session_speaking.get(room.name, True):
+                break
 
-            # Align sleep time based on start_time reference to prevent timing drift
-            expected_time = start_time + (idx + 1) * frame_duration
-            sleep_time = expected_time - time.perf_counter()
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
+            samples = (
+                audio_chunk.detach().cpu().numpy()
+                if hasattr(audio_chunk, "detach")
+                else np.asarray(audio_chunk)
+            )
+            if samples.dtype != np.int16:
+                int16 = (samples * 32767).astype(np.int16)
+            else:
+                int16 = samples
+
+            for i in range(0, len(int16), chunk_size):
+                chunk = int16[i : i + chunk_size]
+                if len(chunk) < chunk_size:
+                    chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
+                frame = rtc.AudioFrame(
+                    data=chunk.tobytes(),
+                    sample_rate=24000,
+                    num_channels=1,
+                    samples_per_channel=chunk_size,
+                )
+                await audio_source.capture_frame(frame)
+
+                expected_time = start_time + (idx + 1) * frame_duration
+                sleep_time = expected_time - time.perf_counter()
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+                idx += 1
 
         logger.info("Finished streaming TTS audio frames.")
     except asyncio.CancelledError:
@@ -216,6 +268,8 @@ async def synthesize_and_speak(
         raise
     except Exception as e:
         logger.error("Error in DeepSpace voice synthesis: %s", e, exc_info=True)
+    finally:
+        session_speaking[room.name] = False
 
 
 def enqueue_speech(
@@ -266,6 +320,9 @@ async def _drain_speech_queue(room: rtc.Room, audio_source: rtc.AudioSource) -> 
 def interrupt_speech(room: rtc.Room) -> None:
     room_name = room.name
     speech_queues.setdefault(room_name, deque()).clear()
+    source = room_audio_sources.get(room_name)
+    if source is not None:
+        source.clear_queue()
     worker = speech_worker_tasks.get(room_name)
     if worker is not None and not worker.done():
         if speech_worker_tasks.get(room_name) is worker:
@@ -277,46 +334,109 @@ def interrupt_speech(room: rtc.Room) -> None:
 
 
 async def entrypoint(ctx: JobContext) -> None:
-    logger.info("Voice agent starting — connecting to room: %s", ctx.room.name)
-    await ctx.connect()
-    session_stt[ctx.room.name] = False
-    session_tts[ctx.room.name] = False
-    session_speaking[ctx.room.name] = False
-    dictation_control_queues[ctx.room.name] = asyncio.Queue()
+    room = ctx.room
+    room_name = room.name
+    logger.info("Voice agent starting — connecting to room: %s", room_name)
 
-    # Warm up models immediately on room connect
-    try:
-        get_stt()
-        get_tts()
-    except Exception as exc:
-        logger.error("Failed to load speech models: %s", exc)
+    session_stt[room_name] = False
+    session_tts[room_name] = False
+    session_speaking[room_name] = False
+    dictation_control_queues[room_name] = asyncio.Queue()
+    model_tasks: dict[str, asyncio.Task] = {}
+    mode_requests: set[str] = set()
+    seen_mode_requests: set[str] = set()
+    mode_results: dict[str, tuple[bool, bool, bool]] = {}
+    latest_mode_request: str | None = None
+    audio_track_ready = asyncio.Event()
 
-    # Create outbound audio track for TTS playback
-    audio_source = rtc.AudioSource(24000, 1)  # Kokoro outputs 24 kHz mono
-    out_track = rtc.LocalAudioTrack.create_audio_track("agent-voice", audio_source)
-    await ctx.room.local_participant.publish_track(out_track)
-    logger.info("TTS playback track published.")
+    async def apply_mode(data: dict) -> None:
+        request_id = data["request_id"]
+        stt_active = data.get("stt") is True
+        tts_active = data.get("tts") is True
+        try:
+            voice = data.get("voice", "alba")
+            if tts_active and (not isinstance(voice, str) or voice not in BUILT_IN_VOICES):
+                raise ValueError("Only built-in voice names are supported in realtime sessions")
+            for name, enabled, loader in (
+                ("stt", stt_active, get_stt),
+                ("tts", tts_active, get_tts),
+            ):
+                if enabled:
+                    task = model_tasks.get(name)
+                    if task is None or (task.done() and task.exception() is not None):
+                        task = asyncio.create_task(asyncio.to_thread(loader))
+                        model_tasks[name] = task
+                    await asyncio.shield(task)
+            if tts_active:
+                await asyncio.get_running_loop().run_in_executor(
+                    tts_executor, get_tts().get_state_for_audio_prompt, voice
+                )
+                await audio_track_ready.wait()
+            if request_id != latest_mode_request:
+                return
+            previous_tts = session_tts.get(room_name, False)
+            session_stt[room_name] = stt_active
+            session_tts[room_name] = tts_active
+            session_voices[room_name] = voice
+            initial_prompts[room_name] = data.get("initial_prompt", "")
+            if previous_tts and not tts_active:
+                interrupt_speech(room)
+            mode_results[request_id] = (stt_active, tts_active, True)
+            await _publish_voice_mode_result(room, stt_active, tts_active, request_id)
+        except Exception:
+            logger.exception("Voice model initialization failed for room %s", room_name)
+            if request_id == latest_mode_request:
+                mode_results[request_id] = (stt_active, tts_active, False)
+                await _publish_voice_mode_result(
+                    room, stt_active, tts_active, request_id, ready=False
+                )
+        finally:
+            mode_requests.discard(request_id)
+
+    audio_source = rtc.AudioSource(24000, 1)  # Pocket TTS outputs 24 kHz mono
+    room_audio_sources[room_name] = audio_source
+
+    async def cleanup() -> None:
+        interrupt_speech(room)
+        room_audio_sources.pop(room_name, None)
+        for task in model_tasks.values():
+            task.cancel()
+        await asyncio.gather(*model_tasks.values(), return_exceptions=True)
+        for state in (
+            session_stt,
+            session_tts,
+            session_voices,
+            session_speaking,
+            initial_prompts,
+            speech_queues,
+            dictation_control_queues,
+            transcription_locks,
+        ):
+            state.pop(room_name, None)
+        mode_results.clear()
+
+    ctx.add_shutdown_callback(cleanup)
 
     # High-quality VAD config: less sensitive to background static noise/hum, triggers only on real speech
     vad = silero.VAD.load(
         activation_threshold=0.45,  # Triggers on clear speech syllables
         deactivation_threshold=0.35,  # Faster deactivation cut-off
         min_speech_duration=0.18,  # Ignore short clicks/pops under 180ms
-        min_silence_duration=0.8,  # Wait 800ms before finishing speech segment
+        min_silence_duration=0.4,  # 400ms before finishing speech segment (faster response)
     )
 
     def process_remote_track(track: rtc.Track, participant: rtc.RemoteParticipant):
         if track.kind == rtc.TrackKind.KIND_AUDIO:
-            if participant.identity == ctx.room.local_participant.identity:
+            if participant.identity == room.local_participant.identity:
                 logger.info("Ignoring agent's own audio track: %s", participant.identity)
                 return
             if participant.identity.startswith("agent-"):
                 logger.info("Ignoring other agent's audio track: %s", participant.identity)
                 return
             logger.info("Processing audio track for participant: %s", participant.identity)
-            asyncio.create_task(_process_incoming_audio(track, participant, ctx.room, vad))
+            asyncio.create_task(_process_incoming_audio(track, participant, room, vad))
 
-    @ctx.room.on("track_subscribed")
+    @room.on("track_subscribed")
     def on_track(
         track: rtc.Track,
         pub: rtc.TrackPublication,
@@ -325,8 +445,9 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("Track subscribed event fired: %s from %s", track.sid, participant.identity)
         process_remote_track(track, participant)
 
-    @ctx.room.on("data_received")
+    @room.on("data_received")
     def on_data_received(data_packet: rtc.DataPacket) -> None:
+        nonlocal latest_mode_request
         import json
 
         try:
@@ -334,44 +455,55 @@ async def entrypoint(ctx: JobContext) -> None:
             data = json.loads(payload.decode())
 
             if data.get("type") == "set-mode":
-                stt_active = data.get("stt", False)
-                tts_active = data.get("tts", False)
-
-                prev_tts = session_tts.get(ctx.room.name, False)
-                session_stt[ctx.room.name] = stt_active
-                session_tts[ctx.room.name] = tts_active
-                initial_prompts[ctx.room.name] = data.get("initial_prompt", "")
-
-                logger.info(
-                    "Voice session for %s updated: STT=%s, TTS=%s",
-                    ctx.room.name,
-                    stt_active,
-                    tts_active,
-                )
                 request_id = data.get("request_id")
                 if isinstance(request_id, str):
-                    asyncio.create_task(
-                        _publish_voice_mode_result(ctx.room, stt_active, tts_active, request_id)
-                    )
-                if prev_tts and not tts_active:
-                    interrupt_speech(ctx.room)
+                    if request_id in seen_mode_requests and request_id != latest_mode_request:
+                        return
+                    if request_id in mode_results:
+                        stt_ready, tts_ready, ready = mode_results[request_id]
+                        asyncio.create_task(
+                            _publish_voice_mode_result(
+                                room, stt_ready, tts_ready, request_id, ready=ready
+                            )
+                        )
+                    elif request_id not in mode_requests:
+                        seen_mode_requests.add(request_id)
+                        latest_mode_request = request_id
+                        mode_requests.add(request_id)
+                        asyncio.create_task(apply_mode(data))
             elif data.get("type") == "dictation-control":
                 action = data.get("action")
                 request_id = data.get("request_id")
                 if action in {"pause", "finish"} and isinstance(request_id, str):
-                    dictation_control_queues.setdefault(ctx.room.name, asyncio.Queue()).put_nowait(
+                    dictation_control_queues.setdefault(room_name, asyncio.Queue()).put_nowait(
                         {"action": action, "request_id": request_id}
                     )
             elif data.get("type") == "speak-text":
                 text_to_speak = data.get("text")
                 if isinstance(text_to_speak, str) and len(text_to_speak) <= 320:
-                    enqueue_speech(text_to_speak, audio_source, ctx.room, node_id="deepspace")
+                    # Split into sentences for real-time streaming playback
+                    sentences = [
+                        s.strip() for s in re.split(r"(?<=[.!?])\s+", text_to_speak) if s.strip()
+                    ]
+                    if not sentences:
+                        sentences = [text_to_speak.strip()]
+                    for sentence in sentences:
+                        enqueue_speech(sentence, audio_source, room, node_id="deepspace")
         except Exception as e:
             logger.error("Error processing data message: %s", e)
 
+    # Attach listeners before connecting so incoming data is never dropped
+    await ctx.connect()
+
+    # Outbound audio track for TTS playback
+    out_track = rtc.LocalAudioTrack.create_audio_track("agent-voice", audio_source)
+    await room.local_participant.publish_track(out_track)
+    audio_track_ready.set()
+    logger.info("TTS playback track published.")
+
     # Process any pre-existing tracks that are already subscribed/active
     logger.info("Checking pre-existing room participants and tracks...")
-    for _p_id, participant in ctx.room.remote_participants.items():
+    for _p_id, participant in room.remote_participants.items():
         if participant.identity.startswith("agent-"):
             logger.info(
                 "Ignoring pre-existing agent participant on join: %s",
@@ -462,8 +594,8 @@ async def _transcribe_partial(samples: list[float], room: rtc.Room, segment_id: 
     try:
         arr = np.array(samples, dtype=np.float32)
         max_amp = np.max(np.abs(arr)) * 32768.0 if len(arr) > 0 else 0
-        if max_amp < 1200:
-            return  # skip partial transcription for static/noise
+        if max_amp < 150:
+            return  # skip partial transcription for digital silence
 
         transcript = await _transcribe_samples(arr.tolist(), room, beam_size=1)
 
@@ -497,7 +629,7 @@ async def _publish_dictation_control_result(room: rtc.Room, action: str, request
 
 
 async def _publish_voice_mode_result(
-    room: rtc.Room, stt_active: bool, tts_active: bool, request_id: str
+    room: rtc.Room, stt_active: bool, tts_active: bool, request_id: str, *, ready: bool = True
 ) -> None:
     import json
 
@@ -507,6 +639,7 @@ async def _publish_voice_mode_result(
             "stt": stt_active,
             "tts": tts_active,
             "request_id": request_id,
+            "ready": ready,
         }
     ).encode()
     try:
@@ -603,7 +736,7 @@ async def _process_incoming_audio(
             if getattr(ev, "speaking", False) and getattr(ev, "frames", None):
                 resampler = _collect_vad_event_audio(ev, VADEventType, resampler, speech_samples)
                 current_time = asyncio.get_running_loop().time()
-                if len(speech_samples) > 16000 * 0.5 and current_time - last_transcribe_time > 1.0:
+                if len(speech_samples) > 16000 * 0.35 and current_time - last_transcribe_time > 0.6:
                     last_transcribe_time = current_time
                     if partial_task is None or partial_task.done():
                         partial_task = asyncio.create_task(
@@ -703,15 +836,15 @@ async def _transcribe_audio_segment(samples: list[float], room: rtc.Room, segmen
         max_amp = np.max(np.abs(arr)) * 32768.0 if len(arr) > 0 else 0
         logger.info("Speech segment max amplitude: %.1f", max_amp)
 
-        if max_amp < 1500:  # Gated at 1500 to keep low-amplitude background noise out of STT
+        if max_amp < 150:  # Gated at 150 to keep pure digital silence out of STT
             logger.info(
-                "Ignoring silent/noise speech segment (amplitude %.1f below 1500 gate)",
+                "Ignoring silent speech segment (amplitude %.1f below 150 gate)",
                 max_amp,
             )
             await broadcast_state(room, "listening")
             return ""
 
-        transcript = await _transcribe_samples(arr.tolist(), room, beam_size=5)
+        transcript = await _transcribe_samples(arr.tolist(), room, beam_size=1)
         logger.info("Transcription completed (%d characters)", len(transcript))
 
         if not transcript:
@@ -735,5 +868,23 @@ async def _transcribe_audio_segment(samples: list[float], room: rtc.Room, segmen
         return ""
 
 
+def prewarm(proc: JobProcess) -> None:
+    """Initialize the worker without blocking LiveKit's process startup deadline."""
+    try:
+        num_threads = min(4, max(2, os.cpu_count() or 2))
+        torch.set_num_threads(num_threads)
+        torch.set_num_interop_threads(1)
+    except Exception:
+        pass
+    logger.info("Voice worker initialized (pid=%d); models load when requested.", proc.pid)
+
+
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            num_idle_processes=1,
+            initialize_process_timeout=30.0,
+        )
+    )

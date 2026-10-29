@@ -2818,6 +2818,7 @@ export default function DeepSpaceChatClient({
       let room: any = null;
       let microphoneSetupFailed = false;
       let voiceModeSetupFailed = false;
+      let unsupportedClonedVoice = false;
       const identity = user?.id ? `user-${user.id}` : "";
 
       try {
@@ -2839,7 +2840,7 @@ export default function DeepSpaceChatClient({
           }
 
           const connectionPromise = (async () => {
-            const uniqueRoom = `deepspace-room-${Math.random().toString(36).slice(2, 8)}`;
+            const uniqueRoom = `deepspace-room-${crypto.randomUUID()}`;
             const tokenController = new AbortController();
             voiceTokenRequestControllerRef.current = tokenController;
             try {
@@ -2880,7 +2881,9 @@ export default function DeepSpaceChatClient({
                     if (waiter) {
                       window.clearTimeout(waiter.timeout);
                       voiceModeWaitersRef.current.delete(data.request_id);
-                      waiter.resolve(data.stt === waiter.stt && data.tts === waiter.tts);
+                      waiter.resolve(
+                        data.ready !== false && data.stt === waiter.stt && data.tts === waiter.tts,
+                      );
                     }
                   }
                   if (isDeepSpaceVoiceState(data.state)) {
@@ -2993,10 +2996,8 @@ export default function DeepSpaceChatClient({
                 if (roomRef.current !== room) return;
                 if (track.kind === "audio") {
                   const element = track.attach();
-                  element.autoplay = true;
-                  element.play().catch((err: any) => {
-                    console.error("Autoplay blocked for track:", track.sid, err);
-                  });
+                  // LiveKit's track.attach() starts playback and handles browser autoplay policy.
+                  // Calling play() again while the track is loading can abort its own request.
                   document.body.appendChild(element);
                 }
               });
@@ -3051,21 +3052,41 @@ export default function DeepSpaceChatClient({
 
         const requestId = crypto.randomUUID();
         const initialPrompt = buildInitialPrompt(messagesRef.current, currentContentRef.current);
+        let selectedVoice = "alba";
+        try {
+          const voiceRes = await fetchWithAuth("/deepspace/voice/settings");
+          if (voiceRes.ok) {
+            const voiceData = await voiceRes.json();
+            if (typeof voiceData.voice === "string") selectedVoice = voiceData.voice;
+          }
+        } catch {
+          // Keep the default voice when preferences are not available.
+        }
+        if (nextTts && selectedVoice.startsWith("clone:")) {
+          unsupportedClonedVoice = true;
+          throw new Error("Cloned voices are unavailable in realtime voice sessions.");
+        }
         const modePayload = JSON.stringify({
           type: "set-mode",
           stt: nextStt,
           tts: nextTts,
+          voice: selectedVoice,
           initial_prompt: initialPrompt,
           request_id: requestId,
         });
         const encodedModePayload = new TextEncoder().encode(modePayload);
+        setVoiceLabel("Starting speech services…");
+        let modeAcknowledgedResolved = false;
         const modeAcknowledgement = new Promise<boolean>((resolve) => {
           const timeout = window.setTimeout(() => {
             voiceModeWaitersRef.current.delete(requestId);
             resolve(false);
-          }, 10_000);
+          }, 120_000);
           voiceModeWaitersRef.current.set(requestId, {
-            resolve,
+            resolve: (success) => {
+              modeAcknowledgedResolved = true;
+              resolve(success);
+            },
             timeout,
             stt: nextStt,
             tts: nextTts,
@@ -3079,31 +3100,40 @@ export default function DeepSpaceChatClient({
               topic: "voice-control",
             })
             .catch((error: unknown) => {
-              // The agent can reconnect independently from the browser. A
-              // later ParticipantConnected event retries the same mode packet;
-              // the room itself remains usable while that handshake settles.
+              // A retry is scheduled until the agent confirms readiness.
               console.warn("Voice mode synchronization failed", error);
             });
         };
 
-        // LiveKit may resolve room.connect before the voice agent has joined.
-        // Send once now and once when the agent appears so the mode is never
-        // lost during that normal startup race.
+        // LiveKit may resolve room.connect before the agent or its data channel is ready.
+        // Back off retries while the requested speech models initialize.
         publishVoiceMode();
-        const agentAlreadyConnected = Array.from(room.remoteParticipants.values()).some(
-          (participant: any) => String(participant.identity).startsWith("agent-"),
-        );
-        if (!agentAlreadyConnected) {
-          const onAgentConnected = (participant: any) => {
-            if (!isCurrentRequest() || roomRef.current !== room) return;
-            if (!String(participant.identity).startsWith("agent-")) return;
-            room.off(RoomEvent.ParticipantConnected, onAgentConnected);
+        let retryDelay = 500;
+        let modeRetryTimer: number | undefined;
+        const scheduleModeRetry = () => {
+          modeRetryTimer = window.setTimeout(() => {
+            if (modeAcknowledgedResolved || !isCurrentRequest() || roomRef.current !== room) {
+              return;
+            }
             publishVoiceMode();
-          };
-          room.on(RoomEvent.ParticipantConnected, onAgentConnected);
-        }
+            retryDelay = Math.min(retryDelay * 2, 5_000);
+            scheduleModeRetry();
+          }, retryDelay);
+        };
+        scheduleModeRetry();
+        const onAgentConnected = (participant: any) => {
+          if (!isCurrentRequest() || roomRef.current !== room) return;
+          if (String(participant.identity).startsWith("agent-")) publishVoiceMode();
+        };
+        room.on(RoomEvent.ParticipantConnected, onAgentConnected);
 
-        const modeAcknowledged = await modeAcknowledgement;
+        let modeAcknowledged = false;
+        try {
+          modeAcknowledged = await modeAcknowledgement;
+        } finally {
+          if (modeRetryTimer !== undefined) window.clearTimeout(modeRetryTimer);
+          room.off(RoomEvent.ParticipantConnected, onAgentConnected);
+        }
         if (!modeAcknowledged) {
           voiceModeSetupFailed = true;
           throw new Error("Voice agent did not confirm the requested mode.");
@@ -3142,9 +3172,11 @@ export default function DeepSpaceChatClient({
         setVoiceLabel(
           microphoneSetupFailed
             ? "Microphone unavailable. Check browser permission and input device."
-            : voiceModeSetupFailed
-              ? "Voice agent did not confirm dictation. Try again."
-              : "Voice server unreachable.",
+            : unsupportedClonedVoice
+              ? "Choose a built-in voice in Voice Studio for voice conversation."
+              : voiceModeSetupFailed
+                ? "Voice services could not start. Check the voice agent and model setup."
+                : "Voice server unreachable.",
         );
       }
     },

@@ -14,7 +14,7 @@ export default function VoiceDocsPage() {
           },
           {
             title: "Voice conversation",
-            body: "Speech is sent as a turn to the currently selected DeepSpace chat. The same DeepSpace model and tools answer, and new visible sentences are spoken as they arrive.",
+            body: "Speech is sent as a turn to the currently selected DeepSpace chat. The same DeepSpace model and tools answer, and new visible sentences are spoken as they arrive. Select a built-in voice in Settings > Voice Studio for realtime conversation.",
           },
           {
             title: "Only new response text is spoken",
@@ -32,11 +32,13 @@ export default function VoiceDocsPage() {
       />
       <DocsSection title="How voice conversation works">
         <p>
-          Voice conversation uses the existing DeepSpace request and response path. Faster-Whisper
-          transcribes your speech, the selected DeepSpace chat model handles your request and
-          connected tools, and Kokoro speaks short visible response segments through the same voice
-          session. This keeps the answer in the selected chat instead of starting a second assistant
-          conversation.
+          Voice conversation uses the existing DeepSpace request and response path. Speech is
+          transcribed after a pause, then DeepSpace streams its answer and Pocket TTS speaks visible
+          response segments through the same WebRTC session. Interim transcription is best effort,
+          not guaranteed word-by-word output. Configure a built-in voice in Settings &gt; Voice
+          Studio. Cloned voices are not currently available in realtime conversations. The first
+          connection can take longer while speech models load. This keeps the answer in the selected
+          chat instead of starting a second assistant conversation.
         </p>
         <p>
           Spoken output starts with complete visible sentences. Any unfinished sentence is flushed
@@ -60,9 +62,17 @@ export default function VoiceDocsPage() {
           The ten-minute limit counts active listening time, not paused time.
         </p>
         <p>
-          Dictation uses the configured local Faster-Whisper model. Recognition quality still
-          depends on microphone placement, background noise, accent, and available CPU; review the
-          transcript before sending.
+          Dictation uses the configured local Faster-Whisper model. Recognition quality depends on
+          the selected model, microphone placement, background noise, accent, and available CPU;
+          review the transcript before sending.
+        </p>
+      </DocsSection>
+      <DocsSection title="Voice preview timing">
+        <p>
+          Test Voice returns a complete audio preview after the server has generated the sample. It
+          is not a live-streaming test. A server worker may need to load the speech model the first
+          time it receives a preview request. When the player appears, use its play control if your
+          browser does not start playback automatically.
         </p>
       </DocsSection>
       <DocsSection title="Deployment requirements">

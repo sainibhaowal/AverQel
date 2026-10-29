@@ -58,6 +58,11 @@ async def test_voice_barge_in_cancels_playback_and_drops_queued_chunks(
     source = object()
     first_started = asyncio.Event()
     spoken: list[str] = []
+    cleared: list[bool] = []
+
+    class Source:
+        def clear_queue(self):
+            cleared.append(True)
 
     async def fake_speak(text, _source, _room, node_id=None):
         spoken.append(text)
@@ -70,6 +75,7 @@ async def test_voice_barge_in_cancels_playback_and_drops_queued_chunks(
     monkeypatch.setattr(voice_agent, "synthesize_and_speak", fake_speak)
     monkeypatch.setattr(voice_agent, "broadcast_state", ignore_state)
     monkeypatch.setitem(voice_agent.session_tts, room.name, True)
+    monkeypatch.setitem(voice_agent.room_audio_sources, room.name, Source())
 
     voice_agent.enqueue_speech("Current sentence.", source, room)
     voice_agent.enqueue_speech("This should not play.", source, room)
@@ -81,3 +87,4 @@ async def test_voice_barge_in_cancels_playback_and_drops_queued_chunks(
     assert spoken == ["Current sentence."]
     assert voice_agent.session_speaking[room.name] is False
     assert not voice_agent.speech_queues[room.name]
+    assert cleared == [True]
